@@ -1437,8 +1437,12 @@
       const clickedTreeControl = event && event.target
         && event.target.closest
         && event.target.closest(".tabulator-data-tree-control");
-      if (!clickedTreeControl && typeof row.treeToggle === "function") {
-        row.treeToggle();
+      if (!clickedTreeControl) {
+        if (typeof row.treeExpand === "function") {
+          row.treeExpand();
+        } else if (typeof row.treeToggle === "function") {
+          row.treeToggle();
+        }
       }
     }
     updateBlunderBoard(resolveBlunderForRow(rowData, blunderById), labels, rowData);
