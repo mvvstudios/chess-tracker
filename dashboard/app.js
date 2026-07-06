@@ -1372,17 +1372,7 @@
          formatter: c => blunderImpactFocusCell(c.getData())},
         {title: "Blunders", field: "count", width: 88, sorter: "number",
          formatter: c => isBlunderAggregateRow(c.getData()) ? formatNumber(c.getValue()) : ""},
-        {title: "%", field: "pct", width: 70, sorter: "number",
-         formatter: c => isBlunderAggregateRow(c.getData()) ? `${c.getValue()}%` : ""},
-        {title: "Total cp", field: "total_cp_loss", width: 92, sorter: "number",
-         formatter: c => isBlunderAggregateRow(c.getData())
-           ? formatNumber(c.getValue())
-           : formatNumber(c.getData().cp_loss)},
-        {title: "Avg cp", field: "avg_cp_loss", width: 82, sorter: "number",
-         formatter: c => isBlunderAggregateRow(c.getData()) ? formatNumber(c.getValue()) : ""},
-        {title: "Worst cp", field: "worst_cp_loss", width: 90, sorter: "number",
-         formatter: c => isBlunderAggregateRow(c.getData()) ? formatNumber(c.getValue()) : ""},
-        {title: "Main phase", field: "top_phase_label", minWidth: 130,
+        {title: "Phase", field: "top_phase_label", minWidth: 130,
          formatter: c => isBlunderAggregateRow(c.getData())
            ? `${escapeAttr(c.getValue() || "—")} (${formatNumber(c.getData().top_phase_count || 0)})`
            : escapeAttr(c.getData().phase_label || "—")},
@@ -1391,7 +1381,7 @@
            ? `${escapeAttr(c.getValue() || "—")} (${formatNumber(c.getData().top_opening_count || 0)})`
            : escapeAttr(c.getData().opening_label || "—")},
       ],
-      initialSort: [{column: "total_cp_loss", dir: "desc"}],
+      initialSort: [{column: "count", dir: "desc"}],
     });
     table.on("rowClick", (e, row) => selectBlunderRow(e, row, labels, blunderById));
     table.on("rowDblClick", (e, row) => {
@@ -1515,7 +1505,7 @@
     const contextDetail = isAggregate
       ? `${categoryDetail}
          <div class="row"><span class="k">Top opening</span><span class="v">${escapeAttr(rowContext.top_opening_label || "—")}</span></div>
-         <div class="row"><span class="k">Main phase</span><span class="v">${escapeAttr(rowContext.top_phase_label || "—")}</span></div>
+         <div class="row"><span class="k">Phase</span><span class="v">${escapeAttr(rowContext.top_phase_label || "—")}</span></div>
          ${patternCountDetail}`
       : "";
     metaEl.innerHTML = `
