@@ -3,7 +3,7 @@
 **Date:** 2026-05-26
 **Scope:** Visual styling for the chess-tracker dashboard. Replaces the original
 chess-green / amber / red palette specified in the bullet-chess-tracker plan
-(Task 12) with a minimal warm-dark theme inspired by Claude.ai.
+(Task 12) with a minimal warm-dark theme.
 
 ## Goal
 

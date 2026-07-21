@@ -13,4 +13,3 @@ dashboard/*.html
 .DS_Store
 .superpowers/
 .worktrees/
-.claude/

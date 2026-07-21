@@ -177,7 +177,6 @@ Algorithm-only commit. The helper finds the peak session-position bucket
 dropped >=10pp from peak to the latest-position eligible bucket. Not yet
 wired into detect_leaks or next_session_rule.
 
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -310,7 +309,6 @@ Wire the _post_peak_decay helper into detect_leaks. The leak now fires
 on a >=10pp drop from the peak session-position bucket to the latest
 eligible bucket, replacing the old monotonic 1-5 vs 21+ comparison.
 
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -410,7 +408,6 @@ when post_peak_decay fires (1-5->5, 6-10->10, 11-20->20). Default cap of
 30 applies when the leak does not fire. Removes the "first bucket where
 win% < 40" fallback whose cold-start dip behavior was empirically wrong.
 
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 EOF
 )"
 ```

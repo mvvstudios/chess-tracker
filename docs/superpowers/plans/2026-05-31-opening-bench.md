@@ -89,7 +89,6 @@ cd /Users/madisonvelding-vandam/Developer/chess-tracker
 git add chess_tracker/metrics.py tests/test_metrics.py
 git commit -m "feat(metrics): pass opening status through plan compliance
 
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
 
 ---
@@ -197,7 +196,6 @@ cd /Users/madisonvelding-vandam/Developer/chess-tracker
 git add dashboard/app.js
 git commit -m "feat(dashboard): render bench shelf in plan block
 
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
 
 ---
@@ -244,7 +242,6 @@ cd /Users/madisonvelding-vandam/Developer/chess-tracker
 git add dashboard/styles.css
 git commit -m "style(dashboard): vertical capped bench shelf
 
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
 
 ---
@@ -305,7 +302,6 @@ cd /Users/madisonvelding-vandam/Developer/chess-tracker
 git add chess_tracker/plan.json data/computed.json
 git commit -m "feat(plan): seed bench candidate openings per side
 
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
 
 ---
