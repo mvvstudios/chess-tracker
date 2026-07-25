@@ -59,13 +59,11 @@ def test_classify_blunder_categories_uses_deterministic_evidence():
         played_move_is_capture=False,
         opponent_best_reply_captures_material=True,
         forced_mate_after=False,
-        clock_after_seconds=8.0,
     )
     assert cats == [
         "material_loss",
         "missed_capture_or_recapture",
         "opening_phase_blunder",
-        "time_pressure_blunder",
         "large_eval_swing",
         "conversion_error",
     ]

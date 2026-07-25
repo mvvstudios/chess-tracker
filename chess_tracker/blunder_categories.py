@@ -5,7 +5,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 import re
 
-from chess_tracker.analysis import ANALYSIS_CACHE_VERSION
+from chess_tracker.analysis import ANALYSIS_CACHE_VERSION, SCRAMBLE_SECONDS
 
 
 CATEGORY_LABELS: dict[str, str] = {
@@ -15,7 +15,6 @@ CATEGORY_LABELS: dict[str, str] = {
     "opening_phase_blunder": "Opening phase",
     "early_middlegame_blunder": "Early middlegame",
     "endgame_blunder": "Endgame",
-    "time_pressure_blunder": "Time pressure",
     "large_eval_swing": "Large eval swing",
     "conversion_error": "Conversion error",
 }
@@ -27,7 +26,6 @@ CATEGORY_DESCRIPTIONS: dict[str, str] = {
     "opening_phase_blunder": "The blunder happened by move 8.",
     "early_middlegame_blunder": "The blunder happened from moves 9-20.",
     "endgame_blunder": "The blunder happened in an endgame position.",
-    "time_pressure_blunder": "The clock after your move was at or below 10 seconds.",
     "large_eval_swing": "The centipawn loss was at least 500.",
     "conversion_error": "You were clearly better before the move and the advantage collapsed.",
 }
@@ -37,7 +35,6 @@ CATEGORY_FOCUS_AREAS: dict[str, str] = {
     "missed_capture_or_recapture": "Tactical opportunity",
     "mate_threat_or_mate_allowed": "King safety",
     "conversion_error": "Conversion",
-    "time_pressure_blunder": "Clock/process",
     "large_eval_swing": "Severity",
     "opening_phase_blunder": "Phase context",
     "early_middlegame_blunder": "Phase context",
@@ -86,12 +83,6 @@ def _material_value_label(value: int | None) -> tuple[str, str]:
 
 
 def _severity_band(cp_loss: int) -> tuple[str, str, str]:
-    if cp_loss >= 10_000:
-        return (
-            "mate-level",
-            "Mate-level swing",
-            "The swing reached Stockfish's forced-mate score range.",
-        )
     if cp_loss >= 1_000:
         return (
             "decisive",
@@ -105,12 +96,10 @@ def _severity_band(cp_loss: int) -> tuple[str, str, str]:
     )
 
 
-def _clock_band(seconds: float | int | None) -> tuple[str, str, str]:
-    if seconds is None:
-        return "clock-unknown", "Clock unknown", "No clock value was available."
-    if seconds <= 5:
-        return "under-5s", "Under 5 seconds", "The move was made with five seconds or less."
-    return "under-10s", "5-10 seconds", "The move was made with ten seconds or less."
+def _is_scramble(blunder: dict) -> bool:
+    """True when the move was played in a clock scramble (≤ SCRAMBLE_SECONDS)."""
+    clock = blunder.get("clock_after_seconds")
+    return clock is not None and clock <= SCRAMBLE_SECONDS
 
 
 def _overlap_label(category: str, blunder: dict) -> tuple[str, str]:
@@ -120,7 +109,6 @@ def _overlap_label(category: str, blunder: dict) -> tuple[str, str]:
         "conversion_error",
         "material_loss",
         "missed_capture_or_recapture",
-        "time_pressure_blunder",
         "large_eval_swing",
     ]
     for key in priority:
@@ -177,10 +165,6 @@ def _pattern_for(category: str, blunder: dict) -> tuple[str, str, str]:
             f"Forced mate allowed · {phase_label}",
             "The post-move position is a forced mate against you.",
         )
-
-    if category == "time_pressure_blunder":
-        band_key, band_label, desc = _clock_band(blunder.get("clock_after_seconds"))
-        return f"{band_key}|{phase}", f"{band_label} · {phase_label}", desc
 
     if category == "conversion_error":
         return (
@@ -255,129 +239,22 @@ def _summary_blunders(summary: dict, record_by_url: dict[str, object]) -> list[d
             "eco": meta.get("eco"),
             "game_side": meta.get("side") or blunder.get("side"),
             "end_time": meta.get("end_time"),
+            # The time_pressure co-tag is retired — the scramble/clear pool
+            # partition replaced it. Cached v3 evidence may still carry it.
+            "categories": [
+                c for c in (blunder.get("categories") or [])
+                if c != "time_pressure_blunder"
+            ],
         }
         out.append(item)
     return out
 
 
-def compute_blunder_analysis(
-    summaries: list[dict],
-    records: list[object],
-    *,
-    eligible_games: int,
-    max_examples: int = 12,
-    max_openings: int = 10,
-) -> dict:
-    """Return compact category/phase/opening/example tables for blunders.html."""
-    analyzed = [s for s in summaries if s and s.get("moves_analyzed")]
-    record_by_url = {
-        getattr(record, "url", ""): record
-        for record in records
-        if getattr(record, "url", "")
-    }
-
-    blunders: list[dict] = []
-    for summary in analyzed:
-        blunders.extend(_summary_blunders(summary, record_by_url))
-
-    total_blunders = len(blunders)
-    categorized_blunders = sum(1 for b in blunders if b.get("categories"))
-    games_with_blunders = {
-        b.get("game_url") for b in blunders if b.get("game_url")
-    }
-
-    category_acc: dict[str, _Accumulator] = defaultdict(_Accumulator)
-    phase_acc: dict[str, _Accumulator] = defaultdict(_Accumulator)
-    opening_acc: dict[tuple[str, str], _Accumulator] = defaultdict(_Accumulator)
-    opening_games: dict[tuple[str, str], set[str]] = defaultdict(set)
-
-    for blunder in blunders:
-        cp_loss = int(blunder.get("cp_loss") or 0)
-        phase = blunder.get("phase_bucket") or blunder.get("phase") or "middlegame"
-        phase_acc[phase].add(cp_loss)
-
-        for category in blunder.get("categories", []) or []:
-            category_acc[category].add(cp_loss)
-
-        family = blunder.get("family") or blunder.get("opening") or "Unknown opening"
-        side = blunder.get("game_side") or blunder.get("side") or "unknown"
-        key = (family, side)
-        opening_acc[key].add(cp_loss)
-        if blunder.get("game_url"):
-            opening_games[key].add(blunder["game_url"])
-
-    categories = [
-        acc.row(
-            key,
-            CATEGORY_LABELS.get(key, key.replace("_", " ").title()),
-            total_blunders,
-            description=CATEGORY_DESCRIPTIONS.get(key, ""),
-        )
-        for key, acc in category_acc.items()
-    ]
-    categories.sort(key=lambda row: (-row["count"], -row["worst_cp_loss"], row["label"]))
-
-    phase_order = ["opening", "early_middlegame", "middlegame", "endgame"]
-    phase_breakdown = [
-        phase_acc[key].row(key, PHASE_LABELS.get(key, key), total_blunders)
-        for key in phase_order
-        if key in phase_acc
-    ]
-
-    affected_openings = []
-    for (family, side), acc in opening_acc.items():
-        affected_openings.append(acc.row(
-            f"{family}|{side}",
-            family,
-            total_blunders,
-            side=side,
-            affected_games=len(opening_games[(family, side)]),
-        ))
-    affected_openings.sort(
-        key=lambda row: (-row["count"], -row["worst_cp_loss"], row["label"])
-    )
-
-    blunders_sorted = sorted(
-        blunders,
-        key=lambda b: (
-            int(b.get("cp_loss") or 0),
-            int(b.get("end_time") or 0),
-        ),
-        reverse=True,
-    )
-    for idx, blunder in enumerate(blunders_sorted, start=1):
-        side = blunder.get("side")
-        move_prefix = f"{blunder.get('fullmove') or '?'}."
-        if side == "black":
-            move_prefix += ".."
-        category_keys = blunder.get("categories") or []
-        primary = category_keys[0] if category_keys else None
-        blunder["id"] = f"blunder-{idx}"
-        blunder["move_label"] = (
-            f"{move_prefix} "
-            f"{blunder.get('played_move_san') or blunder.get('played_move_uci') or 'unknown'}"
-        )
-        blunder["primary_category"] = primary
-        blunder["primary_category_label"] = (
-            CATEGORY_LABELS.get(primary, primary.replace("_", " ").title())
-            if primary else "Uncategorized"
-        )
-        blunder["categories_label"] = ", ".join(
-            CATEGORY_LABELS.get(category, category.replace("_", " ").title())
-            for category in category_keys
-        )
-        blunder["opening_label"] = (
-            blunder.get("opening") or blunder.get("family") or "Unknown opening"
-        )
-        if blunder.get("fen_before"):
-            blunder["position_url"] = (
-                "https://lichess.org/analysis/standard/"
-                + blunder["fen_before"].replace(" ", "_")
-            )
-
-    examples = blunders_sorted[:max_examples]
+def _impact_rows(pool: list[dict]) -> list[dict]:
+    """Category → pattern → blunder tree for one pool of decorated blunders."""
+    pool_total = len(pool)
     category_blunders: dict[str, list[dict]] = defaultdict(list)
-    for blunder in blunders_sorted:
+    for blunder in pool:
         for category in blunder.get("categories", []) or []:
             category_blunders[category].append(blunder)
 
@@ -476,6 +353,7 @@ def compute_blunder_analysis(
                         "phase_label": _phase_label(_phase_key(blunder)),
                         "cp_loss": int(blunder.get("cp_loss") or 0),
                         "total_cp_loss": int(blunder.get("cp_loss") or 0),
+                        "clock_after_seconds": blunder.get("clock_after_seconds"),
                         "played_move_san": blunder.get("played_move_san"),
                         "best_move_san": blunder.get("best_move_san"),
                         "game_url": blunder.get("game_url"),
@@ -501,7 +379,7 @@ def compute_blunder_analysis(
             "description": CATEGORY_DESCRIPTIONS.get(category, ""),
             "focus_area": CATEGORY_FOCUS_AREAS.get(category, "Evidence"),
             "count": len(rows),
-            "pct": round(100.0 * len(rows) / total_blunders, 1) if total_blunders else 0.0,
+            "pct": round(100.0 * len(rows) / pool_total, 1) if pool_total else 0.0,
             "total_cp_loss": total_cp_loss,
             "avg_cp_loss": round(total_cp_loss / len(rows)) if rows else None,
             "worst_cp_loss": int(worst.get("cp_loss") or 0),
@@ -523,6 +401,136 @@ def compute_blunder_analysis(
             row["label"],
         )
     )
+    return impact_rows
+
+
+def compute_blunder_analysis(
+    summaries: list[dict],
+    records: list[object],
+    *,
+    eligible_games: int,
+    max_examples: int = 12,
+    max_openings: int = 10,
+) -> dict:
+    """Return compact category/phase/opening/example tables for blunders.html."""
+    analyzed = [s for s in summaries if s and s.get("moves_analyzed")]
+    record_by_url = {
+        getattr(record, "url", ""): record
+        for record in records
+        if getattr(record, "url", "")
+    }
+
+    blunders: list[dict] = []
+    for summary in analyzed:
+        blunders.extend(_summary_blunders(summary, record_by_url))
+
+    total_blunders = len(blunders)
+    categorized_blunders = sum(1 for b in blunders if b.get("categories"))
+    games_with_blunders = {
+        b.get("game_url") for b in blunders if b.get("game_url")
+    }
+
+    blunders_sorted = sorted(
+        blunders,
+        key=lambda b: (
+            int(b.get("cp_loss") or 0),
+            int(b.get("end_time") or 0),
+        ),
+        reverse=True,
+    )
+    for idx, blunder in enumerate(blunders_sorted, start=1):
+        side = blunder.get("side")
+        move_prefix = f"{blunder.get('fullmove') or '?'}."
+        if side == "black":
+            move_prefix += ".."
+        category_keys = blunder.get("categories") or []
+        primary = category_keys[0] if category_keys else None
+        blunder["id"] = f"blunder-{idx}"
+        blunder["scramble"] = _is_scramble(blunder)
+        blunder["move_label"] = (
+            f"{move_prefix} "
+            f"{blunder.get('played_move_san') or blunder.get('played_move_uci') or 'unknown'}"
+        )
+        blunder["primary_category"] = primary
+        blunder["primary_category_label"] = (
+            CATEGORY_LABELS.get(primary, primary.replace("_", " ").title())
+            if primary else "Uncategorized"
+        )
+        blunder["categories_label"] = ", ".join(
+            CATEGORY_LABELS.get(category, category.replace("_", " ").title())
+            for category in category_keys
+        )
+        blunder["opening_label"] = (
+            blunder.get("opening") or blunder.get("family") or "Unknown opening"
+        )
+        if blunder.get("fen_before"):
+            blunder["position_url"] = (
+                "https://lichess.org/analysis/standard/"
+                + blunder["fen_before"].replace(" ", "_")
+            )
+
+    # Exclusive pools: scramble (played on a dying clock) vs clear-headed.
+    # A missing clock proves nothing, so it stays in the thinking pool.
+    scramble_pool = [b for b in blunders_sorted if b["scramble"]]
+    clear_pool = [b for b in blunders_sorted if not b["scramble"]]
+
+    # The summary aggregates describe the clear pool only — scramble mistakes
+    # are a different failure mode with their own tree below.
+    clear_total = len(clear_pool)
+    category_acc: dict[str, _Accumulator] = defaultdict(_Accumulator)
+    phase_acc: dict[str, _Accumulator] = defaultdict(_Accumulator)
+    opening_acc: dict[tuple[str, str], _Accumulator] = defaultdict(_Accumulator)
+    opening_games: dict[tuple[str, str], set[str]] = defaultdict(set)
+
+    for blunder in clear_pool:
+        cp_loss = int(blunder.get("cp_loss") or 0)
+        phase = blunder.get("phase_bucket") or blunder.get("phase") or "middlegame"
+        phase_acc[phase].add(cp_loss)
+
+        for category in blunder.get("categories", []) or []:
+            category_acc[category].add(cp_loss)
+
+        family = blunder.get("family") or blunder.get("opening") or "Unknown opening"
+        side = blunder.get("game_side") or blunder.get("side") or "unknown"
+        key = (family, side)
+        opening_acc[key].add(cp_loss)
+        if blunder.get("game_url"):
+            opening_games[key].add(blunder["game_url"])
+
+    categories = [
+        acc.row(
+            key,
+            CATEGORY_LABELS.get(key, key.replace("_", " ").title()),
+            clear_total,
+            description=CATEGORY_DESCRIPTIONS.get(key, ""),
+        )
+        for key, acc in category_acc.items()
+    ]
+    categories.sort(key=lambda row: (-row["count"], -row["worst_cp_loss"], row["label"]))
+
+    phase_order = ["opening", "early_middlegame", "middlegame", "endgame"]
+    phase_breakdown = [
+        phase_acc[key].row(key, PHASE_LABELS.get(key, key), clear_total)
+        for key in phase_order
+        if key in phase_acc
+    ]
+
+    affected_openings = []
+    for (family, side), acc in opening_acc.items():
+        affected_openings.append(acc.row(
+            f"{family}|{side}",
+            family,
+            clear_total,
+            side=side,
+            affected_games=len(opening_games[(family, side)]),
+        ))
+    affected_openings.sort(
+        key=lambda row: (-row["count"], -row["worst_cp_loss"], row["label"])
+    )
+
+    examples = clear_pool[:max_examples]
+    impact_rows = _impact_rows(clear_pool)
+    scramble_impact_rows = _impact_rows(scramble_pool)
 
     return {
         "cache_version": ANALYSIS_CACHE_VERSION,
@@ -533,6 +541,8 @@ def compute_blunder_analysis(
             "blunders_analyzed": total_blunders,
             "categorized_blunders": categorized_blunders,
             "uncategorized_blunders": total_blunders - categorized_blunders,
+            "clear_blunders": len(clear_pool),
+            "scramble_blunders": len(scramble_pool),
         },
         "category_labels": CATEGORY_LABELS,
         "category_descriptions": CATEGORY_DESCRIPTIONS,
@@ -541,5 +551,6 @@ def compute_blunder_analysis(
         "affected_openings": affected_openings[:max_openings],
         "blunders": blunders_sorted,
         "impact_rows": impact_rows,
+        "scramble_impact_rows": scramble_impact_rows,
         "examples": examples,
     }

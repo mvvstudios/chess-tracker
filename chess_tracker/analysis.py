@@ -72,7 +72,10 @@ ENDGAME_NON_PAWN_PIECES = 6
 LARGE_EVAL_SWING_CP = 500
 CONVERSION_FAVORABLE_CP = 300
 CONVERSION_AFTER_CEILING_CP = 150
-TIME_PRESSURE_SECONDS = 10.0
+# A blunder played with this much (or less) left on the post-move clock belongs
+# to the "scramble" pool — blunder_categories partitions on it, separating
+# time-trouble intuition failures from clear-headed calculation failures.
+SCRAMBLE_SECONDS = 10.0
 
 _PIECE_VALUES = {
     chess.PAWN: 100,
@@ -146,7 +149,6 @@ def classify_blunder_categories(
     played_move_is_capture: bool = False,
     opponent_best_reply_captures_material: bool = False,
     forced_mate_after: bool = False,
-    clock_after_seconds: float | None = None,
 ) -> list[str]:
     """Deterministic V1 blunder categories from engine/board evidence."""
     categories: list[str] = []
@@ -162,11 +164,6 @@ def classify_blunder_categories(
         categories.append("early_middlegame_blunder")
     if phase == "endgame":
         categories.append("endgame_blunder")
-    if (
-        clock_after_seconds is not None
-        and clock_after_seconds <= TIME_PRESSURE_SECONDS
-    ):
-        categories.append("time_pressure_blunder")
     if cp_loss >= LARGE_EVAL_SWING_CP:
         categories.append("large_eval_swing")
     if (
@@ -383,7 +380,6 @@ def analyze_move_quality(
                 played_move_is_capture=played_is_capture,
                 opponent_best_reply_captures_material=opponent_reply_capture_value > 0,
                 forced_mate_after=_forced_mate_against(info_after["score"], my_color),
-                clock_after_seconds=clock_after,
             )
             blunder_evidence.append({
                 "ply": ply,

@@ -1293,7 +1293,7 @@
         emptyEl.style.display = "";
         emptyEl.textContent = "Run refresh.py with Stockfish analysis to build blunder categories.";
       }
-      ["blunder-review-table"]
+      ["blunder-review-table", "scramble-review-table"]
         .forEach(id => {
           const el = document.getElementById(id);
           if (el) el.innerHTML = "";
@@ -1316,7 +1316,9 @@
         cell("Engine coverage", `${cov.analyzed_games || 0} / ${cov.eligible_games || 0}`,
           "games analyzed"),
         cell("Blunders analyzed", `${cov.blunders_analyzed || 0}`,
-          `${cov.games_with_blunders || 0} games with blunders`,
+          cov.clear_blunders != null
+            ? `${cov.clear_blunders} clear · ${cov.scramble_blunders || 0} scramble`
+            : `${cov.games_with_blunders || 0} games with blunders`,
           (cov.blunders_analyzed || 0) >= 10),
         cell("Categorized", `${cov.categorized_blunders || 0}`,
           `${cov.uncategorized_blunders || 0} uncategorized`),
@@ -1335,7 +1337,8 @@
     const blunderById = {};
     (analysis.blunders || []).forEach(b => { if (b.id) blunderById[b.id] = b; });
     const rows = analysis.impact_rows || analysis.blunders || analysis.examples || [];
-    if (rows.length === 0) {
+    const scrambleRows = analysis.scramble_impact_rows || [];
+    if (rows.length === 0 && scrambleRows.length === 0) {
       tableEl.innerHTML = `<p class="mq-empty">No blunders in the analyzed games.</p>`;
       if (metaEl) metaEl.innerHTML = `<div class="empty">No position selected.</div>`;
       return;
@@ -1350,7 +1353,54 @@
     }
 
     const labels = analysis.category_labels || {};
-    const table = new Tabulator("#blunder-review-table", {
+    if (rows.length === 0) {
+      tableEl.innerHTML = `<p class="mq-empty">No clear-headed blunders in the analyzed games.</p>`;
+      if (metaEl) metaEl.innerHTML = `<div class="empty">No position selected.</div>`;
+    } else {
+      buildBlunderTree("#blunder-review-table", rows, labels, blunderById,
+                       {autoSelect: true});
+    }
+
+    const scrambleEl = document.getElementById("scramble-review-table");
+    if (scrambleEl) {
+      if (scrambleRows.length === 0) {
+        scrambleEl.innerHTML = `<p class="mq-empty">No scramble blunders in the analyzed games.</p>`;
+      } else {
+        buildBlunderTree("#scramble-review-table", scrambleRows, labels, blunderById,
+                         {clockColumn: true});
+      }
+    }
+  }
+
+  // One category → pattern → blunder tree. Both blunder tables (clear-headed
+  // and scramble) share the board panel via blunderById; the scramble table
+  // adds a Clock column and skips the initial auto-selection so the board
+  // follows the main table on load.
+  function buildBlunderTree(selector, rows, labels, blunderById, opts = {}) {
+    const columns = [
+      {title: "Category / blunder", field: "label", minWidth: 240,
+       formatter: c => blunderImpactNameCell(c.getData())},
+      {title: "Focus", field: "focus_area", width: 128,
+       formatter: c => blunderImpactFocusCell(c.getData())},
+      {title: "Blunders", field: "count", width: 88, sorter: "number",
+       formatter: c => isBlunderAggregateRow(c.getData()) ? formatNumber(c.getValue()) : ""},
+      {title: "Phase", field: "top_phase_label", minWidth: 130,
+       formatter: c => isBlunderAggregateRow(c.getData())
+         ? `${escapeAttr(c.getValue() || "—")} (${formatNumber(c.getData().top_phase_count || 0)})`
+         : escapeAttr(c.getData().phase_label || "—")},
+      {title: "Top opening", field: "top_opening_label", minWidth: 170,
+       formatter: c => isBlunderAggregateRow(c.getData())
+         ? `${escapeAttr(c.getValue() || "—")} (${formatNumber(c.getData().top_opening_count || 0)})`
+         : escapeAttr(c.getData().opening_label || "—")},
+    ];
+    if (opts.clockColumn) {
+      columns.splice(3, 0, {title: "Clock", field: "clock_after_seconds", width: 86,
+        sorter: "number",
+        formatter: c => isBlunderAggregateRow(c.getData())
+          ? ""
+          : (c.getValue() != null ? `${c.getValue()}s` : "—")});
+    }
+    const table = new Tabulator(selector, {
       data: rows,
       layout: "fitColumns",
       height: "560px",
@@ -1365,22 +1415,7 @@
         el.classList.toggle("blunder-pattern-row", d.row_type === "pattern");
         el.classList.toggle("blunder-detail-row", d.row_type === "blunder");
       },
-      columns: [
-        {title: "Category / blunder", field: "label", minWidth: 240,
-         formatter: c => blunderImpactNameCell(c.getData())},
-        {title: "Focus", field: "focus_area", width: 128,
-         formatter: c => blunderImpactFocusCell(c.getData())},
-        {title: "Blunders", field: "count", width: 88, sorter: "number",
-         formatter: c => isBlunderAggregateRow(c.getData()) ? formatNumber(c.getValue()) : ""},
-        {title: "Phase", field: "top_phase_label", minWidth: 130,
-         formatter: c => isBlunderAggregateRow(c.getData())
-           ? `${escapeAttr(c.getValue() || "—")} (${formatNumber(c.getData().top_phase_count || 0)})`
-           : escapeAttr(c.getData().phase_label || "—")},
-        {title: "Top opening", field: "top_opening_label", minWidth: 170,
-         formatter: c => isBlunderAggregateRow(c.getData())
-           ? `${escapeAttr(c.getValue() || "—")} (${formatNumber(c.getData().top_opening_count || 0)})`
-           : escapeAttr(c.getData().opening_label || "—")},
-      ],
+      columns,
       initialSort: [{column: "count", dir: "desc"}],
     });
     table.on("rowClick", (e, row) => selectBlunderRow(e, row, labels, blunderById));
@@ -1389,10 +1424,13 @@
       const url = d.position_url || d.game_url;
       if (url) window.open(url, "_blank", "noopener");
     });
-    table.on("tableBuilt", () => {
-      const first = table.getRows()[0];
-      if (first) selectBlunderRow(null, first, labels, blunderById);
-    });
+    if (opts.autoSelect) {
+      table.on("tableBuilt", () => {
+        const first = table.getRows()[0];
+        if (first) selectBlunderRow(null, first, labels, blunderById);
+      });
+    }
+    return table;
   }
 
   function blunderImpactNameCell(data) {
@@ -1429,8 +1467,10 @@
   }
 
   function selectBlunderRow(event, row, labels, blunderById) {
-    document.querySelectorAll("#blunder-review-table .tabulator-row.row-selected")
-      .forEach(el => el.classList.remove("row-selected"));
+    document.querySelectorAll(
+      "#blunder-review-table .tabulator-row.row-selected, " +
+      "#scramble-review-table .tabulator-row.row-selected"
+    ).forEach(el => el.classList.remove("row-selected"));
     row.getElement().classList.add("row-selected");
     const rowData = row.getData();
     if (isBlunderAggregateRow(rowData)) {
