@@ -86,6 +86,25 @@ def test_move_eval_from_evals_computes_loss_and_label():
     assert clean.label == "ok"
 
 
+def test_move_eval_cp_loss_clamps_mate_evals():
+    from chess_tracker.analysis import MATE_CP, MoveEval
+    # Allowing mate from an equal position charges the ACPL clamp (1000), not
+    # the ±10000 mate sentinel — one mate must not dominate a game's average.
+    m = MoveEval.from_evals(ply=30, fullmove=16, cp_before=0, cp_after=-MATE_CP,
+                            phase="endgame")
+    assert m.cp_loss == 1000
+    assert m.label == "blunder"  # win%-based label still sees the full swing
+
+
+def test_move_eval_cp_loss_ignores_swings_beyond_lost():
+    from chess_tracker.analysis import MATE_CP, MoveEval
+    # Flailing from an already dead-lost position (≤ -1000) adds nothing:
+    # both evals clamp to the floor, so the swing contributes 0 to ACPL.
+    m = MoveEval.from_evals(ply=50, fullmove=26, cp_before=-1500,
+                            cp_after=-MATE_CP, phase="endgame")
+    assert m.cp_loss == 0
+
+
 def test_summarize_aggregates_counts_phase_and_accuracy():
     from chess_tracker.analysis import MoveEval, summarize
     moves = [

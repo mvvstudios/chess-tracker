@@ -40,9 +40,15 @@ from chess_tracker.puzzles import find_engine_path, DEFAULT_DEPTH
 # Mate scores collapse to this bound so they compare as plain integers.
 MATE_CP = 10_000
 
+# Evals are clamped to this bound for centipawn-LOSS accounting (Lichess
+# convention): beyond ±1000 a position is decided, and letting the ±10000 mate
+# sentinel into ACPL sums makes one allowed mate outweigh a whole game of
+# ordinary moves. Win%/accuracy math stays on the raw evals.
+ACPL_CLAMP_CP = 1_000
+
 # Bump when cached per-game analysis summaries no longer contain enough fields
 # for current dashboard features.
-ANALYSIS_CACHE_VERSION = 2
+ANALYSIS_CACHE_VERSION = 3
 
 # Lichess win-probability constant (logistic steepness over centipawns).
 _WIN_K = 0.00368208
@@ -178,7 +184,7 @@ class MoveEval:
     fullmove: int       # human move number (1-based)
     cp_before: int      # eval (my POV) before my move, best play available
     cp_after: int       # eval (my POV) after my actual move
-    cp_loss: int        # max(0, cp_before - cp_after)
+    cp_loss: int        # max(0, before - after), evals clamped to ±ACPL_CLAMP_CP
     wp_loss: float      # max(0, win% before - win% after), my POV
     phase: str          # opening | middlegame | endgame
     label: str          # ok | inaccuracy | mistake | blunder
@@ -186,7 +192,8 @@ class MoveEval:
     @classmethod
     def from_evals(cls, ply: int, fullmove: int, cp_before: int, cp_after: int,
                    phase: str) -> "MoveEval":
-        cp_loss = max(0, cp_before - cp_after)
+        clamp = lambda cp: max(-ACPL_CLAMP_CP, min(ACPL_CLAMP_CP, cp))
+        cp_loss = max(0, clamp(cp_before) - clamp(cp_after))
         wp_loss = max(0.0, win_pct(cp_before) - win_pct(cp_after))
         return cls(ply=ply, fullmove=fullmove, cp_before=cp_before,
                    cp_after=cp_after, cp_loss=cp_loss, wp_loss=wp_loss,

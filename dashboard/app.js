@@ -102,7 +102,7 @@
       <div class="kpi"><span class="kpi-label">Updated</span>
         <span class="kpi-value" style="font-size:0.9rem">${new Date(d.generated_at).toLocaleString()}</span></div>
       <a class="refresh-link"
-         href="https://github.com/madisonveldingvandam/chess-tracker/actions/workflows/deploy.yml"
+         href="https://github.com/mvvstudios/chess-tracker/actions/workflows/deploy.yml"
          target="_blank" rel="noopener"
          title="Re-run the deploy workflow on GitHub Actions to rebuild this dashboard now">↻ Refresh</a>
     `;
