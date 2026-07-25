@@ -1298,8 +1298,10 @@
           const el = document.getElementById(id);
           if (el) el.innerHTML = "";
         });
-      const meta = document.getElementById("blunder-board-meta");
-      if (meta) meta.innerHTML = `<div class="empty">No blunders to review.</div>`;
+      ["blunder-board-meta", "scramble-board-meta"].forEach(id => {
+        const meta = document.getElementById(id);
+        if (meta) meta.innerHTML = `<div class="empty">No blunders to review.</div>`;
+      });
       return;
     }
     if (emptyEl) emptyEl.style.display = "none";
@@ -1344,13 +1346,16 @@
       return;
     }
 
-    if (boardEl && !boardEl._cg) {
-      boardEl._cg = makeBoard(boardEl, {
-        viewOnly: true,
-        orientation: "white",
-        drawable: { enabled: true, visible: true },
-      });
-    }
+    const scrambleBoardEl = document.getElementById("scramble-board");
+    [boardEl, scrambleBoardEl].forEach(el => {
+      if (el && !el._cg) {
+        el._cg = makeBoard(el, {
+          viewOnly: true,
+          orientation: "white",
+          drawable: { enabled: true, visible: true },
+        });
+      }
+    });
 
     const labels = analysis.category_labels || {};
     if (rows.length === 0) {
@@ -1363,20 +1368,28 @@
 
     const scrambleEl = document.getElementById("scramble-review-table");
     if (scrambleEl) {
+      const scrambleMetaEl = document.getElementById("scramble-board-meta");
       if (scrambleRows.length === 0) {
         scrambleEl.innerHTML = `<p class="mq-empty">No scramble blunders in the analyzed games.</p>`;
+        if (scrambleMetaEl) scrambleMetaEl.innerHTML = `<div class="empty">No position selected.</div>`;
       } else {
         buildBlunderTree("#scramble-review-table", scrambleRows, labels, blunderById,
-                         {clockColumn: true});
+                         {clockColumn: true, autoSelect: true,
+                          boardId: "scramble-board", metaId: "scramble-board-meta"});
       }
     }
   }
 
-  // One category → pattern → blunder tree. Both blunder tables (clear-headed
-  // and scramble) share the board panel via blunderById; the scramble table
-  // adds a Clock column and skips the initial auto-selection so the board
-  // follows the main table on load.
+  // One category → pattern → blunder tree. Each blunder table (clear-headed
+  // and scramble) drives its own board panel via opts.boardId/metaId; the
+  // scramble table additionally shows a Clock column.
   function buildBlunderTree(selector, rows, labels, blunderById, opts = {}) {
+    // Each table drives its own board panel; selection is scoped per table.
+    const target = {
+      containerSel: selector,
+      boardId: opts.boardId || "blunder-board",
+      metaId: opts.metaId || "blunder-board-meta",
+    };
     const columns = [
       {title: "Category / blunder", field: "label", minWidth: 240,
        formatter: c => blunderImpactNameCell(c.getData())},
@@ -1418,7 +1431,7 @@
       columns,
       initialSort: [{column: "count", dir: "desc"}],
     });
-    table.on("rowClick", (e, row) => selectBlunderRow(e, row, labels, blunderById));
+    table.on("rowClick", (e, row) => selectBlunderRow(e, row, labels, blunderById, target));
     table.on("rowDblClick", (e, row) => {
       const d = resolveBlunderForRow(row.getData(), blunderById);
       const url = d.position_url || d.game_url;
@@ -1427,7 +1440,7 @@
     if (opts.autoSelect) {
       table.on("tableBuilt", () => {
         const first = table.getRows()[0];
-        if (first) selectBlunderRow(null, first, labels, blunderById);
+        if (first) selectBlunderRow(null, first, labels, blunderById, target);
       });
     }
     return table;
@@ -1466,10 +1479,9 @@
     return data && (data.row_type === "category" || data.row_type === "pattern");
   }
 
-  function selectBlunderRow(event, row, labels, blunderById) {
+  function selectBlunderRow(event, row, labels, blunderById, target) {
     document.querySelectorAll(
-      "#blunder-review-table .tabulator-row.row-selected, " +
-      "#scramble-review-table .tabulator-row.row-selected"
+      `${target.containerSel} .tabulator-row.row-selected`
     ).forEach(el => el.classList.remove("row-selected"));
     row.getElement().classList.add("row-selected");
     const rowData = row.getData();
@@ -1485,12 +1497,12 @@
         }
       }
     }
-    updateBlunderBoard(resolveBlunderForRow(rowData, blunderById), labels, rowData);
+    updateBlunderBoard(resolveBlunderForRow(rowData, blunderById), labels, rowData, target);
   }
 
-  function updateBlunderBoard(data, labels, rowContext) {
-    const boardEl = document.getElementById("blunder-board");
-    const metaEl = document.getElementById("blunder-board-meta");
+  function updateBlunderBoard(data, labels, rowContext, target) {
+    const boardEl = document.getElementById(target.boardId);
+    const metaEl = document.getElementById(target.metaId);
     if (!boardEl || !metaEl) return;
 
     const orientation = (data.game_side || data.side) === "black" ? "black" : "white";
