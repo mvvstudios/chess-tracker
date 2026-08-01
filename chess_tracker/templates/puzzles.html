@@ -1,0 +1,143 @@
+<!-- chess_tracker/templates/puzzles.html -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chess Tracker — Puzzles — {{USERNAME}}</title>
+  <link rel="stylesheet" href="vendor/tabulator.min.css">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="vendor/chessground.base.css">
+  <link rel="stylesheet" href="chessground-theme.css">
+</head>
+<body class="puzzles-body">
+  <header id="kpi-strip">
+    <a class="home-link" href="index.html">← repertoire</a>
+  </header>
+  <main>
+    <section id="puzzles-page" aria-labelledby="puzzles-title">
+      <div class="puzzles-heading">
+        <div>
+          <h1 id="puzzles-title">My Blunder Puzzles</h1>
+          <p class="puzzle-intro">Find the move Stockfish preferred in positions from your own games.</p>
+        </div>
+        <p id="puzzle-progress-summary" class="puzzle-progress-summary" role="status" aria-live="polite">
+          Loading puzzles…
+        </p>
+      </div>
+
+      <div id="puzzle-storage-warning" class="puzzle-page-alert" role="alert" hidden></div>
+
+      <div class="puzzle-tabs" role="tablist" aria-label="Puzzle progress">
+        <button id="puzzles-unsolved-tab" class="puzzle-tab active" type="button"
+                role="tab" aria-selected="true" aria-controls="puzzles-unsolved-panel"
+                tabindex="0">
+          Unsolved <span id="puzzles-unsolved-count" aria-hidden="true"></span>
+        </button>
+        <button id="puzzles-solved-tab" class="puzzle-tab" type="button"
+                role="tab" aria-selected="false" aria-controls="puzzles-solved-panel"
+                tabindex="-1">
+          Solved <span id="puzzles-solved-count" aria-hidden="true"></span>
+        </button>
+      </div>
+
+      <div id="puzzles-unsolved-panel" class="puzzle-tab-panel" role="tabpanel"
+           aria-labelledby="puzzles-unsolved-tab" tabindex="0">
+        <div id="puzzle-page-state" class="puzzle-page-state" role="status" aria-live="polite" tabindex="-1">
+          Loading your puzzle queue…
+        </div>
+
+        <div id="puzzle-workspace" class="puzzle-workspace" hidden>
+          <div class="puzzle-task">
+            <div class="puzzle-session-progress">
+              <span id="puzzle-queue-position"></span>
+            </div>
+            <h2 id="puzzle-prompt" class="puzzle-prompt" tabindex="-1">Find the best move</h2>
+            <p id="puzzle-side-to-move" class="puzzle-side-to-move"></p>
+          </div>
+
+          <div class="puzzle-board-column">
+            <div id="puzzle-board" class="puzzle-board puzzle-queue-board"
+                 role="img" aria-label="Interactive chess puzzle board"
+                 aria-describedby="puzzle-side-to-move puzzle-board-help"></div>
+            <p id="puzzle-board-help" class="visually-hidden">
+              Select a piece and destination on the board, or use the keyboard move field below the puzzle controls.
+            </p>
+
+            <fieldset id="puzzle-promotion-chooser" class="puzzle-promotion-chooser" hidden>
+              <legend>Choose a promotion piece</legend>
+              <div id="puzzle-promotion-options" class="puzzle-promotion-options"></div>
+              <button id="puzzle-promotion-cancel" type="button">Cancel promotion</button>
+            </fieldset>
+
+          </div>
+
+          <div id="puzzle-feedback" class="puzzle-feedback puzzle-queue-feedback" role="status"
+               aria-live="polite" aria-atomic="true"></div>
+
+          <div class="puzzle-side puzzle-queue-side">
+            <div class="puzzle-controls puzzle-queue-controls" role="group" aria-label="Puzzle controls">
+              <button id="puzzle-continue" class="puzzle-primary-action" type="button" hidden>Continue</button>
+              <button id="puzzle-skip" type="button">Skip for now</button>
+              <button id="puzzle-reset" type="button">Reset position</button>
+              <button id="puzzle-hint" type="button">Hint</button>
+              <button id="puzzle-show" type="button">Show solution</button>
+            </div>
+
+            <section class="puzzle-context" aria-labelledby="puzzle-context-title">
+              <h3 id="puzzle-context-title">Game context</h3>
+              <div id="puzzle-context-body"></div>
+            </section>
+          </div>
+
+          <details id="puzzle-uci-disclosure" class="puzzle-uci-disclosure">
+            <summary>Enter a move with the keyboard</summary>
+            <form id="puzzle-uci-form" class="puzzle-uci-form">
+              <label for="puzzle-uci-input">Move in UCI notation</label>
+              <div class="puzzle-uci-entry">
+                <input id="puzzle-uci-input" name="move" type="text" inputmode="text"
+                       maxlength="5" pattern="[a-hA-H][1-8][a-hA-H][1-8][qQrRbBnN]?"
+                       placeholder="e2e4" autocomplete="off" autocapitalize="none"
+                       spellcheck="false" aria-describedby="puzzle-uci-help">
+                <button type="submit">Play move</button>
+              </div>
+              <small id="puzzle-uci-help">Enter source and destination squares, plus q, r, b, or n for a promotion.</small>
+            </form>
+          </details>
+        </div>
+      </div>
+
+      <div id="puzzles-solved-panel" class="puzzle-tab-panel" role="tabpanel"
+           aria-labelledby="puzzles-solved-tab" tabindex="0" hidden>
+        <div id="puzzles-solved-empty" class="puzzle-page-state" role="status"></div>
+        <div id="puzzles-solved-layout" class="puzzles-solved-layout" hidden>
+          <section id="puzzle-solved-review" class="puzzle-solved-review"
+                   aria-labelledby="puzzle-solved-review-title" hidden>
+            <div class="puzzle-solved-review-heading">
+              <h2 id="puzzle-solved-review-title" tabindex="-1">Solved puzzle review</h2>
+              <button id="puzzle-solved-review-close" class="puzzle-review-button" type="button">
+                Back to solved puzzles
+              </button>
+            </div>
+            <div class="puzzle-solved-review-grid">
+              <div id="puzzle-solved-board" class="puzzle-board puzzle-review-board"
+                   role="img" aria-label="Read-only solved chess puzzle"></div>
+              <div id="puzzle-solved-details" class="puzzle-solved-details"></div>
+            </div>
+          </section>
+          <div id="puzzles-solved-list" class="puzzles-solved-list" aria-label="Solved puzzles"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="vendor/tabulator.min.js"></script>
+  <script src="vendor/chessground.min.js"></script>
+  <script>
+    /* DATA_INJECTION_POINT */
+  </script>
+  <script src="puzzle-domain.js"></script>
+  <script src="app.js"></script>
+  <script src="puzzles-page.js"></script>
+</body>
+</html>

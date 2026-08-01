@@ -9,7 +9,8 @@ from chess_tracker.pgn import parse_game
 from chess_tracker.metrics import compute_all
 from chess_tracker.annotations import load_annotations
 from chess_tracker.plan import load_plan
-from chess_tracker.puzzles import attach_puzzles, find_engine_path
+from chess_tracker.puzzles import find_engine_path
+from chess_tracker.puzzle_queue import build_puzzle_queue
 from chess_tracker.analysis import (
     run_move_quality_pass, run_move_quality_by_format, aggregate_move_quality,
     load_quality_cache, save_quality_cache, select_recent_games,
@@ -163,6 +164,30 @@ def build_move_quality_by_time_control(
     return rows
 
 
+def _legacy_loss_puzzle(candidate: dict) -> dict:
+    """Adapt a canonical queue candidate for the older losses-page drill.
+
+    The new Puzzles page is the source of truth. Keeping this tiny adapter lets
+    the existing recent-loss drill reuse the same eligibility and cached engine
+    result instead of launching a second Stockfish analysis pass.
+    """
+    return {
+        "puzzle_id": candidate.get("puzzle_id"),
+        "ply": candidate.get("ply"),
+        "fullmove": candidate.get("fullmove"),
+        "side": candidate.get("user_color"),
+        "fen_before": candidate.get("fen_before"),
+        "my_move_uci": candidate.get("played_move_uci"),
+        "my_move_san": candidate.get("played_move_san"),
+        "best_move_uci": candidate.get("best_move_uci"),
+        "best_move_san": candidate.get("best_move_san"),
+        "cp_before": candidate.get("cp_before"),
+        "cp_after": candidate.get("cp_after"),
+        "cp_loss": candidate.get("cp_loss"),
+        "legal_dests": candidate.get("legal_dests", {}),
+    }
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Refresh chess tracker dashboard.")
     ap.add_argument("--username", default="M_V-V")
@@ -174,7 +199,7 @@ def main(argv=None) -> int:
     ap.add_argument("--force", action="store_true",
                     help="Re-fetch all archives, not just current month.")
     ap.add_argument("--no-puzzles", action="store_true",
-                    help="Skip the Stockfish pass that attaches a puzzle to each recent loss.")
+                    help="Exclude puzzle candidates and the recent-loss puzzle drill.")
     ap.add_argument("--no-analysis", action="store_true",
                     help="Skip the Stockfish move-quality pass (accuracy%%, blunders, cp-loss).")
     ap.add_argument("--analysis-depth", type=int, default=12,
@@ -248,25 +273,15 @@ def main(argv=None) -> int:
                           username=args.username, format=args.format,
                           plan=plan)
 
-    if args.no_puzzles:
-        for loss in payload.get("recent_losses", []):
-            loss["puzzle"] = None
-        print("[4.5/5] Puzzle pass skipped (--no-puzzles).")
-    elif find_engine_path() is None:
-        for loss in payload.get("recent_losses", []):
-            loss["puzzle"] = None
-        print("[4.5/5] No Stockfish found; losses carry no puzzles "
-              "(set $STOCKFISH_PATH or install stockfish).")
-    else:
-        # Loss dicts only keep the opening's first plies; the full PGN lives in
-        # the raw game dicts. Key both by URL so attach_puzzles can find them.
-        pgn_by_url = {g["url"]: g["pgn"] for g in in_format if g.get("url") and g.get("pgn")}
-        side_by_url = {r.url: r.side for r in records if r.url}
-        n = attach_puzzles(payload.get("recent_losses", []), pgn_by_url, side_by_url)
-        print(f"[4.5/5] Stockfish puzzle pass: {n} of "
-              f"{len(payload.get('recent_losses', []))} recent losses got a puzzle.")
-
     analysis_cache_path = data_dir / "analysis_cache.json"
+    cache = load_quality_cache(analysis_cache_path)
+    for loss in payload.get("recent_losses", []):
+        loss["puzzle"] = None
+    if args.no_puzzles:
+        print("[4.5/5] Puzzle surfaces skipped (--no-puzzles).")
+    else:
+        print("[4.5/5] Puzzle candidates will reuse the move-quality cache.")
+
     if args.no_analysis or find_engine_path() is None:
         payload["move_quality"] = None
         payload["move_quality_by_format"] = None
@@ -275,8 +290,6 @@ def main(argv=None) -> int:
         why = "--no-analysis" if args.no_analysis else "no Stockfish found"
         print(f"[4.6/5] Move-quality analysis skipped ({why}).")
     else:
-        cache = load_quality_cache(analysis_cache_path)
-
         # Single-format detail — respects --format and --time-control.
         side_by_url = {r.url: r.side for r in records if r.url}
         to_analyze = select_recent_games(in_format, args.analysis_max_games)
@@ -336,6 +349,34 @@ def main(argv=None) -> int:
         bp_result = compute_blunder_phases(all_summaries, total_eligible=len(records))
         payload["blunder_phases"] = bp_result["blunder_phases"]
         payload["engine_coverage"] = bp_result["engine_coverage"]
+
+    # The canonical queue is derived from the same blunder evidence used by
+    # Blunder Analysis. Every candidate is replayed from its PGN and validated
+    # before it reaches the browser; incomplete records remain out of the queue.
+    puzzle_catalog = build_puzzle_queue(all_games, cache, args.username)
+    if args.no_puzzles:
+        puzzle_catalog["candidates"] = []
+        puzzle_catalog.setdefault("coverage", {})["eligible_puzzles"] = 0
+        puzzle_catalog["coverage"]["disabled"] = True
+    payload["puzzle_catalog"] = puzzle_catalog
+
+    # Preserve the existing recent-loss drill, but feed it from the canonical
+    # queue rather than running a second engine pass with different thresholds.
+    first_candidate_by_url: dict[str, dict] = {}
+    for candidate in puzzle_catalog.get("candidates", []):
+        game_url = candidate.get("game_url")
+        if game_url:
+            first_candidate_by_url.setdefault(game_url, candidate)
+    for loss in payload.get("recent_losses", []):
+        candidate = first_candidate_by_url.get(loss.get("game_url"))
+        loss["puzzle"] = _legacy_loss_puzzle(candidate) if candidate else None
+
+    coverage = puzzle_catalog.get("coverage", {})
+    print(
+        "[4.65/5] Personal blunder puzzles: "
+        f"{coverage.get('eligible_puzzles', 0)} ready, "
+        f"{coverage.get('incomplete_puzzles', 0)} incomplete."
+    )
 
     payload["ratings_by_format"] = ratings_by_format
     payload["ratings_by_time_control"] = ratings_by_time_control

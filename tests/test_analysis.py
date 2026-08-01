@@ -1,5 +1,6 @@
 # tests/test_analysis.py
 import pytest
+import chess
 
 from chess_tracker.puzzles import find_engine_path
 
@@ -45,6 +46,24 @@ def test_game_phase_buckets():
     assert game_phase(fullmove=3, non_pawn_pieces=14) == "opening"
     assert game_phase(fullmove=20, non_pawn_pieces=12) == "middlegame"
     assert game_phase(fullmove=40, non_pawn_pieces=4) == "endgame"
+
+
+def test_principal_variation_is_stored_as_legal_uci_and_san_prefix():
+    from chess_tracker.analysis import _principal_variation
+
+    board = chess.Board()
+    info = {
+        "pv": [
+            chess.Move.from_uci("e2e4"),
+            chess.Move.from_uci("e7e5"),
+            chess.Move.from_uci("g1f3"),
+        ]
+    }
+
+    uci, san = _principal_variation(board, info)
+
+    assert uci == ["e2e4", "e7e5", "g1f3"]
+    assert san == ["e4", "e5", "Nf3"]
 
 
 def test_classify_blunder_categories_uses_deterministic_evidence():

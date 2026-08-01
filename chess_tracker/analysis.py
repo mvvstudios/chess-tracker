@@ -69,6 +69,11 @@ OPENING_LAST_FULLMOVE = 8
 EARLY_MIDDLEGAME_LAST_FULLMOVE = 20
 ENDGAME_NON_PAWN_PIECES = 6
 
+# A short line is enough for post-puzzle review, and keeping it bounded avoids
+# bloating the generated dashboard payload. The first move remains the puzzle
+# answer; the rest is explanatory context revealed only after an attempt.
+PUZZLE_PV_MAX_PLIES = 8
+
 LARGE_EVAL_SWING_CP = 500
 CONVERSION_FAVORABLE_CP = 300
 CONVERSION_AFTER_CEILING_CP = 150
@@ -270,6 +275,29 @@ def _safe_san(board: chess.Board, move: chess.Move | None) -> str | None:
         return None
 
 
+def _principal_variation(
+    board: chess.Board,
+    info: dict,
+    *,
+    max_plies: int = PUZZLE_PV_MAX_PLIES,
+) -> tuple[list[str], list[str]]:
+    """Return the legal prefix of an engine PV as normalized UCI and SAN.
+
+    Engine output is treated as untrusted cache input: an illegal or malformed
+    continuation ends the stored line without invalidating the first best move.
+    """
+    line = board.copy(stack=False)
+    uci_moves: list[str] = []
+    san_moves: list[str] = []
+    for move in (info.get("pv") or [])[:max_plies]:
+        if move not in line.legal_moves:
+            break
+        uci_moves.append(move.uci())
+        san_moves.append(line.san(move))
+        line.push(move)
+    return uci_moves, san_moves
+
+
 def _captured_material_value(board: chess.Board, move: chess.Move | None) -> int:
     if move is None or not board.is_capture(move):
         return 0
@@ -351,6 +379,7 @@ def analyze_move_quality(
         played_is_capture = board.is_capture(move)
         best_move = _pv_first_move(info_before)
         best_san = _safe_san(board, best_move)
+        pv_uci, pv_san = _principal_variation(board, info_before)
         best_is_capture = bool(best_move and board.is_capture(best_move))
         best_is_recapture = _is_recapture(board, best_move)
 
@@ -395,6 +424,8 @@ def analyze_move_quality(
                 "played_move_san": played_san,
                 "best_move_uci": best_move.uci() if best_move else None,
                 "best_move_san": best_san,
+                "principal_variation_uci": pv_uci,
+                "principal_variation_san": pv_san,
                 "opponent_best_reply_uci": (
                     opponent_best_reply.uci() if opponent_best_reply else None
                 ),

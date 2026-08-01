@@ -34,7 +34,10 @@ def test_render_all_pages_writes_one_file_per_template(tmp_path):
     template_dir = tmp_path / "templates"
     template_dir.mkdir()
     output_dir = tmp_path / "out"
-    page_names = ["index", "leaks", "losses", "process", "sessions", "opening", "blunders"]
+    page_names = [
+        "index", "leaks", "losses", "process", "sessions", "opening",
+        "blunders", "puzzles",
+    ]
     for name in page_names:
         (template_dir / f"{name}.html").write_text(
             f"<title>{{{{USERNAME}}}}</title>"

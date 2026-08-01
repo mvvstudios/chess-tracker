@@ -39,6 +39,21 @@ Engine analysis defaults to the full available game set. Use
 5. **Process metrics** — clock and session behavior
 6. **Play signatures** — sortable; low-confidence rows (N<15) are dimmed; grouped by 8-ply FEN, not ECO label
 7. **Sessions** — chronological list with tilt flags
+8. **My Blunder Puzzles** — your engine-classified blunders as a persistent solve queue
+
+## My Blunder Puzzles
+
+Open `dashboard/puzzles.html` after a refresh. Candidates come from the same
+Stockfish move-quality cache as Blunder Analysis: only moves played by the
+configured Chess.com username and labeled `blunder` are eligible. Each PGN is
+replayed with `python-chess` before publishing the pre-blunder FEN, legal moves,
+and Stockfish's first principal-variation move.
+
+This repository has no server, database, or login system. Puzzle attempts and
+solved state therefore use the documented fallback: browser `localStorage`,
+namespaced by the configured Chess.com username. Progress survives reloads and
+new dashboard builds on the same browser and origin, but it does not sync across
+devices and is lost if that site's browser storage is cleared.
 
 ## Annotations
 
@@ -62,11 +77,18 @@ Re-running `refresh.py` picks up changes immediately.
 
     uv run pytest
 
+The pytest suite also runs the dependency-free browser puzzle-domain tests when
+Node.js is available. They can be run directly with:
+
+    node --test tests/puzzle-domain.test.js
+
 ## Layout
 
 - `refresh.py` — CLI entrypoint
 - `chess_tracker/` — pipeline modules (api, pgn, metrics, annotations, render, play_signature)
-- `dashboard/` — HTML/JS/CSS frontend; `vendor/` has Tabulator (offline-safe)
+- `dashboard/` — HTML/JS/CSS frontend; `vendor/` has Tabulator and Chessground (offline-safe)
+- `chess_tracker/puzzle_queue.py` — validated candidate derivation and stable puzzle identity
+- `dashboard/puzzle-domain.js` — answer checking, queue partitioning, and progress persistence
 - `data/` — generated (cached archives, computed.json, annotations.json)
 - `docs/superpowers/` — spec + plan
 

@@ -10,14 +10,24 @@
   function makeBoard(el, cfg) {
     const factory = (window.ChessgroundLib || {}).Chessground;
     if (!factory) { console.error("Chessground not loaded"); return null; }
+    const reducedMotion = window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const defaults = {
       coordinates: true,
-      animation: { enabled: true, duration: 150 },
+      animation: { enabled: !reducedMotion, duration: reducedMotion ? 0 : 150 },
       highlight: { lastMove: true, check: true },
       drawable: { enabled: false, visible: false },
     };
     return factory(el, Object.assign({}, defaults, cfg));
   }
+
+  // Small shared UI surface for page-specific controllers. Keeping the board
+  // factory here ensures every page uses the same Chessground defaults and
+  // reduced-motion behavior without introducing a frontend framework.
+  window.ChessTrackerUI = Object.freeze({
+    makeBoard,
+    escapeHtml: escapeAttr,
+  });
 
   const D = window.DATA;
   if (!D) {
@@ -83,11 +93,14 @@
         `<span class="kpi-value">${k.current_rating ?? "—"}</span></div>`;
 
     const hasDedicatedLichessStrip = document.getElementById("lichess-strip") != null;
+    const puzzlesActive = /(?:^|\/)puzzles\.html$/.test(window.location.pathname);
     const profileLinks = `
       <div class="strip-profile-links">
         <a class="strip-platform-label" href="https://www.chess.com/member/M_V-V" target="_blank" rel="noopener">Chess.com</a>
         ${hasDedicatedLichessStrip ? "" : `<a class="strip-platform-label" href="https://lichess.org/@/M_V-v" target="_blank" rel="noopener">Lichess</a>`}
-      </div>`;
+      </div>
+      <a class="strip-nav-link${puzzlesActive ? " active" : ""}" href="puzzles.html"
+         ${puzzlesActive ? 'aria-current="page"' : ""}>Puzzles</a>`;
     const kpiHtml = `
       ${profileLinks}
       <div class="kpi kpi-sep"></div>
@@ -979,12 +992,17 @@
       : `${tiltedCount} tilted of last 5`;
     const lastSession = sessions.length > 0 ? sessions[sessions.length - 1] : null;
     const sessionsAlert = lastSession != null && lastSession.tilt_flag === true;
+    const puzzleCount = D.puzzle_catalog?.coverage?.eligible_puzzles || 0;
+    const puzzleSub = puzzleCount === 0
+      ? "no analyzed blunders ready"
+      : "from your analyzed games";
 
     root.innerHTML = [
       card("Leaks", `${leaks.length} active`, leaksSub, "leaks.html", leaksAlert),
       card("Recent losses", `${losses.length}`, lossesSub, "losses.html", lossesAlert),
       card("Process", processHeadline, processSub, "process.html", processAlert),
       card("Sessions", `${sessionCount} total`, sessionsSub, "sessions.html", sessionsAlert),
+      card("Puzzles", `${puzzleCount}`, puzzleSub, "puzzles.html", false),
     ].join("");
   }
 

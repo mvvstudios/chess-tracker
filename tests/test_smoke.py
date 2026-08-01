@@ -58,6 +58,18 @@ _MINIMAL_PAYLOAD = {
     "blunder_phases": None,
     "engine_coverage": None,
     "blunder_analysis": None,
+    "puzzle_catalog": {
+        "candidates": [],
+        "coverage": {
+            "imported_games": 0,
+            "analyzed_games": 0,
+            "blunders_found": 0,
+            "eligible_puzzles": 0,
+            "incomplete_puzzles": 0,
+            "malformed_games": 0,
+        },
+        "errors": [],
+    },
     "lichess": None,
 }
 
@@ -106,7 +118,7 @@ def test_render_dashboard_required_keys_present_in_embedded_data():
                 "study_recommendations", "process_metrics", "opening_families", "sessions",
                 "opponent_openings", "trap_exposures", "blunder_phases",
                 "blunder_analysis", "ratings_by_format", "ratings_by_time_control",
-                "move_quality_by_time_control", "lichess"):
+                "move_quality_by_time_control", "puzzle_catalog", "lichess"):
         assert key in data, f"Missing required key: {key}"
     out.unlink()
 

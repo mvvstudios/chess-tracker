@@ -38,7 +38,7 @@ def test_refresh_main_writes_computed_and_dashboard(tmp_path, monkeypatch):
         refresh.main(["--username", "m_v-v"])
 
     assert (tmp_path / "data" / "computed.json").exists()
-    for name in ["index", "leaks", "losses", "process", "sessions"]:
+    for name in ["index", "leaks", "losses", "process", "sessions", "puzzles"]:
         out = tmp_path / "dashboard" / f"{name}.html"
         assert out.exists(), f"missing {name}.html"
         html = out.read_text()
