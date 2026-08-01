@@ -62,6 +62,8 @@ def _evidence(
     **extra,
 ) -> dict:
     board, played = _position_at_ply(pgn, ply)
+    best_move = chess.Move.from_uci(best_uci)
+    pv = _default_solution_pv(board, best_move)
     return {
         "ply": ply,
         "fullmove": board.fullmove_number,
@@ -70,13 +72,31 @@ def _evidence(
         "played_move_uci": played.uci(),
         "played_move_san": board.san(played),
         "best_move_uci": best_uci,
-        "best_move_san": board.san(chess.Move.from_uci(best_uci)),
+        "best_move_san": board.san(best_move),
+        "principal_variation_uci": pv,
         "cp_before": 100,
         "cp_after": 100 - cp_loss,
         "cp_loss": cp_loss,
         "wp_loss": 40.0,
         **extra,
     }
+
+
+def _default_solution_pv(board: chess.Board, best_move: chess.Move) -> list[str]:
+    """Produce a deterministic legal test PV through a second user decision."""
+
+    line = board.copy(stack=False)
+    line.push(best_move)
+    pv = [best_move.uci()]
+    if line.is_game_over():
+        return pv
+    for reply in sorted(line.legal_moves, key=lambda move: move.uci()):
+        after_reply = line.copy(stack=False)
+        after_reply.push(reply)
+        continuations = sorted(after_reply.legal_moves, key=lambda move: move.uci())
+        if continuations:
+            return [*pv, reply.uci(), continuations[0].uci()]
+    return pv
 
 
 def _cache(game: dict, evidence: list[dict], *, side: str) -> dict:
@@ -170,7 +190,10 @@ def test_missing_and_invalid_engine_moves_are_isolated():
     game = _game()
     missing = _evidence(MAINLINE_PGN, 4, "f1c4", side="white")
     missing["best_move_uci"] = None
-    invalid = _evidence(MAINLINE_PGN, 4, "a1a8", side="white")
+    missing["principal_variation_uci"] = []
+    invalid = _evidence(MAINLINE_PGN, 4, "f1c4", side="white")
+    invalid["best_move_uci"] = "a1a8"
+    invalid["principal_variation_uci"] = ["a1a8"]
 
     result = build_puzzle_queue([game], _cache(game, [missing, invalid], side="white"), "me")
 
@@ -287,16 +310,90 @@ def test_promotion_keeps_the_uci_suffix_and_all_legal_choices():
         "a7a8r",
     ]
     assert candidate["principal_variation_uci"] == ["a7a8n"]
+    assert len(candidate["solution_steps"]) == 1
+    assert candidate["solution_steps"][0]["best_move_uci"] == "a7a8n"
+    assert candidate["solution_steps"][0]["opponent_reply_uci"] is None
+    assert chess.Board(candidate["post_best_fen"]).is_game_over()
 
 
-def test_principal_variation_is_validated_and_falls_back_to_best_move():
+def test_nonterminal_candidate_requires_three_ply_principal_variation():
     game = _game()
     fallback = _evidence(MAINLINE_PGN, 4, "f1c4", side="white")
+    fallback["principal_variation_uci"] = []
 
-    candidate = derive_puzzle_candidates([game], _cache(game, [fallback], side="white"), "me")[0]
+    result = build_puzzle_queue([game], _cache(game, [fallback], side="white"), "me")
 
-    assert candidate["principal_variation_uci"] == ["f1c4"]
-    assert candidate["principal_variation_san"] == ["Bc4"]
+    assert result["candidates"] == []
+    assert result["coverage"]["incomplete_puzzles"] == 1
+    assert result["errors"][0]["code"] == "incomplete_principal_variation"
+
+
+def test_solution_steps_expose_exactly_two_user_decisions():
+    game = _game()
+    evidence = _evidence(
+        MAINLINE_PGN,
+        4,
+        "f1c4",
+        side="white",
+        principal_variation_uci=["f1c4", "g8f6", "d2d3", "f8c5", "c1g5"],
+    )
+
+    candidate = derive_puzzle_candidates(
+        [game], _cache(game, [evidence], side="white"), "me"
+    )[0]
+    first, second = candidate["solution_steps"]
+
+    assert len(candidate["solution_steps"]) == 2
+    assert first["fen_before"] == candidate["fen_before"]
+    assert first["best_move_uci"] == candidate["best_move_uci"] == "f1c4"
+    assert first["best_move_san"] == "Bc4"
+    assert first["post_best_fen"] == candidate["post_best_fen"]
+    assert first["opponent_reply_uci"] == "g8f6"
+    assert first["opponent_reply_san"] == "Nf6"
+    assert first["post_reply_fen"] == second["fen_before"]
+    assert "f1c4" in first["legal_moves_uci"]
+    assert "c4" in first["legal_dests"]["f1"]
+    assert second["best_move_uci"] == "d2d3"
+    assert second["best_move_san"] == "d3"
+    assert second["opponent_reply_uci"] is None
+    assert second["opponent_reply_san"] is None
+    # PV ply 4 is valid context but never creates a third user decision.
+    assert candidate["principal_variation_uci"][-1] == "c1g5"
+    assert len(candidate["solution_steps"]) == 2
+
+
+def test_exact_black_kxc3_line_builds_black_oriented_two_step_solution():
+    pgn = (
+        '[SetUp "1"]\n'
+        '[FEN "8/8/8/8/5K2/2Qp4/3k4/8 b - - 3 47"]\n\n'
+        "47... Ke2 *"
+    )
+    game = _game(pgn, user_color="black")
+    evidence = _evidence(
+        pgn,
+        93,
+        "d2c3",
+        side="black",
+        principal_variation_uci=["d2c3", "f4e4", "c3d2"],
+    )
+
+    candidate = derive_puzzle_candidates(
+        [game], _cache(game, [evidence], side="black"), "me"
+    )[0]
+    first, second = candidate["solution_steps"]
+
+    assert candidate["orientation"] == "black"
+    assert candidate["fen_before"] == "8/8/8/8/5K2/2Qp4/3k4/8 b - - 3 47"
+    assert candidate["best_move_san"] == "Kxc3"
+    assert first["best_move_uci"] == "d2c3"
+    assert first["best_move_san"] == "Kxc3"
+    assert "c3" in first["legal_dests"]["d2"]
+    assert first["opponent_reply_uci"] == "f4e4"
+    assert first["opponent_reply_san"] == "Ke4"
+    assert first["post_reply_fen"] == second["fen_before"]
+    assert second["best_move_uci"] == "c3d2"
+    assert second["best_move_san"] == "Kd2"
+    assert second["opponent_reply_uci"] is None
 
 
 def test_candidates_sort_by_loss_then_newest_game_then_ply():

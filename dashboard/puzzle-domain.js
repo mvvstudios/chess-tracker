@@ -90,6 +90,140 @@
     );
   }
 
+  function optionalText(object, keys) {
+    if (!object || typeof object !== "object") return null;
+    for (const key of keys) {
+      const value = object[key];
+      if (value !== undefined && value !== null && String(value).trim() !== "") {
+        return String(value).trim();
+      }
+    }
+    return null;
+  }
+
+  function normalizedMoveValues(candidate) {
+    const values = legalMoveValues(candidate);
+    if (values === null) return { present: false, valid: true, moves: null };
+
+    const moves = [];
+    const seen = new Set();
+    for (const value of values) {
+      const move = normalizeUci(value);
+      if (!move) return { present: true, valid: false, moves: null };
+      if (!seen.has(move)) {
+        seen.add(move);
+        moves.push(move);
+      }
+    }
+    return { present: true, valid: true, moves };
+  }
+
+  function cloneObjectOfArrays(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const clone = Object.create(null);
+    for (const key of Object.keys(value)) {
+      if (!Array.isArray(value[key])) return null;
+      clone[key] = value[key].slice();
+    }
+    return clone;
+  }
+
+  function normalizeSolutionStep(rawStep, requirePosition, allowReply) {
+    if (!rawStep || typeof rawStep !== "object" || Array.isArray(rawStep)) return null;
+
+    const answer = bestMove(rawStep);
+    const legalValues = normalizedMoveValues(rawStep);
+    if (!answer || !legalValues.valid) return null;
+
+    const rawDests = rawStep.legal_dests != null
+      ? rawStep.legal_dests
+      : rawStep.legalDests;
+    const rawPromotions = rawStep.promotion_options != null
+      ? rawStep.promotion_options
+      : rawStep.promotionOptions;
+    const dests = rawDests == null ? null : cloneObjectOfArrays(rawDests);
+    const promotions = rawPromotions == null ? null : cloneObjectOfArrays(rawPromotions);
+    if ((rawDests != null && !dests) || (rawPromotions != null && !promotions)) return null;
+
+    const fenBefore = optionalText(rawStep, ["fen_before", "fenBefore"]);
+    const postBestFen = optionalText(rawStep, ["post_best_fen", "postBestFen"]);
+    if (requirePosition && (!fenBefore || !postBestFen)) return null;
+
+    const rawReply = allowReply
+      ? optionalText(rawStep, ["opponent_reply_uci", "opponentReplyUci"])
+      : null;
+    const reply = rawReply === null ? null : normalizeUci(rawReply);
+    const postReplyFen = allowReply
+      ? optionalText(rawStep, ["post_reply_fen", "postReplyFen"])
+      : null;
+    if (rawReply !== null && !reply) return null;
+    if (reply && !postReplyFen) return null;
+    if (!reply && postReplyFen) return null;
+
+    const step = {
+      fen_before: fenBefore,
+      best_move_uci: answer,
+      best_move_san: optionalText(rawStep, ["best_move_san", "bestMoveSan"]),
+      post_best_fen: postBestFen,
+      legal_moves_uci: legalValues.moves,
+      legal_dests: dests,
+      promotion_options: promotions,
+      opponent_reply_uci: reply,
+      opponent_reply_san: reply
+        ? optionalText(rawStep, ["opponent_reply_san", "opponentReplySan"])
+        : null,
+      post_reply_fen: reply ? postReplyFen : null,
+    };
+
+    // Every solution move must be provably legal from the supplied move map.
+    // This deliberately fails closed when both modern and legacy legal data
+    // are absent, just like evaluateAttempt().
+    if (!evaluateAttempt(step, answer).correct) return null;
+    return step;
+  }
+
+  function explicitSolutionStepValues(candidate) {
+    if (!candidate || typeof candidate !== "object") return { present: false, value: null };
+    if (Object.prototype.hasOwnProperty.call(candidate, "solution_steps")) {
+      return { present: true, value: candidate.solution_steps };
+    }
+    if (Object.prototype.hasOwnProperty.call(candidate, "solutionSteps")) {
+      return { present: true, value: candidate.solutionSteps };
+    }
+    return { present: false, value: null };
+  }
+
+  /**
+   * Return validated, normalized solution decisions for a puzzle candidate.
+   * Older queue payloads become a single step from their top-level fields.
+   * An explicitly supplied sequence is authoritative and never falls back to
+   * those aliases when malformed.
+   */
+  function solutionSteps(candidate) {
+    const explicit = explicitSolutionStepValues(candidate);
+    if (!explicit.present) {
+      const legacy = normalizeSolutionStep(candidate, false, false);
+      return legacy ? [legacy] : [];
+    }
+    if (!Array.isArray(explicit.value) || explicit.value.length === 0) return [];
+
+    const steps = [];
+    for (const rawStep of explicit.value) {
+      const step = normalizeSolutionStep(rawStep, true, true);
+      if (!step) return [];
+      steps.push(step);
+    }
+
+    // A later user decision is only reachable after a validated automatic
+    // opponent reply, and its starting FEN must be that reply's resulting FEN.
+    for (let index = 0; index < steps.length - 1; index += 1) {
+      const step = steps[index];
+      if (!step.opponent_reply_uci || !step.post_reply_fen) return [];
+      if (step.post_reply_fen !== steps[index + 1].fen_before) return [];
+    }
+    return steps;
+  }
+
   /** Legal promotion pieces for an origin/destination pair, queen first. */
   function promotionChoices(candidate, from, to) {
     const orig = normalizeSquare(from);
@@ -159,6 +293,64 @@
       uci,
       legal: true,
       correct,
+    };
+  }
+
+  /**
+   * Classify the user's move at one decision in a stored engine line.
+   * Sequence metadata is only exposed after a correct move, so an incorrect
+   * attempt cannot reveal either the reply or the next answer position.
+   */
+  function evaluatePuzzleStep(candidate, stepIndex, attemptedMove) {
+    const steps = solutionSteps(candidate);
+    const index = Number(stepIndex);
+    const validIndex = Number.isInteger(index) && index >= 0 && index < steps.length;
+    const attemptedUci = normalizeUci(attemptedMove);
+    if (!validIndex) {
+      return {
+        kind: "illegal",
+        uci: attemptedUci,
+        legal: false,
+        correct: false,
+        stepIndex: Number.isInteger(index) ? index : null,
+        step: null,
+        isFinalStep: false,
+        solved: false,
+        nextStepIndex: null,
+        nextStep: null,
+        reply: null,
+        opponentReplyUci: null,
+        opponentReplySan: null,
+        postReplyFen: null,
+      };
+    }
+
+    const step = steps[index];
+    const classification = evaluateAttempt(step, attemptedMove);
+    const mayAdvance = classification.correct;
+    const isFinalStep = index === steps.length - 1;
+    const nextStepIndex = mayAdvance && !isFinalStep ? index + 1 : null;
+    const nextStep = nextStepIndex === null ? null : steps[nextStepIndex];
+    const reply = mayAdvance && !isFinalStep && step.opponent_reply_uci
+      ? {
+        uci: step.opponent_reply_uci,
+        san: step.opponent_reply_san,
+        fen: step.post_reply_fen,
+      }
+      : null;
+
+    return {
+      ...classification,
+      stepIndex: index,
+      step,
+      isFinalStep,
+      solved: mayAdvance && isFinalStep,
+      nextStepIndex,
+      nextStep,
+      reply,
+      opponentReplyUci: reply ? reply.uci : null,
+      opponentReplySan: reply ? reply.san : null,
+      postReplyFen: reply ? reply.fen : null,
     };
   }
 
@@ -235,10 +427,7 @@
   }
 
   function candidateIsReady(candidate) {
-    if (!stablePuzzleId(candidate) || !bestMove(candidate)) return false;
-    const legalMoves = legalMoveSet(candidate);
-    if (legalMoves !== null) return legalMoves.has(bestMove(candidate));
-    return isLegalByDests(candidate, bestMove(candidate));
+    return Boolean(stablePuzzleId(candidate) && solutionSteps(candidate).length);
   }
 
   function progressFor(source, id) {
@@ -552,6 +741,8 @@
     isValidUci,
     promotionChoices,
     evaluateAttempt,
+    solutionSteps,
+    evaluatePuzzleStep,
     stablePuzzleId,
     sortCandidates,
     partitionCandidates,

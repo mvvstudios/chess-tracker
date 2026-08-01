@@ -85,6 +85,10 @@
     solvedBoard: null,
     store: null,
     incorrectTimer: null,
+    opponentReplyTimer: null,
+    stepIndex: 0,
+    linePhase: "awaiting_user",
+    lastReplySan: null,
     transientWarning: null,
     solvedReviewTrigger: null,
   };
@@ -99,7 +103,8 @@
     }
     if (!Domain || typeof Domain.createProgressStore !== "function"
         || typeof Domain.partitionCandidates !== "function"
-        || typeof Domain.evaluateAttempt !== "function") {
+        || typeof Domain.evaluatePuzzleStep !== "function"
+        || typeof Domain.solutionSteps !== "function") {
       showFatal("The puzzle rules module did not load. Reload the page or rebuild the dashboard.");
       return;
     }
@@ -202,6 +207,19 @@
     return state.unsolved.find(candidate => puzzleId(candidate) === state.currentId) || null;
   }
 
+  function candidateSteps(candidate) {
+    if (!candidate || typeof Domain.solutionSteps !== "function") return [];
+    const steps = Domain.solutionSteps(candidate);
+    return Array.isArray(steps) ? steps : [];
+  }
+
+  function activeStep(candidate) {
+    const steps = candidateSteps(candidate);
+    if (!steps.length) return null;
+    const index = Math.max(0, Math.min(state.stepIndex, steps.length - 1));
+    return { step: steps[index], steps, index, isFinalStep: index === steps.length - 1 };
+  }
+
   function getProgress(candidate) {
     if (!candidate || !state.store || typeof state.store.get !== "function") return {};
     try {
@@ -248,6 +266,14 @@
 
     const progress = getProgress(candidate);
     const completed = Boolean(state.completedCandidate);
+    const line = activeStep(candidate);
+    if (!line) {
+      elements.workspace.hidden = true;
+      elements.pageState.hidden = false;
+      elements.pageState.innerHTML = `<h2>This puzzle is still being prepared</h2>`
+        + `<p>Its engine continuation is incomplete, so it was skipped safely.</p>`;
+      return;
+    }
     state.revealed = completed || progressWasRevealed(progress);
     if (completed) state.feedbackMode = "solved";
     else if (state.revealed && state.feedbackMode === "idle") state.feedbackMode = "revealed";
@@ -255,14 +281,21 @@
     const color = candidate.user_color || candidate.orientation || candidate.side || "white";
     const colorLabel = color === "black" ? "Black" : "White";
     const attempts = Number(progress.attempts || 0);
-    elements.prompt.textContent = completed ? "Solved" : "Find the best move";
-    elements.sideToMove.textContent = `${colorLabel} to move · You are ${colorLabel}`;
+    const decisionLabel = line.steps.length > 1
+      ? ` · Move ${line.index + 1} of ${line.steps.length}`
+      : "";
+    elements.prompt.textContent = completed
+      ? "Solved"
+      : line.index > 0 ? "Find the continuation" : "Find the best sequence";
+    elements.sideToMove.textContent = completed
+      ? `You played ${colorLabel}${decisionLabel}`
+      : `${colorLabel} to move · You are ${colorLabel}${decisionLabel}`;
     elements.queuePosition.textContent = completed
       ? `${state.unsolved.length} unsolved remaining`
       : `${state.unsolved.length} unsolved remaining${attempts ? ` · ${attempts} attempt${attempts === 1 ? "" : "s"}` : ""}`;
     elements.board.setAttribute(
       "aria-label",
-      `${completed ? "Solved" : "Interactive"} chess puzzle, ${colorLabel} to move, board oriented for ${colorLabel}`
+      `${completed ? "Solved" : "Interactive"} chess puzzle, ${colorLabel} to move, board oriented for ${colorLabel}${decisionLabel}`
     );
 
     elements.context.innerHTML = contextMarkup(candidate, progress, state.revealed);
@@ -452,19 +485,37 @@
   }
 
   function setFeedbackForMode(candidate) {
-    const best = candidate.best_move_san || candidate.best_move_uci || "the engine move";
+    const line = activeStep(candidate);
+    const step = line && line.step;
+    const best = step && (step.best_move_san || step.best_move_uci)
+      || candidate.best_move_san || candidate.best_move_uci || "the engine move";
     if (state.feedbackMode === "solved") {
-      elements.feedback.innerHTML = `<span class="ok">Solved.</span> `
-        + `${escapeHtml(best)} was Stockfish’s best move.`;
+      const label = line && line.steps.length > 1 ? "Sequence solved." : "Solved.";
+      elements.feedback.innerHTML = `<span class="ok">${label}</span> `
+        + `You completed Stockfish’s best continuation.`;
     } else if (state.feedbackMode === "revealed") {
       elements.feedback.innerHTML = `<span class="puzzle-revealed-status">Solution revealed.</span> `
-        + `Play ${escapeHtml(best)} to mark this puzzle solved.`;
+        + `Play ${escapeHtml(best)} to ${line && line.isFinalStep ? "solve" : "continue"}.`;
+    } else if (state.feedbackMode === "continuation") {
+      const reply = state.lastReplySan || "the engine reply";
+      elements.feedback.innerHTML = `<span class="ok">Correct.</span> `
+        + `Stockfish replies ${escapeHtml(reply)}. Find your next best move.`;
+    } else if (state.feedbackMode === "incorrect") {
+      elements.feedback.innerHTML = `<span class="bad">Try again.</span> `
+        + `That move was legal, but it was not Stockfish’s best continuation.`;
+    } else if (state.linePhase === "playing_reply") {
+      const reply = state.lastReplySan || "its best move";
+      elements.feedback.innerHTML = `<span class="ok">Correct.</span> `
+        + `Stockfish is replying ${escapeHtml(reply)}…`;
     } else {
-      elements.feedback.textContent = "Find the best move.";
+      elements.feedback.textContent = line && line.steps.length > 1
+        ? "Find Stockfish’s best move, then finish the continuation."
+        : "Find the best move.";
     }
   }
 
   function setControlState(completed) {
+    const locked = completed || state.linePhase !== "awaiting_user";
     elements.continueButton.hidden = !completed;
     elements.skipButton.hidden = completed;
     elements.resetButton.hidden = completed;
@@ -472,37 +523,51 @@
     elements.showButton.hidden = completed || state.revealed;
     elements.uciDisclosure.hidden = completed;
     if (completed) elements.uciDisclosure.open = false;
-    elements.resetButton.disabled = completed;
-    elements.hintButton.disabled = completed || state.revealed;
-    elements.showButton.disabled = completed || state.revealed;
-    elements.uciInput.disabled = completed;
+    elements.skipButton.disabled = locked;
+    elements.resetButton.disabled = locked;
+    elements.hintButton.disabled = locked || state.revealed;
+    elements.showButton.disabled = locked || state.revealed;
+    elements.uciInput.disabled = locked;
     const submit = elements.uciForm.querySelector("button[type='submit']");
-    if (submit) submit.disabled = completed;
+    if (submit) submit.disabled = locked;
   }
 
   function paintInteractiveBoard(candidate, completed) {
     const color = candidate.user_color || candidate.orientation || candidate.side || "white";
     const orientation = candidate.orientation || color;
-    const fen = completed && candidate.post_best_fen
-      ? candidate.post_best_fen
-      : candidate.fen_before;
+    const line = activeStep(candidate);
+    if (!line) return;
+    const step = line.step;
+    const locked = completed || state.linePhase !== "awaiting_user";
+    const fen = (completed || state.linePhase === "playing_reply") && step.post_best_fen
+      ? step.post_best_fen
+      : step.fen_before;
+    const previousReply = line.index > 0
+      ? line.steps[line.index - 1].opponent_reply_uci
+      : null;
     const config = {
       fen,
       orientation: orientation === "black" ? "black" : "white",
       coordinatesOnSquares: true,
-      viewOnly: completed,
+      // Keep the queue board out of Chessground's view-only lifecycle. If a
+      // completed White puzzle changes directly to a Black puzzle, rebuilding
+      // while viewOnly is still true drops the pointer listeners. Interaction
+      // is disabled below without removing those listeners.
+      viewOnly: false,
       turnColor: color,
-      lastMove: completed ? uciSquares(candidate.best_move_uci) : undefined,
+      lastMove: completed
+        ? uciSquares(step.best_move_uci)
+        : previousReply ? uciSquares(previousReply) : undefined,
       check: false,
       drawable: { enabled: false, visible: true },
       movable: {
         free: false,
-        color: completed ? undefined : color,
-        dests: completed ? new Map() : legalDests(candidate),
+        color: locked ? undefined : color,
+        dests: locked ? new Map() : legalDests(step),
         events: { after: handleBoardMove },
       },
-      draggable: { enabled: !completed && !coarsePointer },
-      selectable: { enabled: !completed },
+      draggable: { enabled: !completed && !coarsePointer && !locked },
+      selectable: { enabled: !locked },
     };
 
     if (!state.board) {
@@ -515,8 +580,8 @@
       renderWarnings();
       return;
     }
-    if (completed || state.revealed) {
-      drawMove(candidate.best_move_uci, "green");
+    if (completed || state.revealed || state.linePhase === "playing_reply") {
+      drawMove(step.best_move_uci, "green");
     } else {
       state.board.setShapes([]);
     }
@@ -551,8 +616,10 @@
 
   function handleBoardMove(from, to) {
     const candidate = currentCandidate();
-    if (!candidate || state.completedCandidate) return;
-    const choices = promotionChoices(candidate, from, to);
+    const line = activeStep(candidate);
+    if (!candidate || !line || state.completedCandidate
+        || state.linePhase !== "awaiting_user") return;
+    const choices = promotionChoices(line.step, from, to);
     if (choices.length) {
       resetBoardPosition(candidate, false);
       openPromotionChooser(from, to, choices);
@@ -576,6 +643,7 @@
 
   function openPromotionChooser(from, to, choices) {
     state.pendingPromotion = { from, to };
+    state.linePhase = "choosing_promotion";
     const labels = { q: "Queen", r: "Rook", b: "Bishop", n: "Knight" };
     elements.promotionOptions.innerHTML = choices.map(choice =>
       `<button type="button" class="puzzle-promotion-option" data-piece="${choice}" aria-label="Promote to ${labels[choice]}">${labels[choice]}</button>`
@@ -583,14 +651,22 @@
     elements.promotionChooser.hidden = false;
     elements.promotionChooser.setAttribute("aria-describedby", "puzzle-feedback");
     elements.feedback.textContent = "Choose the piece for your promotion.";
+    setControlState(false);
+    const candidate = currentCandidate();
+    if (candidate) paintInteractiveBoard(candidate, false);
     const first = elements.promotionOptions.querySelector("button");
     if (first) first.focus();
   }
 
   function closePromotionChooser(restoreFeedback) {
+    const wasChoosing = state.linePhase === "choosing_promotion";
     state.pendingPromotion = null;
     elements.promotionChooser.hidden = true;
     elements.promotionOptions.innerHTML = "";
+    if (wasChoosing) {
+      state.linePhase = "awaiting_user";
+      setControlState(false);
+    }
     if (restoreFeedback) {
       const candidate = currentCandidate();
       if (candidate) setFeedbackForMode(candidate);
@@ -599,11 +675,11 @@
 
   async function evaluateMove(rawMove) {
     const candidate = currentCandidate();
-    if (!candidate || state.completedCandidate) return;
+    if (!candidate || state.completedCandidate || state.linePhase !== "awaiting_user") return;
     const move = normalizeUci(rawMove);
     let result;
     try {
-      result = Domain.evaluateAttempt(candidate, move);
+      result = Domain.evaluatePuzzleStep(candidate, state.stepIndex, move);
     } catch (error) {
       elements.feedback.textContent = "That move could not be checked. Reset the position and try again.";
       console.error("Puzzle attempt evaluation failed", error);
@@ -617,8 +693,12 @@
       return;
     }
     if (kind === "correct") {
-      recordAttempt(candidate, true);
-      markSolved(candidate);
+      if (result.solved) {
+        recordAttempt(candidate, true);
+        markSolved(candidate);
+      } else {
+        playOpponentReply(candidate, result);
+      }
       return;
     }
     if (kind === "incorrect") {
@@ -652,6 +732,8 @@
     }
 
     clearIncorrectTimer();
+    clearOpponentReplyTimer();
+    state.linePhase = "complete";
     state.completedCandidate = candidate;
     state.currentId = null;
     state.revealed = true;
@@ -665,15 +747,21 @@
 
   function showIncorrect(candidate, move) {
     state.feedbackMode = "incorrect";
+    state.linePhase = "incorrect";
     elements.feedback.innerHTML = `<span class="bad">Try again.</span> That move is legal, but it is not Stockfish’s best move.`;
     drawMove(move, "red");
     updateAttemptLabel(candidate);
+    setControlState(false);
     clearIncorrectTimer();
     const candidateId = puzzleId(candidate);
     state.incorrectTimer = window.setTimeout(() => {
       if (currentCandidate() && puzzleId(currentCandidate()) === candidateId
           && !state.completedCandidate) {
-        resetBoardPosition(candidate, false);
+        state.stepIndex = 0;
+        state.linePhase = "awaiting_user";
+        state.lastReplySan = null;
+        elements.uciInput.value = "";
+        renderUnsolved();
       }
       state.incorrectTimer = null;
     }, reducedMotion ? 0 : 450);
@@ -693,37 +781,68 @@
     }
   }
 
+  function clearOpponentReplyTimer() {
+    if (state.opponentReplyTimer !== null) {
+      window.clearTimeout(state.opponentReplyTimer);
+      state.opponentReplyTimer = null;
+    }
+  }
+
+  function playOpponentReply(candidate, result) {
+    if (!result || !result.reply || result.nextStepIndex == null) {
+      elements.feedback.textContent = "The stored continuation is incomplete. Reset the puzzle and try again.";
+      resetPuzzleLine(candidate, false);
+      return;
+    }
+
+    clearIncorrectTimer();
+    clearOpponentReplyTimer();
+    state.linePhase = "playing_reply";
+    state.lastReplySan = result.reply.san || result.reply.uci;
+    state.feedbackMode = "replying";
+    setFeedbackForMode(candidate);
+    setControlState(false);
+    paintInteractiveBoard(candidate, false);
+
+    const candidateId = puzzleId(candidate);
+    state.opponentReplyTimer = window.setTimeout(() => {
+      state.opponentReplyTimer = null;
+      const current = currentCandidate();
+      if (!current || puzzleId(current) !== candidateId || state.completedCandidate) return;
+      state.stepIndex = result.nextStepIndex;
+      state.linePhase = "awaiting_user";
+      state.feedbackMode = state.revealed ? "revealed" : "continuation";
+      elements.uciInput.value = "";
+      renderUnsolved();
+    }, reducedMotion ? 0 : 650);
+  }
+
   function resetBoardPosition(candidate, restoreFeedback) {
-    if (!candidate || !state.board) return;
-    const color = candidate.user_color || candidate.orientation || candidate.side || "white";
-    state.board.set({
-      fen: candidate.fen_before,
-      orientation: (candidate.orientation || color) === "black" ? "black" : "white",
-      coordinatesOnSquares: true,
-      viewOnly: false,
-      turnColor: color,
-      lastMove: undefined,
-      check: false,
-      movable: {
-        free: false,
-        color,
-        dests: legalDests(candidate),
-        events: { after: handleBoardMove },
-      },
-      draggable: { enabled: !coarsePointer },
-      selectable: { enabled: true },
-    });
-    if (state.revealed) drawMove(candidate.best_move_uci, "green");
-    else state.board.setShapes([]);
+    if (!candidate) return;
+    state.linePhase = "awaiting_user";
+    paintInteractiveBoard(candidate, false);
+    setControlState(false);
     if (restoreFeedback) {
       state.feedbackMode = state.revealed ? "revealed" : "idle";
       setFeedbackForMode(candidate);
     }
   }
 
+  function resetPuzzleLine(candidate, restoreFeedback) {
+    if (!candidate) return;
+    clearIncorrectTimer();
+    clearOpponentReplyTimer();
+    state.stepIndex = 0;
+    state.linePhase = "awaiting_user";
+    state.lastReplySan = null;
+    state.feedbackMode = state.revealed ? "revealed" : "idle";
+    if (restoreFeedback) renderUnsolved();
+    else paintInteractiveBoard(candidate, false);
+  }
+
   function revealSolution() {
     const candidate = currentCandidate();
-    if (!candidate || state.completedCandidate) return;
+    if (!candidate || state.completedCandidate || state.linePhase !== "awaiting_user") return;
     try {
       state.store.revealSolution(puzzleId(candidate), new Date().toISOString());
     } catch (error) {
@@ -738,8 +857,10 @@
 
   function showHint() {
     const candidate = currentCandidate();
-    if (!candidate || state.completedCandidate || state.revealed || !state.board) return;
-    const best = normalizeUci(candidate.best_move_uci);
+    const line = activeStep(candidate);
+    if (!candidate || !line || state.completedCandidate || state.revealed || !state.board
+        || state.linePhase !== "awaiting_user") return;
+    const best = normalizeUci(line.step.best_move_uci);
     if (!best || best.length < 4) {
       elements.feedback.textContent = "A hint is unavailable for this puzzle.";
       return;
@@ -756,6 +877,7 @@
       return;
     }
     clearIncorrectTimer();
+    clearOpponentReplyTimer();
     closePromotionChooser(false);
     const ordered = state.sessionIds
       .map(id => state.unsolved.find(candidateItem => puzzleId(candidateItem) === id))
@@ -773,6 +895,9 @@
     state.currentId = state.sessionIds[0] || null;
     state.revealed = false;
     state.feedbackMode = "idle";
+    state.stepIndex = 0;
+    state.linePhase = "awaiting_user";
+    state.lastReplySan = null;
     elements.uciInput.value = "";
     renderUnsolved();
     focusPuzzleStart();
@@ -781,10 +906,14 @@
   function continueQueue() {
     if (!state.completedCandidate) return;
     clearIncorrectTimer();
+    clearOpponentReplyTimer();
     state.completedCandidate = null;
     state.currentId = state.sessionIds[0] || null;
     state.revealed = false;
     state.feedbackMode = "idle";
+    state.stepIndex = 0;
+    state.linePhase = "awaiting_user";
+    state.lastReplySan = null;
     elements.uciInput.value = "";
     renderUnsolved();
     if (!state.currentId) {
@@ -979,7 +1108,9 @@
     elements.uciForm.addEventListener("submit", event => {
       event.preventDefault();
       const candidate = currentCandidate();
-      if (!candidate || state.completedCandidate) return;
+      const line = activeStep(candidate);
+      if (!candidate || !line || state.completedCandidate
+          || state.linePhase !== "awaiting_user") return;
       const move = normalizeUci(elements.uciInput.value);
       if (!/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(move)) {
         elements.feedback.innerHTML = `<span class="bad">Use UCI notation.</span> Example: e2e4 or a7a8q.`;
@@ -988,7 +1119,7 @@
       }
       const from = move.slice(0, 2);
       const to = move.slice(2, 4);
-      const choices = promotionChoices(candidate, from, to);
+      const choices = promotionChoices(line.step, from, to);
       if (move.length === 4 && choices.length) {
         openPromotionChooser(from, to, choices);
         return;
@@ -1017,8 +1148,9 @@
       const candidate = currentCandidate();
       if (!candidate || state.completedCandidate) return;
       clearIncorrectTimer();
+      clearOpponentReplyTimer();
       closePromotionChooser(false);
-      resetBoardPosition(candidate, true);
+      resetPuzzleLine(candidate, true);
       elements.uciInput.value = "";
     });
     elements.hintButton.addEventListener("click", showHint);
@@ -1039,8 +1171,14 @@
     window.addEventListener("storage", () => {
       if (!DATA || !Domain || typeof Domain.createProgressStore !== "function") return;
       try {
+        clearIncorrectTimer();
+        clearOpponentReplyTimer();
         state.store = Domain.createProgressStore(DATA.username || "unknown");
         state.completedCandidate = null;
+        state.stepIndex = 0;
+        state.linePhase = "awaiting_user";
+        state.lastReplySan = null;
+        state.feedbackMode = "idle";
         if (!syncPartition(false)) return;
         renderAll();
       } catch (error) {

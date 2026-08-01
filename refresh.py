@@ -14,6 +14,7 @@ from chess_tracker.puzzle_queue import build_puzzle_queue
 from chess_tracker.analysis import (
     run_move_quality_pass, run_move_quality_by_format, aggregate_move_quality,
     load_quality_cache, save_quality_cache, select_recent_games,
+    run_puzzle_line_backfill,
 )
 from chess_tracker.blunder_phases import compute_blunder_phases
 from chess_tracker.blunder_categories import compute_blunder_analysis
@@ -23,6 +24,7 @@ from chess_tracker.render import render_all_pages, DEFAULT_TEMPLATE_DIR
 _FORMAT_ORDER = {"bullet": 0, "blitz": 1, "rapid": 2, "daily": 3}
 _FORMAT_LABELS = {"bullet": "Bullet", "blitz": "Blitz", "rapid": "Rapid", "daily": "Daily"}
 DEFAULT_ANALYSIS_MAX_GAMES = 0
+DEFAULT_PUZZLE_LINE_MAX = 100
 
 
 def accept_game(game: dict, time_class: str, time_control: str | None = None) -> bool:
@@ -209,6 +211,13 @@ def main(argv=None) -> int:
                          "no limit / all games. Use a positive value for a "
                          "bounded local smoke refresh; the cache fills "
                          "incrementally across refreshes.")
+    ap.add_argument(
+        "--puzzle-line-max",
+        type=int,
+        default=DEFAULT_PUZZLE_LINE_MAX,
+        help="Backfill Stockfish lines for at most N legacy blunders per refresh "
+             "(default 100; 0 means unlimited).",
+    )
     ap.add_argument("--compare-formats", nargs="+",
                     default=["bullet", "blitz", "rapid", "daily"],
                     choices=["bullet", "blitz", "rapid", "daily"],
@@ -275,6 +284,7 @@ def main(argv=None) -> int:
 
     analysis_cache_path = data_dir / "analysis_cache.json"
     cache = load_quality_cache(analysis_cache_path)
+    engine_path = None if args.no_analysis else find_engine_path()
     for loss in payload.get("recent_losses", []):
         loss["puzzle"] = None
     if args.no_puzzles:
@@ -282,7 +292,7 @@ def main(argv=None) -> int:
     else:
         print("[4.5/5] Puzzle candidates will reuse the move-quality cache.")
 
-    if args.no_analysis or find_engine_path() is None:
+    if args.no_analysis or engine_path is None:
         payload["move_quality"] = None
         payload["move_quality_by_format"] = None
         payload["move_quality_by_time_control"] = None
@@ -294,6 +304,7 @@ def main(argv=None) -> int:
         side_by_url = {r.url: r.side for r in records if r.url}
         to_analyze = select_recent_games(in_format, args.analysis_max_games)
         summaries = run_move_quality_pass(to_analyze, side_by_url, cache,
+                                          engine_path=engine_path,
                                           depth=args.analysis_depth)
         payload["move_quality"] = aggregate_move_quality(summaries)
         payload["blunder_analysis"] = compute_blunder_analysis(
@@ -320,7 +331,8 @@ def main(argv=None) -> int:
         }
         payload["move_quality_by_format"] = run_move_quality_by_format(
             games_by_format, side_all, cache,
-            depth=args.analysis_depth, max_games=args.analysis_max_games)
+            engine_path=engine_path, depth=args.analysis_depth,
+            max_games=args.analysis_max_games)
         games_by_time_control = {
             item["key"]: [
                 g for g in all_games
@@ -330,13 +342,13 @@ def main(argv=None) -> int:
         }
         quality_by_time_control = run_move_quality_by_format(
             games_by_time_control, side_all, cache,
-            depth=args.analysis_depth, max_games=args.analysis_max_games)
+            engine_path=engine_path, depth=args.analysis_depth,
+            max_games=args.analysis_max_games)
         payload["move_quality_by_time_control"] = build_move_quality_by_time_control(
             ratings_by_time_control,
             quality_by_time_control,
         )
 
-        save_quality_cache(analysis_cache_path, cache)
         nfmt = sum(1 for v in payload["move_quality_by_format"].values() if v)
         ntc = len(payload["move_quality_by_time_control"])
         print(f"[4.6/5] Move-quality: {len(summaries)} {args.format} games "
@@ -349,6 +361,26 @@ def main(argv=None) -> int:
         bp_result = compute_blunder_phases(all_summaries, total_eligible=len(records))
         payload["blunder_phases"] = bp_result["blunder_phases"]
         payload["engine_coverage"] = bp_result["engine_coverage"]
+
+        if not args.no_puzzles:
+            line_stats = run_puzzle_line_backfill(
+                all_games,
+                cache,
+                engine_path=engine_path,
+                depth=args.analysis_depth,
+                max_positions=args.puzzle_line_max,
+            )
+            print(
+                "[4.62/5] Puzzle-line backfill: "
+                f"{line_stats['backfilled']} updated, "
+                f"{line_stats['ready']} ready, "
+                f"{line_stats['pending']} pending, "
+                f"{line_stats['failed']} failed."
+            )
+
+        # Persist both ordinary analysis and any incremental puzzle-line work
+        # before deriving the static puzzle catalog from the cache.
+        save_quality_cache(analysis_cache_path, cache)
 
     # The canonical queue is derived from the same blunder evidence used by
     # Blunder Analysis. Every candidate is replayed from its PGN and validated

@@ -258,6 +258,252 @@ def test_select_recent_games_nonpositive_means_unlimited():
     assert len(select_recent_games(games, -1)) == 2
 
 
+# --- bounded legacy puzzle-line backfill (pure; no engine process) ---
+
+def _legacy_blunder(best_uci, cp_loss, *, ply=4, pv=None, marker=None):
+    import chess
+
+    evidence = {
+        "fen_before": chess.STARTING_FEN,
+        "best_move_uci": best_uci,
+        "cp_loss": cp_loss,
+        "ply": ply,
+    }
+    if pv is not None:
+        evidence["principal_variation_uci"] = pv
+    if marker is not None:
+        evidence["puzzle_line_version"] = marker
+    return evidence
+
+
+def _cache_entry(game_url, evidence):
+    return {
+        "summary": {
+            "game_url": game_url,
+            "side": "white",
+            "moves_analyzed": 1,
+            "blunder_evidence": [evidence],
+        }
+    }
+
+
+def _three_ply_info(board, best_move, *_ignored):
+    """Deterministic legal PV constrained to the supplied first move."""
+    line = board.copy(stack=False)
+    line.push(best_move)
+    reply = sorted(line.legal_moves, key=lambda move: move.uci())[0]
+    line.push(reply)
+    continuation = sorted(line.legal_moves, key=lambda move: move.uci())[0]
+    return {"pv": [best_move, reply, continuation]}
+
+
+def test_puzzle_line_backfill_uses_stable_priority_and_bound():
+    from chess_tracker.analysis import PUZZLE_LINE_VERSION, backfill_puzzle_lines
+
+    high = _legacy_blunder("e2e4", 900)
+    newer_tie = _legacy_blunder("d2d4", 800)
+    older_tie = _legacy_blunder("c2c4", 800)
+    cache = {
+        "old": _cache_entry("old", older_tie),
+        "new": _cache_entry("new", newer_tie),
+        "high": _cache_entry("high", high),
+    }
+    games = [
+        {"url": "old", "end_time": 100},
+        {"url": "new", "end_time": 200},
+        {"url": "high", "end_time": 50},
+    ]
+    calls = []
+
+    def analyze(board, best_move, depth):
+        calls.append((best_move.uci(), depth))
+        return _three_ply_info(board, best_move)
+
+    stats = backfill_puzzle_lines(
+        games, cache, depth=9, max_positions=2, analyze_fn=analyze
+    )
+
+    assert calls == [("e2e4", 9), ("d2d4", 9)]
+    assert stats == {"backfilled": 2, "ready": 2, "pending": 1, "failed": 0}
+    assert high["puzzle_line_version"] == PUZZLE_LINE_VERSION
+    assert newer_tie["puzzle_line_version"] == PUZZLE_LINE_VERSION
+    assert "puzzle_line_version" not in older_tie
+
+
+def test_puzzle_line_backfill_zero_bound_processes_every_pending_position():
+    from chess_tracker.analysis import backfill_puzzle_lines
+
+    first = _legacy_blunder("e2e4", 500)
+    second = _legacy_blunder("d2d4", 400)
+    cache = {
+        "one": _cache_entry("one", first),
+        "two": _cache_entry("two", second),
+    }
+    calls = []
+
+    def analyze(board, best_move, depth):
+        calls.append(best_move.uci())
+        return _three_ply_info(board, best_move)
+
+    stats = backfill_puzzle_lines(
+        [{"url": "one"}, {"url": "two"}], cache,
+        depth=8, max_positions=0, analyze_fn=analyze
+    )
+
+    assert calls == ["e2e4", "d2d4"]
+    assert stats == {"backfilled": 2, "ready": 2, "pending": 0, "failed": 0}
+
+
+def test_puzzle_line_backfill_skips_ready_cache_and_sets_marker():
+    from chess_tracker.analysis import PUZZLE_LINE_VERSION, backfill_puzzle_lines
+
+    ready = _legacy_blunder(
+        "e2e4",
+        500,
+        pv=["e2e4", "e7e5", "g1f3"],
+    )
+    cache = {"ready": _cache_entry("ready", ready)}
+
+    def should_not_run(*_args):
+        raise AssertionError("ready line must not call the engine")
+
+    stats = backfill_puzzle_lines(
+        [{"url": "ready"}], cache,
+        depth=8, max_positions=100, analyze_fn=should_not_run
+    )
+
+    assert stats == {"backfilled": 0, "ready": 1, "pending": 0, "failed": 0}
+    assert ready["puzzle_line_version"] == PUZZLE_LINE_VERSION
+    assert ready["principal_variation_san"] == ["e4", "e5", "Nf3"]
+
+
+def test_puzzle_line_backfill_retries_incomplete_marked_line():
+    from chess_tracker.analysis import PUZZLE_LINE_VERSION, backfill_puzzle_lines
+
+    attempted = _legacy_blunder(
+        "e2e4",
+        500,
+        pv=["e2e4"],
+        marker=PUZZLE_LINE_VERSION,
+    )
+
+    calls = []
+
+    def analyze(board, best_move, depth):
+        calls.append(best_move.uci())
+        return _three_ply_info(board, best_move)
+
+    stats = backfill_puzzle_lines(
+        [{"url": "attempted"}],
+        {"attempted": _cache_entry("attempted", attempted)},
+        depth=8, max_positions=100, analyze_fn=analyze,
+    )
+
+    assert calls == ["e2e4"]
+    assert stats == {"backfilled": 1, "ready": 1, "pending": 0, "failed": 0}
+    assert attempted["puzzle_line_version"] == PUZZLE_LINE_VERSION
+
+
+def test_puzzle_line_backfill_isolates_one_engine_failure():
+    import chess.engine
+    from chess_tracker.analysis import backfill_puzzle_lines
+
+    broken = _legacy_blunder("e2e4", 600)
+    valid = _legacy_blunder("d2d4", 500)
+    cache = {
+        "broken": _cache_entry("broken", broken),
+        "valid": _cache_entry("valid", valid),
+    }
+
+    def analyze(board, best_move, depth):
+        if best_move.uci() == "e2e4":
+            raise chess.engine.EngineError("synthetic engine failure")
+        return _three_ply_info(board, best_move)
+
+    stats = backfill_puzzle_lines(
+        [{"url": "broken"}, {"url": "valid"}], cache,
+        depth=8, max_positions=100, analyze_fn=analyze
+    )
+
+    assert stats == {"backfilled": 1, "ready": 1, "pending": 1, "failed": 1}
+    assert "puzzle_line_version" not in broken
+    assert valid["principal_variation_uci"][0] == "d2d4"
+
+
+def test_puzzle_line_backfill_short_result_stays_pending_and_retryable():
+    from chess_tracker.analysis import PUZZLE_LINE_VERSION, backfill_puzzle_lines
+
+    evidence = _legacy_blunder("e2e4", 500)
+    cache = {"game": _cache_entry("game", evidence)}
+    games = [{"url": "game"}]
+
+    def short_line(board, best_move, depth):
+        return {"pv": [best_move]}
+
+    first = backfill_puzzle_lines(
+        games, cache, depth=8, max_positions=1, analyze_fn=short_line
+    )
+
+    assert first == {"backfilled": 1, "ready": 0, "pending": 1, "failed": 1}
+    assert "puzzle_line_version" not in evidence
+
+    second = backfill_puzzle_lines(
+        games, cache, depth=8, max_positions=1, analyze_fn=_three_ply_info
+    )
+
+    assert second == {"backfilled": 1, "ready": 1, "pending": 0, "failed": 0}
+    assert evidence["puzzle_line_version"] == PUZZLE_LINE_VERSION
+
+
+def test_puzzle_line_backfill_ignores_stale_cache_entries_for_budget():
+    from chess_tracker.analysis import backfill_puzzle_lines
+
+    current = _legacy_blunder("d2d4", 100)
+    stale = _legacy_blunder("e2e4", 1_000)
+    cache = {
+        "current": _cache_entry("current", current),
+        "stale": _cache_entry("stale", stale),
+    }
+    calls = []
+
+    def analyze(board, best_move, depth):
+        calls.append(best_move.uci())
+        return _three_ply_info(board, best_move)
+
+    stats = backfill_puzzle_lines(
+        [{"url": "current"}], cache,
+        depth=8, max_positions=1, analyze_fn=analyze,
+    )
+
+    assert calls == ["d2d4"]
+    assert stats == {"backfilled": 1, "ready": 1, "pending": 0, "failed": 0}
+    assert "principal_variation_uci" not in stale
+
+
+def test_run_puzzle_line_backfill_isolates_engine_startup_failure(monkeypatch):
+    import chess.engine
+    from chess_tracker.analysis import run_puzzle_line_backfill
+
+    evidence = _legacy_blunder("e2e4", 500)
+    cache = {"game": _cache_entry("game", evidence)}
+
+    def fail_to_start(_path):
+        raise OSError("synthetic Stockfish startup failure")
+
+    monkeypatch.setattr(chess.engine.SimpleEngine, "popen_uci", fail_to_start)
+
+    stats = run_puzzle_line_backfill(
+        [{"url": "game"}],
+        cache,
+        engine_path="/broken/stockfish",
+        depth=8,
+        max_positions=100,
+    )
+
+    assert stats == {"backfilled": 0, "ready": 0, "pending": 1, "failed": 1}
+    assert "puzzle_line_version" not in evidence
+
+
 def test_aggregate_by_format_runs_each_format_and_nulls_empty():
     from chess_tracker.analysis import aggregate_by_format
     def fake(pgn, side, depth):

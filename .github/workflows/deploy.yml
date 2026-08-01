@@ -61,7 +61,10 @@ jobs:
         run: uv run pytest
 
       - name: Refresh dashboard
-        run: uv run refresh.py
+        # Deploys complete the legacy PV backlog in one pass so every existing
+        # non-terminal puzzle uses the two-decision continuation immediately.
+        # The persisted analysis cache makes later builds incremental.
+        run: uv run refresh.py --puzzle-line-max 0
 
       - uses: actions/configure-pages@v5
 

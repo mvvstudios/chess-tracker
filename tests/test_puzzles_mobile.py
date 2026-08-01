@@ -40,10 +40,37 @@ def test_puzzle_phone_layout_has_touch_and_overflow_guards():
 def test_puzzle_controller_uses_phone_safe_board_and_navigation_settings():
     assert 'window.matchMedia("(pointer: coarse)").matches' in CONTROLLER
     assert "coordinatesOnSquares: true" in CONTROLLER
-    assert "draggable: { enabled: !completed && !coarsePointer }" in CONTROLLER
+    assert "draggable: { enabled: !completed && !coarsePointer && !locked }" in CONTROLLER
     assert "function focusPuzzleStart()" in CONTROLLER
     assert CONTROLLER.count("focusPuzzleStart();") >= 2
     assert 'elements.solvedReviewClose.addEventListener("click"' in CONTROLLER
+
+
+def test_queue_board_keeps_pointer_listeners_across_white_to_black_transition():
+    """Chessground drops handlers if orientation changes from a view-only board."""
+
+    interactive = CONTROLLER.index("function paintInteractiveBoard")
+    solved_review = CONTROLLER.index("function renderSolvedReview")
+    queue_controller = CONTROLLER[interactive:solved_review]
+    assert "viewOnly: false" in queue_controller
+    assert "viewOnly: completed" not in queue_controller
+    assert "color: locked ? undefined : color" in queue_controller
+    assert "selectable: { enabled: !locked }" in queue_controller
+
+    review_controller = CONTROLLER[solved_review:]
+    assert "viewOnly: true" in review_controller
+
+
+def test_controller_requires_two_user_decisions_and_auto_plays_the_reply():
+    assert "Domain.evaluatePuzzleStep(candidate, state.stepIndex, move)" in CONTROLLER
+    assert "function playOpponentReply(candidate, result)" in CONTROLLER
+    assert 'state.linePhase = "playing_reply"' in CONTROLLER
+    assert "state.stepIndex = result.nextStepIndex" in CONTROLLER
+    assert "if (result.solved)" in CONTROLLER
+    assert "recordAttempt(candidate, true)" in CONTROLLER
+    assert 'state.linePhase = "choosing_promotion"' in CONTROLLER
+    assert 'const wasChoosing = state.linePhase === "choosing_promotion"' in CONTROLLER
+    assert 'elements.uciInput.value = "";' in CONTROLLER
 
 
 def test_solved_review_has_a_mobile_return_path_before_the_archive():

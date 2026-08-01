@@ -10,6 +10,10 @@ def test_default_analysis_max_games_is_unlimited():
     assert refresh.DEFAULT_ANALYSIS_MAX_GAMES == 0
 
 
+def test_default_puzzle_line_max_is_bounded():
+    assert refresh.DEFAULT_PUZZLE_LINE_MAX == 100
+
+
 def test_refresh_main_writes_computed_and_dashboard(tmp_path, monkeypatch):
     archives_index = {"archives": [
         "https://api.chess.com/pub/player/m_v-v/games/2026/05"
@@ -333,3 +337,138 @@ def test_build_move_quality_by_time_control_preserves_labels_and_order():
         ("Bullet (1min)", 82.9),
         ("Blitz (5min)", 85.4),
     ]
+
+
+# --- puzzle-line backfill wiring ---
+
+def _refresh_game_for_backfill():
+    return {
+        "url": "game-1",
+        "uuid": "uuid-1",
+        "end_time": 1_700_000_000,
+        "time_class": "bullet",
+        "time_control": "60",
+        "rated": True,
+        "rules": "chess",
+        "white": {"username": "me", "rating": 500, "result": "win"},
+        "black": {"username": "opp", "rating": 500, "result": "checkmated"},
+        "pgn": '[ECO "A00"]\n1. e4 e5 *',
+    }
+
+
+def _stub_refresh_for_backfill(monkeypatch, events):
+    game = _refresh_game_for_backfill()
+    monkeypatch.setattr("refresh.fetch_archives_index", lambda _username: ["archive"])
+    monkeypatch.setattr(
+        "refresh.fetch_archive",
+        lambda _url, cache_dir, force: {"games": [game]},
+    )
+    monkeypatch.setattr("refresh.fetch_player_stats", lambda _username: {})
+    monkeypatch.setattr("refresh.fetch_lichess_user", lambda _username: {})
+    monkeypatch.setattr("refresh.render_all_pages", lambda **_kwargs: None)
+
+    engine_resolutions = []
+
+    def resolve_engine():
+        engine_resolutions.append(True)
+        return "/test/stockfish"
+
+    monkeypatch.setattr("refresh.find_engine_path", resolve_engine)
+
+    def quality_pass(games, sides, cache, *, engine_path, depth):
+        events.append(("ordinary", engine_path, depth))
+        return []
+
+    def quality_by_format(
+        games_by_format, sides, cache, *, engine_path, depth, max_games
+    ):
+        return {key: None for key in games_by_format}
+
+    monkeypatch.setattr("refresh.run_move_quality_pass", quality_pass)
+    monkeypatch.setattr("refresh.run_move_quality_by_format", quality_by_format)
+    return engine_resolutions
+
+
+def test_refresh_backfills_after_analysis_saves_then_builds_catalog(
+    tmp_path, monkeypatch, capsys
+):
+    events = []
+    engine_resolutions = _stub_refresh_for_backfill(monkeypatch, events)
+
+    def backfill(games, cache, *, engine_path, depth, max_positions):
+        events.append(("backfill", engine_path, depth, max_positions))
+        cache["backfill-marker"] = {"summary": {"moves_analyzed": 0}}
+        return {"backfilled": 2, "ready": 3, "pending": 4, "failed": 1}
+
+    def save(path, cache):
+        assert "backfill-marker" in cache
+        events.append(("save", path))
+
+    def build(games, cache, username):
+        assert "backfill-marker" in cache
+        events.append(("build", username))
+        return {
+            "candidates": [],
+            "coverage": {"eligible_puzzles": 0, "incomplete_puzzles": 0},
+            "errors": [],
+        }
+
+    monkeypatch.setattr("refresh.run_puzzle_line_backfill", backfill)
+    monkeypatch.setattr("refresh.save_quality_cache", save)
+    monkeypatch.setattr("refresh.build_puzzle_queue", build)
+
+    rc = refresh.main([
+        "--username", "me",
+        "--analysis-depth", "7",
+        "--puzzle-line-max", "0",
+        "--data-dir", str(tmp_path / "data"),
+        "--dashboard-dir", str(tmp_path / "dashboard"),
+    ])
+
+    assert rc == 0
+    assert engine_resolutions == [True]
+    assert events[0] == ("ordinary", "/test/stockfish", 7)
+    assert ("backfill", "/test/stockfish", 7, 0) in events
+    assert [event[0] for event in events][-3:] == ["backfill", "save", "build"]
+    assert (
+        "Puzzle-line backfill: 2 updated, 3 ready, 4 pending, 1 failed."
+        in capsys.readouterr().out
+    )
+
+
+@pytest.mark.parametrize("skip_flag", ["--no-analysis", "--no-puzzles"])
+def test_refresh_skips_puzzle_line_backfill_for_disabled_surface(
+    skip_flag, tmp_path, monkeypatch
+):
+    events = []
+    engine_resolutions = _stub_refresh_for_backfill(monkeypatch, events)
+    monkeypatch.setattr(
+        "refresh.run_puzzle_line_backfill",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("puzzle-line backfill should be skipped")
+        ),
+    )
+    monkeypatch.setattr("refresh.save_quality_cache", lambda *_args: None)
+    monkeypatch.setattr(
+        "refresh.build_puzzle_queue",
+        lambda *_args: {
+            "candidates": [],
+            "coverage": {"eligible_puzzles": 0, "incomplete_puzzles": 0},
+            "errors": [],
+        },
+    )
+
+    rc = refresh.main([
+        "--username", "me",
+        skip_flag,
+        "--data-dir", str(tmp_path / "data"),
+        "--dashboard-dir", str(tmp_path / "dashboard"),
+    ])
+
+    assert rc == 0
+    if skip_flag == "--no-analysis":
+        assert engine_resolutions == []
+        assert not any(event[0] == "ordinary" for event in events)
+    else:
+        assert engine_resolutions == [True]
+        assert any(event[0] == "ordinary" for event in events)

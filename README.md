@@ -47,7 +47,14 @@ Open `dashboard/puzzles.html` after a refresh. Candidates come from the same
 Stockfish move-quality cache as Blunder Analysis: only moves played by the
 configured Chess.com username and labeled `blunder` are eligible. Each PGN is
 replayed with `python-chess` before publishing the pre-blunder FEN, legal moves,
-and Stockfish's first principal-variation move.
+and a validated Stockfish principal variation. A checkmating best move solves
+immediately. Otherwise the puzzle asks for Stockfish's first move, plays the
+stored opponent reply automatically, and requires the next best move to finish.
+
+Older cached blunders may only contain a one-move engine line. Normal refreshes
+backfill up to 100 of those positions at a time (highest evaluation loss first)
+and omit incomplete positions until their continuation is ready. Use
+`--puzzle-line-max 0` to backfill the full legacy backlog in one refresh.
 
 This repository has no server, database, or login system. Puzzle attempts and
 solved state therefore use the documented fallback: browser `localStorage`,

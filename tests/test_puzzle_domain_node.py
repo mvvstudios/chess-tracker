@@ -1,4 +1,4 @@
-"""Run the dependency-free browser puzzle-domain tests through pytest."""
+"""Run the dependency-free browser puzzle tests through pytest."""
 from pathlib import Path
 import shutil
 import subprocess
@@ -8,13 +8,13 @@ import pytest
 
 NODE = shutil.which("node")
 ROOT = Path(__file__).resolve().parents[1]
-SUITE = ROOT / "tests" / "puzzle-domain.test.js"
+SUITES = sorted((ROOT / "tests").glob("*.test.js"))
 
 
 @pytest.mark.skipif(NODE is None, reason="Node.js is not available")
-def test_browser_puzzle_domain():
+def test_browser_puzzle_modules():
     completed = subprocess.run(
-        [NODE, "--test", str(SUITE)],
+        [NODE, "--test", *(str(suite) for suite in SUITES)],
         cwd=ROOT,
         capture_output=True,
         text=True,

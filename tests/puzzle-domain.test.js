@@ -30,6 +30,43 @@ function candidate(overrides = {}) {
   };
 }
 
+function explicitStep(overrides = {}) {
+  return {
+    fen_before: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    best_move_uci: "e2e4",
+    best_move_san: "e4",
+    post_best_fen: "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
+    legal_moves_uci: ["e2e4", "d2d4", "g1f3"],
+    legal_dests: { e2: ["e4"], d2: ["d4"], g1: ["f3"] },
+    promotion_options: {},
+    opponent_reply_uci: null,
+    opponent_reply_san: null,
+    post_reply_fen: null,
+    ...overrides,
+  };
+}
+
+function twoStepCandidate() {
+  const afterReply = "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2";
+  return candidate({
+    solution_steps: [
+      explicitStep({
+        opponent_reply_uci: "e7e5",
+        opponent_reply_san: "e5",
+        post_reply_fen: afterReply,
+      }),
+      explicitStep({
+        fen_before: afterReply,
+        best_move_uci: "g1f3",
+        best_move_san: "Nf3",
+        post_best_fen: "rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2",
+        legal_moves_uci: ["g1f3", "f1c4"],
+        legal_dests: { g1: ["f3"], f1: ["c4"] },
+      }),
+    ],
+  });
+}
+
 class MemoryStorage {
   constructor() {
     this.values = new Map();
@@ -80,6 +117,135 @@ test("evaluateAttempt distinguishes correct, incorrect legal, and illegal moves"
   assert.deepEqual(PuzzleDomain.evaluateAttempt(puzzle, "e2e5"), {
     kind: "illegal", uci: "e2e5", legal: false, correct: false,
   });
+});
+
+test("solutionSteps preserves legacy candidates as one terminal decision", () => {
+  const puzzle = candidate();
+  const steps = PuzzleDomain.solutionSteps(puzzle);
+
+  assert.equal(steps.length, 1);
+  assert.equal(steps[0].best_move_uci, "e2e4");
+  assert.deepEqual(steps[0].legal_moves_uci, ["e2e4", "d2d4", "g1f3"]);
+  assert.equal(steps[0].opponent_reply_uci, null);
+
+  const result = PuzzleDomain.evaluatePuzzleStep(puzzle, 0, "E2E4");
+  assert.equal(result.kind, "correct");
+  assert.equal(result.isFinalStep, true);
+  assert.equal(result.solved, true);
+  assert.equal(result.nextStep, null);
+  assert.equal(result.reply, null);
+});
+
+test("an explicit black king capture is normalized and accepted", () => {
+  const puzzle = candidate({
+    puzzle_id: "black-king-capture",
+    solution_steps: [explicitStep({
+      fen_before: "8/8/8/8/8/2P5/3k4/7K b - - 0 1",
+      best_move_uci: "D2C3",
+      best_move_san: "Kxc3",
+      post_best_fen: "8/8/8/8/8/2k5/8/7K w - - 0 2",
+      legal_moves_uci: ["d2c3", "d2e3"],
+      legal_dests: { d2: ["c3", "e3"] },
+    })],
+  });
+
+  assert.equal(PuzzleDomain.solutionSteps(puzzle)[0].best_move_uci, "d2c3");
+  assert.equal(PuzzleDomain.evaluatePuzzleStep(puzzle, 0, "d2c3").solved, true);
+  assert.deepEqual(PuzzleDomain.partitionCandidates([puzzle], {}).unsolved, [puzzle]);
+});
+
+test("a correct intermediate step advances with its stored opponent reply", () => {
+  const result = PuzzleDomain.evaluatePuzzleStep(twoStepCandidate(), 0, "e2e4");
+
+  assert.equal(result.kind, "correct");
+  assert.equal(result.isFinalStep, false);
+  assert.equal(result.solved, false);
+  assert.equal(result.nextStepIndex, 1);
+  assert.equal(result.nextStep.best_move_uci, "g1f3");
+  assert.deepEqual(result.reply, {
+    uci: "e7e5",
+    san: "e5",
+    fen: result.nextStep.fen_before,
+  });
+  assert.equal(result.opponentReplyUci, "e7e5");
+});
+
+test("the final correct step solves without requiring another engine reply", () => {
+  const result = PuzzleDomain.evaluatePuzzleStep(twoStepCandidate(), 1, "g1f3");
+
+  assert.equal(result.kind, "correct");
+  assert.equal(result.isFinalStep, true);
+  assert.equal(result.solved, true);
+  assert.equal(result.nextStepIndex, null);
+  assert.equal(result.nextStep, null);
+  assert.equal(result.reply, null);
+});
+
+test("wrong and illegal step attempts neither advance nor reveal replies", () => {
+  const puzzle = twoStepCandidate();
+  const wrong = PuzzleDomain.evaluatePuzzleStep(puzzle, 0, "d2d4");
+  assert.equal(wrong.kind, "incorrect");
+  assert.equal(wrong.legal, true);
+  assert.equal(wrong.solved, false);
+  assert.equal(wrong.nextStep, null);
+  assert.equal(wrong.reply, null);
+
+  const illegal = PuzzleDomain.evaluatePuzzleStep(puzzle, 0, "e2e5");
+  assert.equal(illegal.kind, "illegal");
+  assert.equal(illegal.legal, false);
+  assert.equal(illegal.solved, false);
+  assert.equal(illegal.nextStep, null);
+  assert.equal(illegal.reply, null);
+});
+
+test("a two-decision puzzle stays unsolved until the final best move persists", () => {
+  const puzzle = twoStepCandidate();
+  const storage = new MemoryStorage();
+  const store = PuzzleDomain.createProgressStore("me", storage);
+
+  const first = PuzzleDomain.evaluatePuzzleStep(puzzle, 0, "e2e4");
+  assert.equal(first.solved, false);
+  assert.deepEqual(PuzzleDomain.partitionCandidates([puzzle], store).unsolved, [puzzle]);
+
+  const wrong = PuzzleDomain.evaluatePuzzleStep(puzzle, 1, "f1c4");
+  assert.equal(wrong.kind, "incorrect");
+  store.recordAttempt(puzzle, false, "2026-08-01T10:00:00Z");
+  assert.deepEqual(PuzzleDomain.partitionCandidates([puzzle], store).unsolved, [puzzle]);
+
+  const final = PuzzleDomain.evaluatePuzzleStep(puzzle, 1, "g1f3");
+  assert.equal(final.solved, true);
+  store.recordAttempt(puzzle, true, "2026-08-01T10:01:00Z");
+  store.markSolved(puzzle, "2026-08-01T10:01:00Z");
+
+  const reloaded = PuzzleDomain.createProgressStore("ME", storage);
+  const partition = PuzzleDomain.partitionCandidates([puzzle], reloaded);
+  assert.deepEqual(partition.unsolved, []);
+  assert.deepEqual(partition.solved, [puzzle]);
+});
+
+test("malformed explicit solution steps are rejected instead of using legacy aliases", () => {
+  const empty = candidate({ puzzle_id: "empty-steps", solution_steps: [] });
+  const badMove = candidate({
+    puzzle_id: "bad-step-move",
+    solution_steps: [explicitStep({ best_move_uci: "e2e5" })],
+  });
+  const brokenChain = twoStepCandidate();
+  brokenChain.puzzle_id = "broken-chain";
+  brokenChain.solution_steps[0].post_reply_fen = "not the next position";
+
+  for (const puzzle of [empty, badMove, brokenChain]) {
+    assert.deepEqual(PuzzleDomain.solutionSteps(puzzle), []);
+    const result = PuzzleDomain.evaluatePuzzleStep(puzzle, 0, "e2e4");
+    assert.equal(result.kind, "illegal");
+    assert.equal(result.correct, false);
+  }
+
+  const partition = PuzzleDomain.partitionCandidates([empty, badMove, brokenChain], {});
+  assert.deepEqual(partition.unsolved, []);
+  assert.deepEqual(
+    partition.invalid.map(PuzzleDomain.stablePuzzleId),
+    ["bad-step-move", "broken-chain", "empty-steps"],
+  );
 });
 
 test("castling aliases compare against the canonical legal Stockfish move", () => {

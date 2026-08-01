@@ -68,6 +68,7 @@ class PuzzleCandidate:
     wp_loss: float | None
     principal_variation_uci: list[str]
     principal_variation_san: list[str]
+    solution_steps: list[dict[str, Any]]
     opponent_name: str | None
     game_date: str | None
     end_time: int | None
@@ -386,6 +387,15 @@ def _candidate_from_evidence(
         # This is defensive; best_move legality above guarantees one move.
         return None, ("invalid_principal_variation", "Principal variation is unusable."), False
 
+    solution_steps = _build_solution_steps(board, pv_uci)
+    first_post = board.copy(stack=False)
+    first_post.push(best_move)
+    if not first_post.is_game_over() and len(solution_steps) < 2:
+        return None, (
+            "incomplete_principal_variation",
+            "A non-terminal puzzle requires a legal three-ply principal variation.",
+        ), pv_was_truncated
+
     legal_moves = sorted(board.legal_moves, key=lambda move: move.uci())
     legal_moves_uci = [move.uci() for move in legal_moves]
     legal_dests = _legal_dests(legal_moves)
@@ -424,6 +434,7 @@ def _candidate_from_evidence(
         wp_loss=_optional_float(raw_blunder.get("wp_loss")),
         principal_variation_uci=pv_uci,
         principal_variation_san=pv_san,
+        solution_steps=solution_steps,
         opponent_name=_opponent_name(raw_game, user_color),
         game_date=_game_date(raw_game, parsed_game),
         end_time=end_time,
@@ -487,6 +498,78 @@ def _validated_pv(
         uci_line.append(move.uci())
         board.push(move)
     return uci_line, san_line, truncated
+
+
+def _build_solution_steps(
+    starting_board: chess.Board,
+    pv_uci: list[str],
+) -> list[dict[str, Any]]:
+    """Turn a legal PV into one or two user-decision mini-candidates.
+
+    The user plays PV plies 0 and 2. PV ply 1 is automatically played as the
+    opponent response. A first move that ends the game is a complete one-step
+    puzzle; every other puzzle needs all three plies so the second decision has
+    a defined answer.
+    """
+
+    if not pv_uci:
+        return []
+    board = starting_board.copy(stack=False)
+    first_move = chess.Move.from_uci(pv_uci[0])
+    after_first = board.copy(stack=False)
+    after_first.push(first_move)
+    if after_first.is_game_over():
+        return [_solution_step(board, first_move)]
+    if len(pv_uci) < 3:
+        return []
+
+    opponent_reply = chess.Move.from_uci(pv_uci[1])
+    first_step = _solution_step(board, first_move, opponent_reply)
+
+    second_board = after_first.copy(stack=False)
+    second_board.push(opponent_reply)
+    second_move = chess.Move.from_uci(pv_uci[2])
+    # The second user decision finishes this first version of the exercise.
+    # Later PV plies remain available in principal_variation_* for revealed
+    # review, but are not part of the interactive sequence.
+    second_step = _solution_step(second_board, second_move)
+    return [first_step, second_step]
+
+
+def _solution_step(
+    board: chess.Board,
+    best_move: chess.Move,
+    opponent_reply: chess.Move | None = None,
+) -> dict[str, Any]:
+    """Return the UI-ready fields for one user decision in the solution."""
+
+    legal_moves = sorted(board.legal_moves, key=lambda move: move.uci())
+    best_san = board.san(best_move)
+    after_best = board.copy(stack=False)
+    after_best.push(best_move)
+
+    reply_uci: str | None = None
+    reply_san: str | None = None
+    post_reply_fen: str | None = None
+    if opponent_reply is not None:
+        reply_uci = opponent_reply.uci()
+        reply_san = after_best.san(opponent_reply)
+        after_reply = after_best.copy(stack=False)
+        after_reply.push(opponent_reply)
+        post_reply_fen = after_reply.fen()
+
+    return {
+        "fen_before": board.fen(),
+        "best_move_uci": best_move.uci(),
+        "best_move_san": best_san,
+        "post_best_fen": after_best.fen(),
+        "legal_moves_uci": [move.uci() for move in legal_moves],
+        "legal_dests": _legal_dests(legal_moves),
+        "promotion_options": _promotion_options(legal_moves),
+        "opponent_reply_uci": reply_uci,
+        "opponent_reply_san": reply_san,
+        "post_reply_fen": post_reply_fen,
+    }
 
 
 def _raw_pv_uci(blunder: dict[str, Any]) -> list[str]:

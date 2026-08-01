@@ -30,6 +30,7 @@ import math
 from dataclasses import dataclass, asdict
 from io import StringIO
 from pathlib import Path
+from typing import Any, Callable, Iterable
 
 import chess
 import chess.engine
@@ -73,6 +74,8 @@ ENDGAME_NON_PAWN_PIECES = 6
 # bloating the generated dashboard payload. The first move remains the puzzle
 # answer; the rest is explanatory context revealed only after an attempt.
 PUZZLE_PV_MAX_PLIES = 8
+PUZZLE_LINE_VERSION = 1
+PUZZLE_LINE_MIN_PLIES = 3
 
 LARGE_EVAL_SWING_CP = 500
 CONVERSION_FAVORABLE_CP = 300
@@ -460,6 +463,237 @@ def select_recent_games(games, max_games: int) -> list[dict]:
     if max_games <= 0:
         return list(games)
     return sorted(games, key=lambda g: g.get("end_time", 0), reverse=True)[:max_games]
+
+
+def _optional_int(value: Any) -> int | None:
+    """Coerce cache/import numeric metadata without accepting booleans."""
+
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _cached_puzzle_line(
+    evidence: dict[str, Any],
+) -> tuple[chess.Board | None, chess.Move | None, list[str], list[str]]:
+    """Return the legal cached PV prefix for one blunder position."""
+
+    try:
+        board = chess.Board(str(evidence.get("fen_before") or ""))
+        best_move = chess.Move.from_uci(str(evidence.get("best_move_uci") or ""))
+    except ValueError:
+        return None, None, [], []
+    if best_move not in board.legal_moves:
+        return None, None, [], []
+
+    raw = evidence.get("principal_variation_uci")
+    if isinstance(raw, str):
+        raw_moves = raw.split()
+    elif isinstance(raw, (list, tuple)):
+        raw_moves = [str(move) for move in raw]
+    else:
+        raw_moves = []
+    if not raw_moves:
+        raw_moves = [best_move.uci()]
+
+    line = board.copy(stack=False)
+    uci_moves: list[str] = []
+    san_moves: list[str] = []
+    for raw_move in raw_moves[:PUZZLE_PV_MAX_PLIES]:
+        try:
+            move = chess.Move.from_uci(str(raw_move).strip().lower())
+        except ValueError:
+            break
+        if move not in line.legal_moves:
+            break
+        uci_moves.append(move.uci())
+        san_moves.append(line.san(move))
+        line.push(move)
+    if not uci_moves or uci_moves[0] != best_move.uci():
+        return board, best_move, [], []
+    return board, best_move, uci_moves, san_moves
+
+
+def _puzzle_line_ready(board: chess.Board, uci_moves: list[str]) -> bool:
+    """A line is ready after a terminal first move, or at three legal plies."""
+
+    if not uci_moves:
+        return False
+    line = board.copy(stack=False)
+    try:
+        line.push_uci(uci_moves[0])
+    except ValueError:
+        return False
+    if line.is_game_over():
+        return True
+    if len(uci_moves) < PUZZLE_LINE_MIN_PLIES:
+        return False
+    try:
+        line.push_uci(uci_moves[1])
+        line.push_uci(uci_moves[2])
+    except ValueError:
+        return False
+    return True
+
+
+def backfill_puzzle_lines(
+    games: Iterable[dict[str, Any]],
+    cache: dict[str, Any],
+    *,
+    depth: int,
+    max_positions: int,
+    analyze_fn: Callable[[chess.Board, chess.Move, int], dict[str, Any]],
+) -> dict[str, int]:
+    """Incrementally add execution lines without re-analyzing whole games.
+
+    Legacy cache entries predate stored principal variations. Each selected
+    blunder costs one engine call from its stored FEN, constrained to the
+    existing best move. Positive ``max_positions`` bounds work per refresh;
+    non-positive values process the full backlog.
+    """
+
+    game_times: dict[str, int] = {}
+    current_game_keys: set[str] = set()
+    for game in games:
+        if not isinstance(game, dict):
+            continue
+        end_time = _optional_int(game.get("end_time")) or 0
+        for key in (game.get("url"), game.get("uuid")):
+            if key:
+                normalized_key = str(key)
+                game_times[normalized_key] = end_time
+                current_game_keys.add(normalized_key)
+
+    pending: list[
+        tuple[tuple[int, int, int, str], dict[str, Any], chess.Board, chess.Move]
+    ] = []
+    ready = 0
+    failed = 0
+    for cache_key, entry in cache.items():
+        if not isinstance(entry, dict):
+            continue
+        summary = entry.get("summary") if isinstance(entry.get("summary"), dict) else entry
+        evidence_items = summary.get("blunder_evidence") if isinstance(summary, dict) else None
+        if not isinstance(evidence_items, list):
+            continue
+        game_url = str(summary.get("game_url") or cache_key)
+        if not current_game_keys.intersection((str(cache_key), game_url)):
+            # Cache retention intentionally outlives the current import set. A
+            # stale game must not consume this refresh's bounded engine budget.
+            continue
+        end_time = game_times.get(game_url, game_times.get(str(cache_key), 0))
+        for evidence in evidence_items:
+            if not isinstance(evidence, dict):
+                failed += 1
+                continue
+            board, best_move, pv_uci, pv_san = _cached_puzzle_line(evidence)
+            if board is None or best_move is None:
+                failed += 1
+                continue
+            if _puzzle_line_ready(board, pv_uci):
+                evidence["principal_variation_uci"] = pv_uci
+                evidence["principal_variation_san"] = pv_san
+                evidence["puzzle_line_version"] = PUZZLE_LINE_VERSION
+                ready += 1
+                continue
+            # A version marker describes a ready line, not a permanent attempt.
+            # Old short/invalid marked lines remain eligible for a later retry.
+            evidence.pop("puzzle_line_version", None)
+            cp_loss = _optional_int(evidence.get("cp_loss")) or 0
+            ply = _optional_int(evidence.get("ply")) or 0
+            priority = (-cp_loss, -end_time, ply, game_url)
+            pending.append((priority, evidence, board, best_move))
+
+    pending.sort(key=lambda item: item[0])
+    selected = pending if max_positions <= 0 else pending[:max_positions]
+    backfilled = 0
+    still_pending = max(0, len(pending) - len(selected))
+    for _priority, evidence, board, best_move in selected:
+        try:
+            info = analyze_fn(board.copy(stack=False), best_move, depth)
+            pv_uci, pv_san = _principal_variation(board, info)
+        except (chess.engine.EngineError, OSError, ValueError):
+            failed += 1
+            still_pending += 1
+            continue
+        if not pv_uci or pv_uci[0] != best_move.uci():
+            failed += 1
+            still_pending += 1
+            continue
+        evidence["principal_variation_uci"] = pv_uci
+        evidence["principal_variation_san"] = pv_san
+        backfilled += 1
+        if _puzzle_line_ready(board, pv_uci):
+            evidence["puzzle_line_version"] = PUZZLE_LINE_VERSION
+            ready += 1
+        else:
+            evidence.pop("puzzle_line_version", None)
+            failed += 1
+            still_pending += 1
+
+    return {
+        "backfilled": backfilled,
+        "ready": ready,
+        "pending": still_pending,
+        "failed": failed,
+    }
+
+
+def run_puzzle_line_backfill(
+    games: Iterable[dict[str, Any]],
+    cache: dict[str, Any],
+    *,
+    engine_path: str | None = None,
+    depth: int = DEFAULT_DEPTH,
+    max_positions: int = 100,
+) -> dict[str, int]:
+    """Run the bounded line backfill through the existing Stockfish binary."""
+
+    game_list = list(games)
+    path = engine_path or find_engine_path()
+    if path is None:
+        return {"backfilled": 0, "ready": 0, "pending": 0, "failed": 0}
+    try:
+        with chess.engine.SimpleEngine.popen_uci(path) as engine:
+            def analyze(
+                board: chess.Board,
+                best_move: chess.Move,
+                line_depth: int,
+            ) -> dict[str, Any]:
+                return engine.analyse(
+                    board,
+                    chess.engine.Limit(depth=line_depth),
+                    root_moves=[best_move],
+                )
+
+            return backfill_puzzle_lines(
+                game_list,
+                cache,
+                depth=depth,
+                max_positions=max_positions,
+                analyze_fn=analyze,
+            )
+    except (chess.engine.EngineError, OSError):
+        # Lazy line generation is additive. A broken optional engine must not
+        # prevent the existing dashboard/cache from rendering; retain every
+        # selected item as pending so a later refresh can retry it.
+        def unavailable_engine(
+            board: chess.Board,
+            best_move: chess.Move,
+            line_depth: int,
+        ) -> dict[str, Any]:
+            raise chess.engine.EngineError("Puzzle-line engine unavailable")
+
+        return backfill_puzzle_lines(
+            game_list,
+            cache,
+            depth=depth,
+            max_positions=max_positions,
+            analyze_fn=unavailable_engine,
+        )
 
 
 def attach_move_quality(games, side_by_url, cache, *, depth, analyze_fn) -> list[dict]:
