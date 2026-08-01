@@ -74,6 +74,7 @@
     unsolved: [],
     solved: [],
     sessionIds: [],
+    queueSeed: null,
     currentId: null,
     completedCandidate: null,
     revealed: false,
@@ -130,6 +131,7 @@
       ? Domain.sortCandidates(state.catalog.candidates.slice())
       : state.catalog.candidates.slice();
     state.candidates = Array.isArray(sorted) ? sorted : state.catalog.candidates.slice();
+    state.queueSeed = dailyQueueSeed(DATA.username || "unknown");
     if (!syncPartition(true)) return;
     renderAll();
   }
@@ -171,7 +173,10 @@
 
     const availableIds = new Set(state.unsolved.map(puzzleId));
     if (initial || state.sessionIds.length === 0) {
-      state.sessionIds = state.unsolved.map(puzzleId);
+      const mixed = typeof Domain.mixCandidates === "function"
+        ? Domain.mixCandidates(state.unsolved, state.queueSeed)
+        : state.unsolved.slice();
+      state.sessionIds = mixed.map(puzzleId);
     } else {
       state.sessionIds = state.sessionIds.filter(id => availableIds.has(id));
       state.unsolved.forEach(candidate => {
@@ -186,6 +191,11 @@
     }
     renderWarnings();
     return true;
+  }
+
+  function dailyQueueSeed(username) {
+    const day = new Date().toISOString().slice(0, 10);
+    return `${String(username || "unknown").trim().toLowerCase()}:${day}`;
   }
 
   function unwrapCandidates(items) {

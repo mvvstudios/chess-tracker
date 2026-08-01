@@ -73,6 +73,12 @@ def test_controller_requires_two_user_decisions_and_auto_plays_the_reply():
     assert 'elements.uciInput.value = "";' in CONTROLLER
 
 
+def test_unsolved_queue_is_mixed_once_per_daily_session():
+    assert "state.queueSeed = dailyQueueSeed(DATA.username" in CONTROLLER
+    assert "Domain.mixCandidates(state.unsolved, state.queueSeed)" in CONTROLLER
+    assert "function dailyQueueSeed(username)" in CONTROLLER
+
+
 def test_solved_review_has_a_mobile_return_path_before_the_archive():
     review = TEMPLATE.index('id="puzzle-solved-review"')
     archive = TEMPLATE.index('id="puzzles-solved-list"')

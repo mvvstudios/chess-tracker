@@ -426,6 +426,44 @@
       .map((entry) => entry.candidate);
   }
 
+  function seedState(seed) {
+    const value = seed == null ? "" : String(seed);
+    let hash = 0x811c9dc5;
+    for (let index = 0; index < value.length; index += 1) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 0x01000193);
+    }
+    // Xorshift32's all-zero state never advances. FNV-1a very rarely lands
+    // there, so substitute a fixed non-zero state when it does.
+    return (hash >>> 0) || 0x9e3779b9;
+  }
+
+  function nextSeedState(state) {
+    let next = state >>> 0;
+    next ^= next << 13;
+    next ^= next >>> 17;
+    next ^= next << 5;
+    return next >>> 0;
+  }
+
+  /** Deterministically mix a queue without mutating the caller's array. */
+  function mixCandidates(candidates, seed) {
+    if (!Array.isArray(candidates)) return [];
+    const mixed = candidates.slice();
+    let state = seedState(seed);
+    for (let index = mixed.length - 1; index > 0; index -= 1) {
+      state = nextSeedState(state);
+      const target = state % (index + 1);
+      const candidate = mixed[index];
+      mixed[index] = mixed[target];
+      mixed[target] = candidate;
+    }
+    if (mixed.length > 1 && mixed.every((candidate, index) => candidate === candidates[index])) {
+      mixed.push(mixed.shift());
+    }
+    return mixed;
+  }
+
   function candidateIsReady(candidate) {
     return Boolean(stablePuzzleId(candidate) && solutionSteps(candidate).length);
   }
@@ -745,6 +783,7 @@
     evaluatePuzzleStep,
     stablePuzzleId,
     sortCandidates,
+    mixCandidates,
     partitionCandidates,
     rotateQueue,
     normalizedUsername,

@@ -50,6 +50,9 @@ replayed with `python-chess` before publishing the pre-blunder FEN, legal moves,
 and a validated Stockfish principal variation. A checkmating best move solves
 immediately. Otherwise the puzzle asks for Stockfish's first move, plays the
 stored opponent reply automatically, and requires the next best move to finish.
+The active unsolved queue is deterministically mixed each day instead of being
+shown in game-date order; it remains stable while you work through that day's
+session, and **Skip for now** still rotates the current puzzle to the end.
 
 Older cached blunders may only contain a one-move engine line. Normal refreshes
 backfill up to 100 of those positions at a time (highest evaluation loss first)

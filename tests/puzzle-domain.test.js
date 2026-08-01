@@ -337,6 +337,49 @@ test("candidate ply breaks otherwise equal ordering ties", () => {
   );
 });
 
+test("mixCandidates is seeded, stable, lossless, and leaves its input untouched", () => {
+  const input = Array.from({ length: 8 }, (_, index) => candidate({
+    puzzle_id: `p${index + 1}`,
+    game_date: `2026-08-${String(index + 1).padStart(2, "0")}`,
+  }));
+  const original = input.slice();
+
+  const first = PuzzleDomain.mixCandidates(input, "alice-2026-08-01");
+  const second = PuzzleDomain.mixCandidates(input, "alice-2026-08-01");
+  const ids = first.map(PuzzleDomain.stablePuzzleId);
+
+  assert.deepEqual(ids, ["p7", "p8", "p3", "p4", "p6", "p5", "p2", "p1"]);
+  assert.deepEqual(second.map(PuzzleDomain.stablePuzzleId), ids);
+  assert.deepEqual([...ids].sort(), input.map(PuzzleDomain.stablePuzzleId).sort());
+  assert.equal(new Set(first).size, input.length);
+  assert.deepEqual(input, original);
+  assert.notEqual(first, input);
+
+  const dates = first.map(item => Date.parse(item.game_date));
+  assert.notDeepEqual(dates, dates.slice().sort((a, b) => a - b));
+  assert.notDeepEqual(dates, dates.slice().sort((a, b) => b - a));
+});
+
+test("mixCandidates safely handles trivial queues and never leaves a real queue unchanged", () => {
+  assert.deepEqual(PuzzleDomain.mixCandidates([], "seed"), []);
+  assert.deepEqual(PuzzleDomain.mixCandidates(null, "seed"), []);
+
+  const only = candidate({ puzzle_id: "only" });
+  const singleton = [only];
+  const mixedSingleton = PuzzleDomain.mixCandidates(singleton, "seed");
+  assert.deepEqual(mixedSingleton, singleton);
+  assert.notEqual(mixedSingleton, singleton);
+
+  const pair = [candidate({ puzzle_id: "a" }), candidate({ puzzle_id: "b" })];
+  for (let seed = 0; seed < 64; seed += 1) {
+    assert.deepEqual(
+      PuzzleDomain.mixCandidates(pair, seed).map(PuzzleDomain.stablePuzzleId),
+      ["b", "a"],
+    );
+  }
+  assert.deepEqual(pair.map(PuzzleDomain.stablePuzzleId), ["a", "b"]);
+});
+
 test("rotateQueue skips to the next candidate without mutating or looping one item", () => {
   const a = candidate({ puzzle_id: "a" });
   const b = candidate({ puzzle_id: "b" });
