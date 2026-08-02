@@ -754,15 +754,16 @@ def test_shipped_plan_has_white_entries_with_match_rules():
     cz = by_name["Colle–Zukertort System"]
     assert cz["side"] == "white" and cz["vs_first_move"] == "d4"
     assert cz["match"]["white_forbids"] == ["Bf4"]
-    vh = by_name["Vienna Hybrid"]
-    assert vh["side"] == "white" and vh["vs_first_move"] == "e4"
-    assert vh["match"]["white_requires"] == ["Bc4", "Nc3"]
-    assert vh["match"]["white_forbids"] == ["f4"]
-    assert "gambit_flags" not in vh["match"]
-    assert "lines" not in vh
-    # Black entries untouched.
-    assert "Englund Gambit" in by_name
-    assert "match" not in by_name["Englund Gambit"]
+    anti_englund = by_name["Englund Gambit"]
+    assert anti_englund["side"] == "white" and anti_englund["vs_first_move"] == "d4"
+    assert anti_englund["target_family"] == "Englund Gambit"
+    assert anti_englund["match"]["applicable_if_black_plays"] == "e5"
+    assert anti_englund["match"]["white_requires"] == ["dxe5"]
+    assert "gambit_flags" not in anti_englund["match"]
+    assert "lines" not in anti_englund
+    modern = by_name["Modern Defense"]
+    assert modern["side"] == "black" and modern["vs_first_move"] == "e4"
+    assert modern["target_family"] == "Modern Defense"
 
 
 def test_compute_plan_compliance_multi_line_boards():
@@ -1225,6 +1226,38 @@ def test_compute_opening_families_applies_aliases_directly():
     assert any(f["family"] == "Queens Pawn Opening" and f["color"] == "white" for f in families)
     # Original records are NOT mutated
     assert any(r.family == "London System" for r in recs)
+
+
+def test_compute_opening_families_keeps_modern_separate_from_pirc():
+    """Modern Defense is its own repertoire family, not folded into Pirc."""
+    from chess_tracker.pgn import GameRecord
+    from chess_tracker.metrics import compute_opening_families
+    from chess_tracker.enrich import enrich_with_deltas, enrich_with_sessions
+
+    recs = [
+        GameRecord(
+            url="modern", end_time=1, time_class="bullet",
+            side="black", my_rating=500, opp_rating=500,
+            result="win", opp_result="checkmated",
+            plies=20, fullmoves=10, opening="Modern Defense with", eco="B06",
+            family="Modern Defense", variation="with",
+        ),
+        GameRecord(
+            url="pirc", end_time=2, time_class="bullet",
+            side="black", my_rating=508, opp_rating=500,
+            result="timeout", opp_result="win",
+            plies=20, fullmoves=10, opening="Pirc Defense", eco="B07",
+            family="Pirc Defense", variation="",
+        ),
+    ]
+    enrich_with_deltas(recs)
+    enrich_with_sessions(recs)
+
+    families = compute_opening_families(recs)
+    assert any(f["family"] == "Modern Defense" and f["color"] == "black"
+               for f in families)
+    assert any(f["family"] == "Pirc Defense" and f["color"] == "black"
+               for f in families)
 
 
 def test_compute_opening_families_is_rare_flag():

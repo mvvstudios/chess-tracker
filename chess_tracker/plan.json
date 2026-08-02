@@ -9,12 +9,12 @@
       "plan": "Pirc setup: ...d6, ...Nf6, ...g6, ...Bg7, castle, then hit the center with ...c6/...e5. Keep the king safe first; do not drift into random Modern move orders."
     },
     {
-      "name": "Englund Gambit",
+      "name": "Modern Defense",
       "side": "black",
-      "vs_first_move": "d4",
-      "target_family": "Englund Gambit",
-      "moves": "1.d4 e5  2.dxe5 Nc6  3.Nf3 Qe7  4.Bf4 Qb4+  5.Bd2 Qxb2  6.Bc3 Bb4  7.Qd2 Bxc3  8.Qxc3 Qc1#",
-      "plan": "Force tactical chaos, target the b2/c3 weakness. If White gets greedy (6.Bc3?), the trap mates: ...Bb4, ...Bxc3, ...Qc1#."
+      "vs_first_move": "e4",
+      "target_family": "Modern Defense",
+      "moves": "1.e4 g6  2.d4 Bg7  3.Nc3 d6  4.f4 Nf6  5.Nf3 O-O  6.Bd3 c5  7.dxc5 Qa5  8.O-O Qxc5+",
+      "plan": "Modern setup: answer 1.e4 with ...g6, fianchetto the bishop, delay ...Nf6 until the center is clear, then hit with ...d6/...c5. Keep this distinct from the Pirc: Modern first, knight later."
     },
     {
       "name": "Colle–Zukertort System",
@@ -31,17 +31,16 @@
       }
     },
     {
-      "name": "Vienna Hybrid",
+      "name": "Englund Gambit",
       "side": "white",
-      "vs_first_move": "e4",
-      "target_family": "Bishop's Opening",
-      "moves": "1.e4 e5  2.Bc4 Nf6  3.d3 Nc6  4.Nc3  Bc5  5.Nf3  O-O  6.O-O  d6  7.h3  a6",
-      "plan": "Vienna Hybrid (Bishop's Opening: Berlin Variation): 2.Bc4 then d3 — solid, slow structure. Both Bc4 and Nc3 must reach the board; d3 keeps the center flexible. Against ...Bb4 (Hromadka), answer Ne2. Do NOT play f4 — that converts to the Vienna Gambit.",
+      "vs_first_move": "d4",
+      "target_family": "Englund Gambit",
+      "moves": "1.d4 e5  2.dxe5 Nc6  3.Nf3 Qe7  4.Bf4 Qb4+  5.Bd2 Qxb2  6.Nc3 Bb4  7.Rb1 Qa3  8.Nb5 Qa5",
+      "plan": "Anti-Englund as White: accept with dxe5, develop Nf3/Bf4, and do not chase the queen without development. If ...Qb4+ appears, block calmly and make Black prove compensation.",
       "match": {
         "applicable_if_black_plays": "e5",
-        "white_requires": ["Bc4", "Nc3"],
-        "white_forbids": ["f4"],
-        "window_plies": 12
+        "white_requires": ["dxe5"],
+        "window_plies": 6
       }
     }
   ]

@@ -27,7 +27,6 @@ OUTLASTED_MIN_PLY_INDEX = 9    # first ply index checked (0-indexed; ply 9 = mov
 FAMILY_ALIASES: dict[str, str] = {
     "London System":   "Queens Pawn Opening",
     "Colle System":    "Queens Pawn Opening",
-    "Modern Defense":  "Pirc Defense",
     "Bishops Opening": "Italian Game",
 }
 
