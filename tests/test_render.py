@@ -54,3 +54,13 @@ def test_render_all_pages_writes_one_file_per_template(tmp_path):
         assert "alice" in html
         assert "window.DATA" in html
         assert f"id='{name}-section'" in html
+
+
+def test_index_places_blunders_after_opening_tables():
+    html = Path("chess_tracker/templates/index.html").read_text()
+    white_pos = html.index('id="white-block"')
+    black_pos = html.index('id="black-block"')
+    blunder_pos = html.index('id="blunder-analysis-block"')
+    scramble_pos = html.index('id="scramble-review-block"')
+
+    assert white_pos < black_pos < blunder_pos < scramble_pos
