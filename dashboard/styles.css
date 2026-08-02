@@ -44,6 +44,26 @@ html, body {
   line-height: 1.45;
 }
 
+/* Keep the puzzle experience locked inside a single mobile viewport. */
+.puzzles-body {
+  width: 100%;
+  max-width: 100%;
+  min-height: 100vh;
+  min-height: 100svh;
+  overflow-x: hidden;
+  overflow-x: clip;
+  overscroll-behavior-x: none;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+.puzzles-body main,
+.puzzles-body #puzzles-page,
+.puzzles-body .puzzle-tab-panel {
+  min-width: 0;
+  max-width: 100%;
+}
+.puzzles-body #puzzles-page { touch-action: pan-y; }
+
 /* KPI strip */
 header#kpi-strip,
 #lichess-strip {
@@ -569,7 +589,12 @@ span.severity-red     { background: var(--border-strong); color: var(--text); }
   height: auto;
   aspect-ratio: 1;
   touch-action: pan-y;
+  overscroll-behavior: contain;
 }
+/* Chessground's vendor stylesheet loads later and uses content-box. Include
+ * the visible border in the declared width so a full-width phone board does
+ * not spill two pixels outside its container. */
+.puzzles-body .puzzle-board.cg-wrap { box-sizing: border-box; }
 .puzzle-task,
 .puzzle-queue-side {
   min-width: 0;
@@ -674,6 +699,7 @@ span.severity-red     { background: var(--border-strong); color: var(--text); }
   font: inherit;
   font-size: 0.875rem;
   cursor: pointer;
+  touch-action: manipulation;
 }
 .puzzle-queue-controls button:hover:not(:disabled),
 .puzzle-uci-entry button:hover:not(:disabled),
@@ -868,29 +894,58 @@ span.severity-red     { background: var(--border-strong); color: var(--text); }
 }
 
 @media (max-width: 760px) {
-  #puzzles-page { padding-bottom: env(safe-area-inset-bottom); }
-  .puzzles-heading {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+  .puzzles-body {
+    --puzzle-mobile-gutter: clamp(0.75rem, 3.5vw, 1rem);
+  }
+  .puzzles-body header#kpi-strip {
+    min-height: calc(44px + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+    padding-right: max(var(--puzzle-mobile-gutter), env(safe-area-inset-right));
+    padding-bottom: 0;
+    padding-left: max(var(--puzzle-mobile-gutter), env(safe-area-inset-left));
+    overflow: hidden;
+  }
+  .puzzles-body header#kpi-strip > :not(.home-link) { display: none; }
+  .puzzles-body .home-link {
+    display: flex;
     align-items: center;
-    gap: 0.5rem;
+    min-height: 44px;
+    padding: 0;
+    border-right: 0;
+    touch-action: manipulation;
+  }
+  .puzzles-body main {
+    padding-top: 0.75rem;
+    padding-right: max(var(--puzzle-mobile-gutter), env(safe-area-inset-right));
+    padding-bottom: calc(2rem + env(safe-area-inset-bottom));
+    padding-left: max(var(--puzzle-mobile-gutter), env(safe-area-inset-left));
+  }
+  #puzzles-page { width: 100%; }
+  .puzzles-heading {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.4rem;
     margin-bottom: 0.75rem;
   }
   .puzzles-heading h1 { font-size: 1.3rem; }
   .puzzles-heading .puzzle-intro { display: none; }
   .puzzle-progress-summary {
+    max-width: 100%;
     padding: 0.35rem 0.45rem;
     font-size: 0.75rem;
     text-align: center;
-    white-space: nowrap;
   }
   .puzzle-tabs { margin-bottom: 0.8rem; }
   .puzzle-tab {
     flex: 1;
     min-height: 44px;
     padding-inline: 0.5rem;
+    touch-action: manipulation;
   }
   .puzzle-workspace {
+    width: 100%;
+    max-width: 100%;
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
       "task"
@@ -902,13 +957,33 @@ span.severity-red     { background: var(--border-strong); color: var(--text); }
   }
   .puzzle-task,
   .puzzle-queue-side { padding: 0.75rem; }
+  .puzzle-task .puzzle-prompt { font-size: 1.1rem; }
+  .puzzle-side-to-move { margin-bottom: 0; }
   .puzzle-queue-feedback {
     min-height: 0;
   }
-  .puzzle-board-column { width: 100%; }
-  .puzzle-queue-board,
-  .puzzle-uci-disclosure,
-  .puzzle-promotion-chooser { width: min(100%, calc(100vw - 1.8rem)); }
+  .puzzle-queue-feedback:empty {
+    padding: 0;
+    border: 0;
+  }
+  .puzzle-board-column {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+  .puzzles-body .puzzle-queue-board {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    height: auto;
+    aspect-ratio: 1;
+  }
+  .puzzles-body .puzzle-uci-disclosure,
+  .puzzles-body .puzzle-promotion-chooser {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
   .puzzle-queue-controls { gap: 0.5rem; }
   .puzzle-queue-controls button,
   .puzzle-uci-entry button,
@@ -916,6 +991,7 @@ span.severity-red     { background: var(--border-strong); color: var(--text); }
   .puzzle-promotion-chooser button,
   .puzzle-review-button { min-height: 44px; }
   .puzzle-promotion-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .puzzle-uci-entry input { font-size: 16px; }
   .puzzle-solved-review-grid { grid-template-columns: minmax(0, 1fr); }
   .puzzle-solved-item {
     align-items: stretch;
@@ -1263,18 +1339,6 @@ span.severity-red     { background: var(--border-strong); color: var(--text); }
 
   main { padding-top: 1rem; padding-bottom: 2rem; }
 
-  .puzzles-body header#kpi-strip {
-    min-height: 44px;
-    padding-top: 0;
-    padding-bottom: 0;
-  }
-  .puzzles-body header#kpi-strip > :not(.home-link) { display: none; }
-  .puzzles-body .home-link {
-    display: flex;
-    align-items: center;
-    min-height: 44px;
-  }
-
   header#kpi-strip,
   #lichess-strip {
     flex-wrap: nowrap;
@@ -1327,7 +1391,7 @@ span.severity-red     { background: var(--border-strong); color: var(--text); }
     min-width: 520px;
   }
 
-  .puzzle-board {
+  body:not(.puzzles-body) .puzzle-board {
     width: min(400px, calc(100vw - 1.8rem));
     height: min(400px, calc(100vw - 1.8rem));
   }

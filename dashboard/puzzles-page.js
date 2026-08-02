@@ -936,16 +936,11 @@
   function focusPuzzleStart() {
     if (!window.matchMedia || !window.matchMedia("(max-width: 760px)").matches) return;
     queueMicrotask(() => {
-      const task = elements.prompt.closest(".puzzle-task") || elements.prompt;
       try {
         elements.prompt.focus({ preventScroll: true });
       } catch (_error) {
         elements.prompt.focus();
       }
-      task.scrollIntoView({
-        behavior: reducedMotion ? "auto" : "smooth",
-        block: "start",
-      });
     });
   }
 
