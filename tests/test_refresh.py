@@ -42,7 +42,10 @@ def test_refresh_main_writes_computed_and_dashboard(tmp_path, monkeypatch):
         refresh.main(["--username", "m_v-v"])
 
     assert (tmp_path / "data" / "computed.json").exists()
-    for name in ["index", "leaks", "losses", "process", "sessions", "puzzles"]:
+    for name in [
+        "index", "leaks", "losses", "process", "sessions", "puzzles",
+        "caro-kann-puzzles",
+    ]:
         out = tmp_path / "dashboard" / f"{name}.html"
         assert out.exists(), f"missing {name}.html"
         html = out.read_text()
@@ -337,6 +340,128 @@ def test_build_move_quality_by_time_control_preserves_labels_and_order():
         ("Bullet (1min)", 82.9),
         ("Blitz (5min)", 85.4),
     ]
+
+
+# --- static Caro-Kann Pages dataset sync ---
+
+def _write_caro_kann_manifest(source, chunks):
+    source.mkdir(parents=True)
+    manifest_chunks = []
+    total = 0
+    for name, records in chunks.items():
+        path = source / "chunks" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(records))
+        manifest_chunks.append({"path": f"chunks/{name}", "count": len(records)})
+        total += len(records)
+    manifest = {
+        "datasetName": "Caro-Kann puzzles for Black",
+        "solverColor": "black",
+        "orientation": "black",
+        "counts": {"balancedExported": total},
+        "chunks": manifest_chunks,
+    }
+    (source / "manifest.json").write_text(json.dumps(manifest))
+    return manifest
+
+
+def test_caro_kann_sync_copies_only_manifest_chunks_and_removes_stale(tmp_path):
+    from refresh import sync_caro_kann_web_data
+
+    source = tmp_path / "public" / "data" / "caro-kann-black"
+    manifest = _write_caro_kann_manifest(source, {
+        "chunk-0001.json": [{"id": "one"}, {"id": "two"}],
+        "chunk-0002.json": [{"id": "three"}],
+    })
+    (source / "all.jsonl").write_text('{"id":"not-for-pages"}\n')
+    (source / "by-difficulty").mkdir()
+    (source / "by-difficulty" / "beginner.jsonl").write_text("{}\n")
+
+    dashboard = tmp_path / "dashboard"
+    stale = dashboard / "data" / "caro-kann-black" / "chunks" / "old.json"
+    stale.parent.mkdir(parents=True)
+    stale.write_text("[]")
+
+    result = sync_caro_kann_web_data(source, dashboard)
+
+    deployed = dashboard / "data" / "caro-kann-black"
+    assert result == {"available": True, "chunks": 2, "puzzles": 3}
+    assert json.loads((deployed / "manifest.json").read_text()) == manifest
+    assert sorted(
+        str(path.relative_to(deployed))
+        for path in deployed.rglob("*")
+        if path.is_file()
+    ) == [
+        "chunks/chunk-0001.json",
+        "chunks/chunk-0002.json",
+        "manifest.json",
+    ]
+    assert not stale.exists()
+    assert not (deployed / "all.jsonl").exists()
+    assert not (deployed / "by-difficulty").exists()
+
+
+def test_caro_kann_sync_missing_source_clears_stale_deployment(tmp_path):
+    from refresh import sync_caro_kann_web_data
+
+    dashboard = tmp_path / "dashboard"
+    stale = dashboard / "data" / "caro-kann-black" / "chunks" / "old.json"
+    stale.parent.mkdir(parents=True)
+    stale.write_text("[]")
+
+    result = sync_caro_kann_web_data(tmp_path / "missing", dashboard)
+
+    assert result == {"available": False, "chunks": 0, "puzzles": 0}
+    assert not (dashboard / "data" / "caro-kann-black").exists()
+
+
+def test_caro_kann_sync_refuses_symlinked_data_parent_escape(tmp_path):
+    from refresh import sync_caro_kann_web_data
+
+    dashboard = tmp_path / "dashboard"
+    dashboard.mkdir()
+    outside = tmp_path / "outside-dashboard"
+    escaped_dataset = outside / "caro-kann-black"
+    escaped_dataset.mkdir(parents=True)
+    sentinel = escaped_dataset / "must-survive.txt"
+    sentinel.write_text("user data")
+    (dashboard / "data").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="outside the resolved dashboard root"):
+        sync_caro_kann_web_data(tmp_path / "missing", dashboard)
+
+    assert sentinel.read_text() == "user data"
+    assert escaped_dataset.is_dir()
+
+
+@pytest.mark.parametrize(
+    ("chunk_path", "declared_count", "records", "message"),
+    [
+        ("../outside.json", 0, [], r"relative chunks/.*\.json"),
+        ("chunks/chunk-0001.json", 2, [{"id": "one"}], "count mismatch"),
+    ],
+)
+def test_caro_kann_sync_rejects_unsafe_paths_and_bad_counts(
+    tmp_path, chunk_path, declared_count, records, message
+):
+    from refresh import sync_caro_kann_web_data
+
+    source = tmp_path / "public" / "data" / "caro-kann-black"
+    source.mkdir(parents=True)
+    if chunk_path.startswith("chunks/"):
+        chunk = source / chunk_path
+        chunk.parent.mkdir(parents=True)
+        chunk.write_text(json.dumps(records))
+    manifest = {
+        "solverColor": "black",
+        "orientation": "black",
+        "counts": {"balancedExported": declared_count},
+        "chunks": [{"path": chunk_path, "count": declared_count}],
+    }
+    (source / "manifest.json").write_text(json.dumps(manifest))
+
+    with pytest.raises(ValueError, match=message):
+        sync_caro_kann_web_data(source, tmp_path / "dashboard")
 
 
 # --- puzzle-line backfill wiring ---

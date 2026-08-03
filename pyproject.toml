@@ -3,7 +3,7 @@ name = "chess-tracker"
 version = "0.1.0"
 description = "Local Chess.com bullet repertoire dashboard"
 requires-python = ">=3.11"
-dependencies = ["python-chess>=1.10"]
+dependencies = ["python-chess>=1.10", "zstandard>=0.23"]
 
 [dependency-groups]
 dev = ["pytest>=8.0"]

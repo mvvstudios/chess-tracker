@@ -1,8 +1,11 @@
 """CLI: pull Chess.com archives → compute metrics → render dashboard."""
 import argparse
 import json
+import shutil
 import sys
+import tempfile
 from pathlib import Path
+from pathlib import PurePosixPath
 
 from chess_tracker.api import fetch_archives_index, fetch_archive, fetch_player_stats, fetch_lichess_user
 from chess_tracker.pgn import parse_game
@@ -25,6 +28,180 @@ _FORMAT_ORDER = {"bullet": 0, "blitz": 1, "rapid": 2, "daily": 3}
 _FORMAT_LABELS = {"bullet": "Bullet", "blitz": "Blitz", "rapid": "Rapid", "daily": "Daily"}
 DEFAULT_ANALYSIS_MAX_GAMES = 0
 DEFAULT_PUZZLE_LINE_MAX = 100
+CARO_KANN_DATASET_NAME = "caro-kann-black"
+DEFAULT_CARO_KANN_DATA_DIR = Path("public/data") / CARO_KANN_DATASET_NAME
+
+
+def _validate_caro_kann_deployment_path(
+    destination: Path,
+    dashboard_root: Path,
+) -> None:
+    """Require the generated dataset path to remain inside dashboard/data.
+
+    Comparing resolved parents catches a ``dashboard/data`` symlink before any
+    staging or deletion can affect the symlink target. The dataset path itself
+    is not resolved so an old dataset symlink can still be safely unlinked.
+    """
+    destination = Path(destination)
+    if destination.name != CARO_KANN_DATASET_NAME or destination.parent.name != "data":
+        raise ValueError(
+            "refusing to remove a path outside data/caro-kann-black: "
+            f"{destination}"
+        )
+    dashboard_root = Path(dashboard_root).resolve()
+    expected_parent = dashboard_root / "data"
+    resolved_parent = destination.parent.resolve()
+    if resolved_parent != expected_parent:
+        raise ValueError(
+            "refusing Caro-Kann deployment outside the resolved dashboard root: "
+            f"{destination}"
+        )
+
+
+def _remove_deployed_caro_kann_data(
+    destination: Path,
+    dashboard_root: Path,
+) -> None:
+    """Remove one generated web dataset directory, with a resolved path guard."""
+    destination = Path(destination)
+    _validate_caro_kann_deployment_path(destination, dashboard_root)
+    if destination.is_symlink():
+        destination.unlink()
+    elif destination.exists():
+        shutil.rmtree(destination)
+
+
+def _manifest_balanced_count(manifest: dict) -> int:
+    counts = manifest.get("counts")
+    value = counts.get("balancedExported") if isinstance(counts, dict) else None
+    if value is None:
+        value = manifest.get("balancedExported")
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError("manifest is missing a non-negative balancedExported count")
+    return value
+
+
+def _validated_caro_kann_chunks(source_dir: Path, manifest: dict) -> list[tuple[Path, int]]:
+    """Validate manifest chunk paths and their exact JSON-array record counts."""
+    if manifest.get("solverColor") != "black":
+        raise ValueError("Caro-Kann manifest solverColor must be black")
+    if manifest.get("orientation") != "black":
+        raise ValueError("Caro-Kann manifest orientation must be black")
+
+    chunks = manifest.get("chunks")
+    if not isinstance(chunks, list):
+        raise ValueError("Caro-Kann manifest chunks must be a list")
+
+    source_root = source_dir.resolve()
+    validated: list[tuple[Path, int]] = []
+    seen_paths: set[str] = set()
+    total = 0
+    for index, item in enumerate(chunks):
+        if not isinstance(item, dict):
+            raise ValueError(f"manifest chunk {index} must be an object")
+        raw_path = item.get("path")
+        count = item.get("count")
+        if not isinstance(raw_path, str) or not raw_path:
+            raise ValueError(f"manifest chunk {index} has no path")
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            raise ValueError(f"manifest chunk {raw_path!r} has an invalid count")
+
+        relative = PurePosixPath(raw_path)
+        if (
+            relative.is_absolute()
+            or ".." in relative.parts
+            or len(relative.parts) < 2
+            or relative.parts[0] != "chunks"
+            or relative.suffix != ".json"
+        ):
+            raise ValueError(
+                f"manifest chunk path must be a relative chunks/*.json path: {raw_path!r}"
+            )
+        normalized = relative.as_posix()
+        if normalized in seen_paths:
+            raise ValueError(f"duplicate manifest chunk path: {raw_path!r}")
+        seen_paths.add(normalized)
+
+        chunk_path = (source_dir / Path(*relative.parts)).resolve()
+        if source_root not in chunk_path.parents:
+            raise ValueError(f"manifest chunk escapes the dataset directory: {raw_path!r}")
+        try:
+            records = json.loads(chunk_path.read_text())
+        except FileNotFoundError as exc:
+            raise ValueError(f"manifest chunk does not exist: {raw_path!r}") from exc
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"manifest chunk is not valid JSON: {raw_path!r}") from exc
+        if not isinstance(records, list):
+            raise ValueError(f"manifest chunk is not a JSON array: {raw_path!r}")
+        if len(records) != count:
+            raise ValueError(
+                f"manifest chunk count mismatch for {raw_path!r}: "
+                f"expected {count}, found {len(records)}"
+            )
+        validated.append((Path(*relative.parts), count))
+        total += count
+
+    balanced_count = _manifest_balanced_count(manifest)
+    if total != balanced_count:
+        raise ValueError(
+            "manifest balancedExported count does not match its chunks: "
+            f"expected {balanced_count}, found {total}"
+        )
+    return validated
+
+
+def sync_caro_kann_web_data(
+    source_dir: Path = DEFAULT_CARO_KANN_DATA_DIR,
+    dashboard_dir: Path = Path("dashboard"),
+) -> dict:
+    """Copy only the static trainer manifest and its balanced chunks.
+
+    Full JSONL exports and analytical shards remain under ``public/``. The
+    dashboard copy is generated afresh so removed chunks cannot linger in a
+    Pages artifact. A missing canonical manifest is an expected state for a
+    checkout that has not run the extractor yet.
+    """
+    source_dir = Path(source_dir)
+    dashboard_dir = Path(dashboard_dir)
+    destination = dashboard_dir / "data" / CARO_KANN_DATASET_NAME
+    _validate_caro_kann_deployment_path(destination, dashboard_dir)
+    manifest_path = source_dir / "manifest.json"
+    if not manifest_path.is_file():
+        _remove_deployed_caro_kann_data(destination, dashboard_dir)
+        return {"available": False, "chunks": 0, "puzzles": 0}
+
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except json.JSONDecodeError as exc:
+        raise ValueError("Caro-Kann manifest is not valid JSON") from exc
+    if not isinstance(manifest, dict):
+        raise ValueError("Caro-Kann manifest must be a JSON object")
+    chunks = _validated_caro_kann_chunks(source_dir, manifest)
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    _validate_caro_kann_deployment_path(destination, dashboard_dir)
+    staging = Path(tempfile.mkdtemp(
+        prefix=f".{CARO_KANN_DATASET_NAME}-sync-",
+        dir=destination.parent,
+    ))
+    try:
+        shutil.copyfile(manifest_path, staging / "manifest.json")
+        for relative_path, _count in chunks:
+            target = staging / relative_path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source_dir / relative_path, target)
+        _remove_deployed_caro_kann_data(destination, dashboard_dir)
+        staging.replace(destination)
+    except Exception:
+        if staging.exists():
+            shutil.rmtree(staging)
+        raise
+
+    return {
+        "available": True,
+        "chunks": len(chunks),
+        "puzzles": _manifest_balanced_count(manifest),
+    }
 
 
 def accept_game(game: dict, time_class: str, time_control: str | None = None) -> bool:
@@ -434,6 +611,21 @@ def main(argv=None) -> int:
 
     print("[5/5] Rendering dashboard...")
     render_all_pages(template_dir=template_dir, output_dir=dashboard_dir, payload=payload)
+    caro_kann_sync = sync_caro_kann_web_data(
+        source_dir=DEFAULT_CARO_KANN_DATA_DIR,
+        dashboard_dir=dashboard_dir,
+    )
+    if caro_kann_sync["available"]:
+        print(
+            "      Caro-Kann trainer data: "
+            f"{caro_kann_sync['puzzles']} puzzles in "
+            f"{caro_kann_sync['chunks']} chunk(s)."
+        )
+    else:
+        print(
+            "      Caro-Kann trainer data unavailable; "
+            f"run the extractor to create {DEFAULT_CARO_KANN_DATA_DIR}."
+        )
 
     print(f"\nDone. Rendered to: {(dashboard_dir / 'index.html').resolve()}")
     print(f"  Browsers block file:// subresources; serve over HTTP instead:")

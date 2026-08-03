@@ -93,14 +93,18 @@
         `<span class="kpi-value">${k.current_rating ?? "—"}</span></div>`;
 
     const hasDedicatedLichessStrip = document.getElementById("lichess-strip") != null;
-    const puzzlesActive = /(?:^|\/)puzzles\.html$/.test(window.location.pathname);
+    const pageName = window.location.pathname.split("/").pop();
+    const puzzlesActive = pageName === "puzzles.html";
+    const caroKannActive = pageName === "caro-kann-puzzles.html";
     const profileLinks = `
       <div class="strip-profile-links">
         <a class="strip-platform-label" href="https://www.chess.com/member/M_V-V" target="_blank" rel="noopener">Chess.com</a>
         ${hasDedicatedLichessStrip ? "" : `<a class="strip-platform-label" href="https://lichess.org/@/M_V-v" target="_blank" rel="noopener">Lichess</a>`}
       </div>
       <a class="strip-nav-link${puzzlesActive ? " active" : ""}" href="puzzles.html"
-         ${puzzlesActive ? 'aria-current="page"' : ""}>Puzzles</a>`;
+         ${puzzlesActive ? 'aria-current="page"' : ""}>Puzzles</a>
+      <a class="strip-nav-link${caroKannActive ? " active" : ""}" href="caro-kann-puzzles.html"
+         ${caroKannActive ? 'aria-current="page"' : ""}>Caro-Kann</a>`;
     const kpiHtml = `
       ${profileLinks}
       <div class="kpi kpi-sep"></div>
@@ -1003,6 +1007,7 @@
       card("Process", processHeadline, processSub, "process.html", processAlert),
       card("Sessions", `${sessionCount} total`, sessionsSub, "sessions.html", sessionsAlert),
       card("Puzzles", `${puzzleCount}`, puzzleSub, "puzzles.html", false),
+      card("Caro-Kann", "Black trainer", "Lichess tactics · all levels", "caro-kann-puzzles.html", false),
     ].join("");
   }
 

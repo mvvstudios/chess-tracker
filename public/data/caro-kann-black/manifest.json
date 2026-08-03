@@ -1,0 +1,682 @@
+{
+  "balancedCounts": {
+    "difficulty": {
+      "advanced": 1466,
+      "beginner": 2640,
+      "developing": 2861,
+      "expert": 585,
+      "intermediate": 2448
+    },
+    "primaryTacticalTheme": {
+      "advancedPawn": 47,
+      "advantage": 1761,
+      "attackingF2F7": 3,
+      "attraction": 74,
+      "capturingDefender": 100,
+      "castling": 3,
+      "clearance": 87,
+      "collinearMove": 1,
+      "crushing": 1204,
+      "defensiveMove": 459,
+      "deflection": 208,
+      "discoveredAttack": 795,
+      "doubleCheck": 22,
+      "endgame": 3,
+      "fork": 1401,
+      "interference": 77,
+      "kingsideAttack": 1,
+      "mateIn1": 919,
+      "mateIn2": 663,
+      "mateIn3": 244,
+      "mateIn4": 37,
+      "mateIn5": 6,
+      "middlegame": 113,
+      "pin": 727,
+      "quietMove": 140,
+      "sacrifice": 290,
+      "skewer": 190,
+      "trappedPiece": 368,
+      "unclassified": 44,
+      "xRayAttack": 13
+    },
+    "provenance": {
+      "master": 1893,
+      "masterVsMaster": 204,
+      "standard": 7900,
+      "superGM": 3
+    },
+    "theme": {
+      "advancedPawn": 102,
+      "advantage": 4823,
+      "anastasiaMate": 3,
+      "attackingF2F7": 78,
+      "attraction": 317,
+      "backRankMate": 111,
+      "balestraMate": 3,
+      "blindSwineMate": 2,
+      "bodenMate": 22,
+      "capturingDefender": 231,
+      "castling": 29,
+      "clearance": 200,
+      "collinearMove": 11,
+      "cornerMate": 7,
+      "crushing": 3147,
+      "defensiveMove": 507,
+      "deflection": 343,
+      "discoveredAttack": 992,
+      "discoveredCheck": 206,
+      "doubleBishopMate": 4,
+      "doubleCheck": 71,
+      "dovetailMate": 3,
+      "enPassant": 5,
+      "endgame": 82,
+      "epauletteMate": 15,
+      "exposedKing": 172,
+      "fork": 1450,
+      "hangingPiece": 603,
+      "hookMate": 1,
+      "interference": 93,
+      "intermezzo": 213,
+      "kingsideAttack": 1306,
+      "long": 2448,
+      "master": 2100,
+      "masterVsMaster": 207,
+      "mate": 1869,
+      "mateIn1": 919,
+      "mateIn2": 663,
+      "mateIn3": 244,
+      "mateIn4": 37,
+      "mateIn5": 6,
+      "middlegame": 7647,
+      "morphysMate": 6,
+      "oneMove": 923,
+      "opening": 2271,
+      "operaMate": 29,
+      "pillsburysMate": 44,
+      "pin": 833,
+      "promotion": 10,
+      "queensideAttack": 356,
+      "quietMove": 184,
+      "sacrifice": 784,
+      "short": 5934,
+      "skewer": 212,
+      "smotheredMate": 20,
+      "superGM": 3,
+      "swallowstailMate": 14,
+      "trappedPiece": 444,
+      "veryLong": 535,
+      "xRayAttack": 20
+    },
+    "variation": {
+      "Caro-Kann Defense: Accelerated Panov Attack": 527,
+      "Caro-Kann Defense: Advance": 2,
+      "Caro-Kann Defense: Advance Variation": 1000,
+      "Caro-Kann Defense: Alekhine Gambit": 46,
+      "Caro-Kann Defense: Alien Gambit": 22,
+      "Caro-Kann Defense: Apocalypse Attack": 59,
+      "Caro-Kann Defense: Breyer Variation": 357,
+      "Caro-Kann Defense: Bronstein-Larsen Variation": 150,
+      "Caro-Kann Defense: Campomanes Attack": 161,
+      "Caro-Kann Defense: Classical Variation": 686,
+      "Caro-Kann Defense: De Bruycker Defense": 17,
+      "Caro-Kann Defense: Edinburgh Variation": 1,
+      "Caro-Kann Defense: Endgame Offer": 134,
+      "Caro-Kann Defense: Endgame Variation": 11,
+      "Caro-Kann Defense: Euwe Attack": 116,
+      "Caro-Kann Defense: Exchange Variation": 1000,
+      "Caro-Kann Defense: Finnish Variation": 7,
+      "Caro-Kann Defense: Forgacs Variation": 144,
+      "Caro-Kann Defense: Goldman Variation": 107,
+      "Caro-Kann Defense: Gurgenidze Counterattack": 17,
+      "Caro-Kann Defense: Gurgenidze System": 65,
+      "Caro-Kann Defense: Hector Gambit": 9,
+      "Caro-Kann Defense: Hillbilly Attack": 569,
+      "Caro-Kann Defense: Karpov Variation": 300,
+      "Caro-Kann Defense: Labahn Attack": 2,
+      "Caro-Kann Defense: Main Line": 365,
+      "Caro-Kann Defense: Maroczy Variation": 576,
+      "Caro-Kann Defense: Martian Gambit": 1,
+      "Caro-Kann Defense: Masi Variation": 11,
+      "Caro-Kann Defense: Massachusetts Defense": 2,
+      "Caro-Kann Defense: Mieses Gambit": 8,
+      "Caro-Kann Defense: Modern Variation": 73,
+      "Caro-Kann Defense: Other variations": 1000,
+      "Caro-Kann Defense: Panov Attack": 773,
+      "Caro-Kann Defense: Rasa-Studier Gambit": 53,
+      "Caro-Kann Defense: Spike Variation": 4,
+      "Caro-Kann Defense: St Patricks Attack": 1,
+      "Caro-Kann Defense: Tartakower Variation": 629,
+      "Caro-Kann Defense: Toikkanen Gambit": 13,
+      "Caro-Kann Defense: Two Knights Attack": 886,
+      "Caro-Kann Defense: Ulysses Gambit": 27,
+      "Caro-Kann Defense: von Hennig Gambit": 69
+    }
+  },
+  "chunks": [
+    {
+      "count": 1000,
+      "path": "chunks/chunk-0001.json"
+    },
+    {
+      "count": 1000,
+      "path": "chunks/chunk-0002.json"
+    },
+    {
+      "count": 1000,
+      "path": "chunks/chunk-0003.json"
+    },
+    {
+      "count": 1000,
+      "path": "chunks/chunk-0004.json"
+    },
+    {
+      "count": 1000,
+      "path": "chunks/chunk-0005.json"
+    },
+    {
+      "count": 1000,
+      "path": "chunks/chunk-0006.json"
+    },
+    {
+      "count": 1000,
+      "path": "chunks/chunk-0007.json"
+    },
+    {
+      "count": 1000,
+      "path": "chunks/chunk-0008.json"
+    },
+    {
+      "count": 1000,
+      "path": "chunks/chunk-0009.json"
+    },
+    {
+      "count": 1000,
+      "path": "chunks/chunk-0010.json"
+    }
+  ],
+  "counts": {
+    "allExported": 26920,
+    "balancedExported": 10000,
+    "blackToSolveRows": 26920,
+    "caroKannRows": 69848,
+    "invalidRows": 6074040,
+    "rowsScanned": 6100960,
+    "validRows": 26920
+  },
+  "datasetName": "Caro-Kann Puzzles for Black",
+  "difficultyBuckets": {
+    "advanced": {
+      "max": 2399,
+      "min": 2000
+    },
+    "beginner": {
+      "max": 1199,
+      "min": null
+    },
+    "developing": {
+      "max": 1599,
+      "min": 1200
+    },
+    "expert": {
+      "max": null,
+      "min": 2400
+    },
+    "intermediate": {
+      "max": 1999,
+      "min": 1600
+    }
+  },
+  "difficultyCounts": {
+    "advanced": 2302,
+    "beginner": 12042,
+    "developing": 6978,
+    "expert": 665,
+    "intermediate": 4933
+  },
+  "generatedAtUtc": "2026-08-03T05:48:48.577381Z",
+  "inputByteSize": 304384407,
+  "inputFilename": "lichess_db_puzzle.csv.zst",
+  "inputKind": "file",
+  "inputSha256": "a0ea9129c6b6434dfb34a9ac4ec660c9cfff22b2de465e01854f018fc847f073",
+  "inputSha256Scope": "complete-file-bytes",
+  "license": "CC0",
+  "openingPrefix": "Caro-Kann_Defense",
+  "orientation": "black",
+  "provenanceCounts": {
+    "master": 2140,
+    "masterVsMaster": 208,
+    "standard": 24569,
+    "superGM": 3
+  },
+  "qualityFilters": {
+    "maxRatingDeviation": 150,
+    "minPlays": 20,
+    "minPopularity": 0,
+    "qualityEligible": 26378
+  },
+  "sampling": {
+    "algorithm": "sha256-cell-round-robin-v1",
+    "balancedLimit": 10000,
+    "dimensions": [
+      "primaryVariation",
+      "difficulty",
+      "provenance",
+      "primaryTacticalTheme"
+    ],
+    "maxPerVariation": 1000,
+    "seed": 20260803
+  },
+  "scanComplete": true,
+  "scanLimit": null,
+  "schemaVersion": 1,
+  "solverColor": "black",
+  "source": {
+    "exportUrl": "https://database.lichess.org/lichess_db_puzzle.csv.zst",
+    "name": "Lichess Open Database: Puzzles",
+    "url": "https://database.lichess.org/#puzzles"
+  },
+  "themeCounts": {
+    "advancedPawn": 137,
+    "advantage": 11421,
+    "anastasiaMate": 8,
+    "arabianMate": 2,
+    "attackingF2F7": 286,
+    "attraction": 502,
+    "backRankMate": 318,
+    "balestraMate": 6,
+    "blindSwineMate": 3,
+    "bodenMate": 80,
+    "capturingDefender": 412,
+    "castling": 46,
+    "clearance": 268,
+    "collinearMove": 16,
+    "cornerMate": 35,
+    "crushing": 6264,
+    "defensiveMove": 665,
+    "deflection": 449,
+    "discoveredAttack": 1869,
+    "discoveredCheck": 345,
+    "doubleBishopMate": 16,
+    "doubleCheck": 122,
+    "dovetailMate": 6,
+    "enPassant": 8,
+    "endgame": 198,
+    "epauletteMate": 57,
+    "exposedKing": 309,
+    "fork": 4682,
+    "hangingPiece": 1538,
+    "hookMate": 2,
+    "interference": 101,
+    "intermezzo": 503,
+    "kingsideAttack": 4546,
+    "long": 4802,
+    "master": 2351,
+    "masterVsMaster": 211,
+    "mate": 9034,
+    "mateIn1": 6976,
+    "mateIn2": 1693,
+    "mateIn3": 322,
+    "mateIn4": 37,
+    "mateIn5": 6,
+    "middlegame": 20358,
+    "morphysMate": 17,
+    "oneMove": 6995,
+    "opening": 6364,
+    "operaMate": 101,
+    "pillsburysMate": 155,
+    "pin": 1522,
+    "promotion": 21,
+    "queensideAttack": 903,
+    "quietMove": 198,
+    "sacrifice": 1213,
+    "short": 14112,
+    "skewer": 277,
+    "smotheredMate": 158,
+    "superGM": 3,
+    "swallowstailMate": 55,
+    "trappedPiece": 633,
+    "veryLong": 811,
+    "xRayAttack": 26
+  },
+  "truncated": false,
+  "variationCounts": {
+    "Caro-Kann Defense: Accelerated Panov Attack": 924,
+    "Caro-Kann Defense: Advance": 2,
+    "Caro-Kann Defense: Advance Variation": 4435,
+    "Caro-Kann Defense: Alekhine Gambit": 46,
+    "Caro-Kann Defense: Alien Gambit": 23,
+    "Caro-Kann Defense: Apocalypse Attack": 59,
+    "Caro-Kann Defense: Breyer Variation": 497,
+    "Caro-Kann Defense: Bronstein-Larsen Variation": 150,
+    "Caro-Kann Defense: Campomanes Attack": 167,
+    "Caro-Kann Defense: Classical Variation": 1487,
+    "Caro-Kann Defense: De Bruycker Defense": 17,
+    "Caro-Kann Defense: Edinburgh Variation": 1,
+    "Caro-Kann Defense: Endgame Offer": 174,
+    "Caro-Kann Defense: Endgame Variation": 11,
+    "Caro-Kann Defense: Euwe Attack": 136,
+    "Caro-Kann Defense: Exchange Variation": 3216,
+    "Caro-Kann Defense: Finnish Variation": 7,
+    "Caro-Kann Defense: Forgacs Variation": 149,
+    "Caro-Kann Defense: Goldman Variation": 113,
+    "Caro-Kann Defense: Gurgenidze Counterattack": 17,
+    "Caro-Kann Defense: Gurgenidze System": 65,
+    "Caro-Kann Defense: Hector Gambit": 9,
+    "Caro-Kann Defense: Hillbilly Attack": 1264,
+    "Caro-Kann Defense: Karpov Variation": 357,
+    "Caro-Kann Defense: Labahn Attack": 4,
+    "Caro-Kann Defense: Main Line": 506,
+    "Caro-Kann Defense: Maroczy Variation": 1009,
+    "Caro-Kann Defense: Martian Gambit": 1,
+    "Caro-Kann Defense: Masi Variation": 11,
+    "Caro-Kann Defense: Massachusetts Defense": 2,
+    "Caro-Kann Defense: Mieses Gambit": 9,
+    "Caro-Kann Defense: Modern Variation": 74,
+    "Caro-Kann Defense: Other variations": 7220,
+    "Caro-Kann Defense: Panov Attack": 1474,
+    "Caro-Kann Defense: Rasa-Studier Gambit": 54,
+    "Caro-Kann Defense: Spike Variation": 4,
+    "Caro-Kann Defense: St Patricks Attack": 1,
+    "Caro-Kann Defense: Tartakower Variation": 1055,
+    "Caro-Kann Defense: Toikkanen Gambit": 13,
+    "Caro-Kann Defense: Two Knights Attack": 2061,
+    "Caro-Kann Defense: Ulysses Gambit": 27,
+    "Caro-Kann Defense: von Hennig Gambit": 69
+  },
+  "variations": [
+    {
+      "balancedCount": 527,
+      "count": 924,
+      "name": "Caro-Kann Defense: Accelerated Panov Attack",
+      "slug": "caro-kann-defense-accelerated-panov-attack",
+      "tag": "Caro-Kann_Defense_Accelerated_Panov_Attack"
+    },
+    {
+      "balancedCount": 2,
+      "count": 2,
+      "name": "Caro-Kann Defense: Advance",
+      "slug": "caro-kann-defense-advance",
+      "tag": "Caro-Kann_Defense_Advance"
+    },
+    {
+      "balancedCount": 1000,
+      "count": 4435,
+      "name": "Caro-Kann Defense: Advance Variation",
+      "slug": "caro-kann-defense-advance-variation",
+      "tag": "Caro-Kann_Defense_Advance_Variation"
+    },
+    {
+      "balancedCount": 46,
+      "count": 46,
+      "name": "Caro-Kann Defense: Alekhine Gambit",
+      "slug": "caro-kann-defense-alekhine-gambit",
+      "tag": "Caro-Kann_Defense_Alekhine_Gambit"
+    },
+    {
+      "balancedCount": 22,
+      "count": 23,
+      "name": "Caro-Kann Defense: Alien Gambit",
+      "slug": "caro-kann-defense-alien-gambit",
+      "tag": "Caro-Kann_Defense_Alien_Gambit"
+    },
+    {
+      "balancedCount": 59,
+      "count": 59,
+      "name": "Caro-Kann Defense: Apocalypse Attack",
+      "slug": "caro-kann-defense-apocalypse-attack",
+      "tag": "Caro-Kann_Defense_Apocalypse_Attack"
+    },
+    {
+      "balancedCount": 357,
+      "count": 497,
+      "name": "Caro-Kann Defense: Breyer Variation",
+      "slug": "caro-kann-defense-breyer-variation",
+      "tag": "Caro-Kann_Defense_Breyer_Variation"
+    },
+    {
+      "balancedCount": 150,
+      "count": 150,
+      "name": "Caro-Kann Defense: Bronstein-Larsen Variation",
+      "slug": "caro-kann-defense-bronstein-larsen-variation",
+      "tag": "Caro-Kann_Defense_Bronstein-Larsen_Variation"
+    },
+    {
+      "balancedCount": 161,
+      "count": 167,
+      "name": "Caro-Kann Defense: Campomanes Attack",
+      "slug": "caro-kann-defense-campomanes-attack",
+      "tag": "Caro-Kann_Defense_Campomanes_Attack"
+    },
+    {
+      "balancedCount": 686,
+      "count": 1487,
+      "name": "Caro-Kann Defense: Classical Variation",
+      "slug": "caro-kann-defense-classical-variation",
+      "tag": "Caro-Kann_Defense_Classical_Variation"
+    },
+    {
+      "balancedCount": 17,
+      "count": 17,
+      "name": "Caro-Kann Defense: De Bruycker Defense",
+      "slug": "caro-kann-defense-de-bruycker-defense",
+      "tag": "Caro-Kann_Defense_De_Bruycker_Defense"
+    },
+    {
+      "balancedCount": 1,
+      "count": 1,
+      "name": "Caro-Kann Defense: Edinburgh Variation",
+      "slug": "caro-kann-defense-edinburgh-variation",
+      "tag": "Caro-Kann_Defense_Edinburgh_Variation"
+    },
+    {
+      "balancedCount": 134,
+      "count": 174,
+      "name": "Caro-Kann Defense: Endgame Offer",
+      "slug": "caro-kann-defense-endgame-offer",
+      "tag": "Caro-Kann_Defense_Endgame_Offer"
+    },
+    {
+      "balancedCount": 11,
+      "count": 11,
+      "name": "Caro-Kann Defense: Endgame Variation",
+      "slug": "caro-kann-defense-endgame-variation",
+      "tag": "Caro-Kann_Defense_Endgame_Variation"
+    },
+    {
+      "balancedCount": 116,
+      "count": 136,
+      "name": "Caro-Kann Defense: Euwe Attack",
+      "slug": "caro-kann-defense-euwe-attack",
+      "tag": "Caro-Kann_Defense_Euwe_Attack"
+    },
+    {
+      "balancedCount": 1000,
+      "count": 3216,
+      "name": "Caro-Kann Defense: Exchange Variation",
+      "slug": "caro-kann-defense-exchange-variation",
+      "tag": "Caro-Kann_Defense_Exchange_Variation"
+    },
+    {
+      "balancedCount": 7,
+      "count": 7,
+      "name": "Caro-Kann Defense: Finnish Variation",
+      "slug": "caro-kann-defense-finnish-variation",
+      "tag": "Caro-Kann_Defense_Finnish_Variation"
+    },
+    {
+      "balancedCount": 144,
+      "count": 149,
+      "name": "Caro-Kann Defense: Forgacs Variation",
+      "slug": "caro-kann-defense-forgacs-variation",
+      "tag": "Caro-Kann_Defense_Forgacs_Variation"
+    },
+    {
+      "balancedCount": 107,
+      "count": 113,
+      "name": "Caro-Kann Defense: Goldman Variation",
+      "slug": "caro-kann-defense-goldman-variation",
+      "tag": "Caro-Kann_Defense_Goldman_Variation"
+    },
+    {
+      "balancedCount": 17,
+      "count": 17,
+      "name": "Caro-Kann Defense: Gurgenidze Counterattack",
+      "slug": "caro-kann-defense-gurgenidze-counterattack",
+      "tag": "Caro-Kann_Defense_Gurgenidze_Counterattack"
+    },
+    {
+      "balancedCount": 65,
+      "count": 65,
+      "name": "Caro-Kann Defense: Gurgenidze System",
+      "slug": "caro-kann-defense-gurgenidze-system",
+      "tag": "Caro-Kann_Defense_Gurgenidze_System"
+    },
+    {
+      "balancedCount": 9,
+      "count": 9,
+      "name": "Caro-Kann Defense: Hector Gambit",
+      "slug": "caro-kann-defense-hector-gambit",
+      "tag": "Caro-Kann_Defense_Hector_Gambit"
+    },
+    {
+      "balancedCount": 569,
+      "count": 1264,
+      "name": "Caro-Kann Defense: Hillbilly Attack",
+      "slug": "caro-kann-defense-hillbilly-attack",
+      "tag": "Caro-Kann_Defense_Hillbilly_Attack"
+    },
+    {
+      "balancedCount": 300,
+      "count": 357,
+      "name": "Caro-Kann Defense: Karpov Variation",
+      "slug": "caro-kann-defense-karpov-variation",
+      "tag": "Caro-Kann_Defense_Karpov_Variation"
+    },
+    {
+      "balancedCount": 2,
+      "count": 4,
+      "name": "Caro-Kann Defense: Labahn Attack",
+      "slug": "caro-kann-defense-labahn-attack",
+      "tag": "Caro-Kann_Defense_Labahn_Attack"
+    },
+    {
+      "balancedCount": 365,
+      "count": 506,
+      "name": "Caro-Kann Defense: Main Line",
+      "slug": "caro-kann-defense-main-line",
+      "tag": "Caro-Kann_Defense_Main_Line"
+    },
+    {
+      "balancedCount": 576,
+      "count": 1009,
+      "name": "Caro-Kann Defense: Maroczy Variation",
+      "slug": "caro-kann-defense-maroczy-variation",
+      "tag": "Caro-Kann_Defense_Maroczy_Variation"
+    },
+    {
+      "balancedCount": 1,
+      "count": 1,
+      "name": "Caro-Kann Defense: Martian Gambit",
+      "slug": "caro-kann-defense-martian-gambit",
+      "tag": "Caro-Kann_Defense_Martian_Gambit"
+    },
+    {
+      "balancedCount": 11,
+      "count": 11,
+      "name": "Caro-Kann Defense: Masi Variation",
+      "slug": "caro-kann-defense-masi-variation",
+      "tag": "Caro-Kann_Defense_Masi_Variation"
+    },
+    {
+      "balancedCount": 2,
+      "count": 2,
+      "name": "Caro-Kann Defense: Massachusetts Defense",
+      "slug": "caro-kann-defense-massachusetts-defense",
+      "tag": "Caro-Kann_Defense_Massachusetts_Defense"
+    },
+    {
+      "balancedCount": 8,
+      "count": 9,
+      "name": "Caro-Kann Defense: Mieses Gambit",
+      "slug": "caro-kann-defense-mieses-gambit",
+      "tag": "Caro-Kann_Defense_Mieses_Gambit"
+    },
+    {
+      "balancedCount": 73,
+      "count": 74,
+      "name": "Caro-Kann Defense: Modern Variation",
+      "slug": "caro-kann-defense-modern-variation",
+      "tag": "Caro-Kann_Defense_Modern_Variation"
+    },
+    {
+      "balancedCount": 1000,
+      "count": 7220,
+      "name": "Caro-Kann Defense: Other variations",
+      "slug": "caro-kann-defense-other-variations",
+      "tag": "Caro-Kann_Defense_Other_variations"
+    },
+    {
+      "balancedCount": 773,
+      "count": 1474,
+      "name": "Caro-Kann Defense: Panov Attack",
+      "slug": "caro-kann-defense-panov-attack",
+      "tag": "Caro-Kann_Defense_Panov_Attack"
+    },
+    {
+      "balancedCount": 53,
+      "count": 54,
+      "name": "Caro-Kann Defense: Rasa-Studier Gambit",
+      "slug": "caro-kann-defense-rasa-studier-gambit",
+      "tag": "Caro-Kann_Defense_Rasa-Studier_Gambit"
+    },
+    {
+      "balancedCount": 4,
+      "count": 4,
+      "name": "Caro-Kann Defense: Spike Variation",
+      "slug": "caro-kann-defense-spike-variation",
+      "tag": "Caro-Kann_Defense_Spike_Variation"
+    },
+    {
+      "balancedCount": 1,
+      "count": 1,
+      "name": "Caro-Kann Defense: St Patricks Attack",
+      "slug": "caro-kann-defense-st-patricks-attack",
+      "tag": "Caro-Kann_Defense_St_Patricks_Attack"
+    },
+    {
+      "balancedCount": 629,
+      "count": 1055,
+      "name": "Caro-Kann Defense: Tartakower Variation",
+      "slug": "caro-kann-defense-tartakower-variation",
+      "tag": "Caro-Kann_Defense_Tartakower_Variation"
+    },
+    {
+      "balancedCount": 13,
+      "count": 13,
+      "name": "Caro-Kann Defense: Toikkanen Gambit",
+      "slug": "caro-kann-defense-toikkanen-gambit",
+      "tag": "Caro-Kann_Defense_Toikkanen_Gambit"
+    },
+    {
+      "balancedCount": 886,
+      "count": 2061,
+      "name": "Caro-Kann Defense: Two Knights Attack",
+      "slug": "caro-kann-defense-two-knights-attack",
+      "tag": "Caro-Kann_Defense_Two_Knights_Attack"
+    },
+    {
+      "balancedCount": 27,
+      "count": 27,
+      "name": "Caro-Kann Defense: Ulysses Gambit",
+      "slug": "caro-kann-defense-ulysses-gambit",
+      "tag": "Caro-Kann_Defense_Ulysses_Gambit"
+    },
+    {
+      "balancedCount": 69,
+      "count": 69,
+      "name": "Caro-Kann Defense: von Hennig Gambit",
+      "slug": "caro-kann-defense-von-hennig-gambit",
+      "tag": "Caro-Kann_Defense_von_Hennig_Gambit"
+    }
+  ]
+}

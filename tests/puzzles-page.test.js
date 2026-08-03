@@ -171,6 +171,32 @@ function blackContinuationCandidate() {
   };
 }
 
+function blackContinuationWithTerminalReply() {
+  const puzzle = blackContinuationCandidate();
+  puzzle.puzzle_id = "black-terminal-reply";
+  puzzle.solution_steps[1].opponent_reply_uci = "e4e3";
+  puzzle.solution_steps[1].opponent_reply_san = "Ke3";
+  puzzle.solution_steps[1].post_reply_fen = "8/8/8/8/8/3pK3/3k4/8 b - - 3 49";
+  return puzzle;
+}
+
+function acceptedMateAlternativeCandidate() {
+  const puzzle = blackContinuationCandidate();
+  const step = puzzle.solution_steps[0];
+  const alternativeFen = "8/8/8/8/5K2/2Qpk3/8/8 w - - 0 48";
+  puzzle.puzzle_id = "accepted-mate-alternative";
+  step.opponent_reply_uci = null;
+  step.opponent_reply_san = null;
+  step.post_reply_fen = null;
+  step.accepted_moves_uci = [step.best_move_uci, "d2e2"];
+  step.accepted_move_post_fens = {
+    [step.best_move_uci]: step.post_best_fen,
+    d2e2: alternativeFen,
+  };
+  puzzle.solution_steps = [step];
+  return { puzzle, alternativeFen };
+}
+
 function promotionCandidate() {
   const before = "7k/P7/5KB1/8/8/8/8/8 w - - 0 1";
   const after = "Q6k/8/5KB1/8/8/8/8/8 b - - 0 1";
@@ -319,6 +345,37 @@ test("black king continuation auto-replies and solves only on the second user mo
   assert.equal(harness.progress().attempts, 1);
   assert.equal(board.config.viewOnly, false);
   assert.equal(board.config.fen, blackContinuationCandidate().solution_steps[1].post_best_fen);
+});
+
+test("a terminal opponent reply is played before the personal puzzle is solved", () => {
+  const candidate = blackContinuationWithTerminalReply();
+  const harness = createHarness(candidate);
+  const { board } = harness;
+
+  board.config.movable.events.after("d2", "c3");
+  harness.flushTimer();
+  board.config.movable.events.after("c3", "d2");
+  assert.equal(harness.progress(), null);
+  assert.equal(board.config.fen, candidate.solution_steps[1].post_best_fen);
+
+  harness.flushTimer();
+  assert.equal(harness.progress().status, "solved");
+  assert.equal(board.config.fen, candidate.solution_steps[1].post_reply_fen);
+  assert.deepEqual(Array.from(board.config.lastMove), ["e4", "e3"]);
+});
+
+test("personal controller renders an accepted alternative at its mapped post-move FEN", () => {
+  const { puzzle, alternativeFen } = acceptedMateAlternativeCandidate();
+  const harness = createHarness(puzzle);
+  const { board } = harness;
+
+  board.config.movable.events.after("d2", "e2");
+  assert.equal(harness.progress().status, "solved");
+  assert.equal(board.config.fen, alternativeFen);
+  assert.deepEqual(Array.from(board.config.lastMove), ["d2", "e2"]);
+  assert.deepEqual(JSON.parse(JSON.stringify(board.shapes)), [
+    { orig: "d2", dest: "e2", brush: "green" },
+  ]);
 });
 
 test("a wrong second move returns to the initial FEN and clears keyboard input", () => {

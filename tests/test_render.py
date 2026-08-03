@@ -36,7 +36,7 @@ def test_render_all_pages_writes_one_file_per_template(tmp_path):
     output_dir = tmp_path / "out"
     page_names = [
         "index", "leaks", "losses", "process", "sessions", "opening",
-        "blunders", "puzzles",
+        "blunders", "puzzles", "caro-kann-puzzles",
     ]
     for name in page_names:
         (template_dir / f"{name}.html").write_text(
@@ -64,3 +64,13 @@ def test_index_places_blunders_after_opening_tables():
     scramble_pos = html.index('id="scramble-review-block"')
 
     assert white_pos < black_pos < blunder_pos < scramble_pos
+
+
+def test_shared_navigation_links_both_puzzle_trainers_with_active_states():
+    app = Path("dashboard/app.js").read_text()
+
+    assert 'pageName === "puzzles.html"' in app
+    assert 'pageName === "caro-kann-puzzles.html"' in app
+    assert 'href="puzzles.html"' in app
+    assert 'href="caro-kann-puzzles.html"' in app
+    assert "caroKannActive ? 'aria-current=\"page\"'" in app

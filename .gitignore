@@ -9,6 +9,21 @@ data/
 !data/annotations.json
 dashboard/*.html
 
+# The canonical Caro-Kann web sample is versioned under public/. Complete
+# extraction shards remain reproducible local artifacts; refresh.py copies
+# only the manifest and referenced balanced chunks into ignored dashboard/data.
+!public/
+!public/data/
+!public/data/caro-kann-black/
+public/data/caro-kann-black/all.jsonl
+public/data/caro-kann-black/balanced.jsonl
+public/data/caro-kann-black/by-difficulty/
+public/data/caro-kann-black/by-variation/
+public/data/caro-kann-black/by-source/
+public/data/caro-kann-black/rejected-rows.jsonl
+public/data/caro-kann-black/*.sqlite*
+public/data/caro-kann-black-dev/
+
 # OS
 .DS_Store
 .superpowers/

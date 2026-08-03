@@ -40,6 +40,7 @@ Engine analysis defaults to the full available game set. Use
 6. **Play signatures** — sortable; low-confidence rows (N<15) are dimmed; grouped by 8-ply FEN, not ECO label
 7. **Sessions** — chronological list with tilt flags
 8. **My Blunder Puzzles** — your engine-classified blunders as a persistent solve queue
+9. **Caro-Kann Puzzles** — a static, Black-oriented Lichess tactics curriculum
 
 ## My Blunder Puzzles
 
@@ -65,6 +66,21 @@ namespaced by the configured Chess.com username. Progress survives reloads and
 new dashboard builds on the same browser and origin, but it does not sync across
 devices and is lost if that site's browser storage is cleared.
 
+## Caro-Kann Puzzles
+
+Open `dashboard/caro-kann-puzzles.html` through the local HTTP server. This
+separate trainer uses an official Lichess CC0 puzzle extract, always starts
+after White's stored setup move, keeps Black at the bottom of the board, and
+plays White's stored replies until the complete tactical continuation is
+finished. Its solved state has a separate `localStorage` namespace from your
+personal blunder puzzles.
+
+The large source download stays under ignored `data/`. A normal refresh copies
+only the canonical manifest and its balanced browser chunks from
+`public/data/caro-kann-black/` into the generated `dashboard/data/` tree used by
+GitHub Pages. Extraction commands, validation rules, schema, balancing, and
+deployment details are in [docs/CARO_KANN_PUZZLES.md](docs/CARO_KANN_PUZZLES.md).
+
 ## Annotations
 
 Edit `data/annotations.json` directly. Schema:
@@ -86,11 +102,10 @@ Re-running `refresh.py` picks up changes immediately.
 ## Testing
 
     uv run pytest
+    node --test tests/*.test.js
 
-The pytest suite also runs the dependency-free browser puzzle-domain tests when
-Node.js is available. They can be run directly with:
-
-    node --test tests/puzzle-domain.test.js
+The dependency-free Node suite covers the shared puzzle domain and both static
+puzzle page controllers. Both suites run in the Pages workflow before deploy.
 
 ## Layout
 
@@ -99,6 +114,8 @@ Node.js is available. They can be run directly with:
 - `dashboard/` — HTML/JS/CSS frontend; `vendor/` has Tabulator and Chessground (offline-safe)
 - `chess_tracker/puzzle_queue.py` — validated candidate derivation and stable puzzle identity
 - `dashboard/puzzle-domain.js` — answer checking, queue partitioning, and progress persistence
+- `scripts/extract_caro_kann_black.py` — streaming Lichess Caro-Kann dataset extractor
+- `public/data/caro-kann-black/` — canonical manifest, exports, shards, and balanced chunks
 - `data/` — generated (cached archives, computed.json, annotations.json)
 - `docs/superpowers/` — spec + plan
 

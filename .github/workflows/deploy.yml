@@ -60,6 +60,9 @@ jobs:
       - name: Run tests
         run: uv run pytest
 
+      - name: Run browser-domain tests
+        run: node --test tests/*.test.js
+
       - name: Refresh dashboard
         # Deploys complete the legacy PV backlog in one pass so every existing
         # non-terminal puzzle uses the two-decision continuation immediately.

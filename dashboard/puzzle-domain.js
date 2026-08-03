@@ -90,6 +90,57 @@
     );
   }
 
+  function acceptedMoveValues(candidate, answer) {
+    if (!candidate || typeof candidate !== "object" || !answer) return null;
+    const fields = [
+      candidate.accepted_moves_uci,
+      candidate.acceptedMovesUci,
+      candidate.accepted_mating_moves_uci,
+      candidate.acceptedMatingMovesUci,
+    ];
+    const raw = fields.find(Array.isArray);
+    if (!raw) return [answer];
+
+    const accepted = [];
+    const seen = new Set();
+    for (const value of raw) {
+      const move = normalizeUci(value);
+      if (!move) return null;
+      if (!seen.has(move)) {
+        seen.add(move);
+        accepted.push(move);
+      }
+    }
+    if (!seen.has(answer)) accepted.unshift(answer);
+    return accepted;
+  }
+
+  function acceptedMovePostFens(candidate, accepted, answer, primaryPostFen) {
+    if (!candidate || typeof candidate !== "object" || !Array.isArray(accepted)) return null;
+    const raw = candidate.accepted_move_post_fens != null
+      ? candidate.accepted_move_post_fens
+      : candidate.acceptedMovePostFens;
+    if (raw == null) return accepted.length === 1 ? Object.create(null) : null;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+
+    const acceptedSet = new Set(accepted);
+    const normalized = Object.create(null);
+    for (const [rawMove, rawFen] of Object.entries(raw)) {
+      const move = normalizeUci(rawMove);
+      const fen = typeof rawFen === "string" ? rawFen.trim() : "";
+      if (!move || !fen || !acceptedSet.has(move)
+          || Object.prototype.hasOwnProperty.call(normalized, move)) {
+        return null;
+      }
+      normalized[move] = fen;
+    }
+    if (accepted.some(move => !Object.prototype.hasOwnProperty.call(normalized, move))) {
+      return null;
+    }
+    if (primaryPostFen && normalized[answer] !== primaryPostFen) return null;
+    return normalized;
+  }
+
   function optionalText(object, keys) {
     if (!object || typeof object !== "object") return null;
     for (const key of keys) {
@@ -133,7 +184,8 @@
 
     const answer = bestMove(rawStep);
     const legalValues = normalizedMoveValues(rawStep);
-    if (!answer || !legalValues.valid) return null;
+    const accepted = acceptedMoveValues(rawStep, answer);
+    if (!answer || !accepted || !legalValues.valid) return null;
 
     const rawDests = rawStep.legal_dests != null
       ? rawStep.legal_dests
@@ -148,6 +200,10 @@
     const fenBefore = optionalText(rawStep, ["fen_before", "fenBefore"]);
     const postBestFen = optionalText(rawStep, ["post_best_fen", "postBestFen"]);
     if (requirePosition && (!fenBefore || !postBestFen)) return null;
+    const acceptedPostFens = acceptedMovePostFens(
+      rawStep, accepted, answer, postBestFen
+    );
+    if (!acceptedPostFens) return null;
 
     const rawReply = allowReply
       ? optionalText(rawStep, ["opponent_reply_uci", "opponentReplyUci"])
@@ -163,6 +219,8 @@
     const step = {
       fen_before: fenBefore,
       best_move_uci: answer,
+      accepted_moves_uci: accepted,
+      accepted_move_post_fens: acceptedPostFens,
       best_move_san: optionalText(rawStep, ["best_move_san", "bestMoveSan"]),
       post_best_fen: postBestFen,
       legal_moves_uci: legalValues.moves,
@@ -178,7 +236,7 @@
     // Every solution move must be provably legal from the supplied move map.
     // This deliberately fails closed when both modern and legacy legal data
     // are absent, just like evaluateAttempt().
-    if (!evaluateAttempt(step, answer).correct) return null;
+    if (accepted.some(move => !evaluateAttempt(step, move).correct)) return null;
     return step;
   }
 
@@ -287,7 +345,11 @@
     if (!legal) {
       return { kind: "illegal", uci, legal: false, correct: false };
     }
-    const correct = uci === answer;
+    const accepted = acceptedMoveValues(candidate, answer);
+    if (!accepted) {
+      return { kind: "illegal", uci, legal: false, correct: false };
+    }
+    const correct = accepted.includes(uci);
     return {
       kind: correct ? "correct" : "incorrect",
       uci,
@@ -331,12 +393,17 @@
     const isFinalStep = index === steps.length - 1;
     const nextStepIndex = mayAdvance && !isFinalStep ? index + 1 : null;
     const nextStep = nextStepIndex === null ? null : steps[nextStepIndex];
-    const reply = mayAdvance && !isFinalStep && step.opponent_reply_uci
+    const reply = mayAdvance && step.opponent_reply_uci
       ? {
         uci: step.opponent_reply_uci,
         san: step.opponent_reply_san,
         fen: step.post_reply_fen,
       }
+      : null;
+    const completesAfterReply = Boolean(mayAdvance && isFinalStep && reply);
+    const attemptedPostFen = mayAdvance
+      ? step.accepted_move_post_fens[classification.uci]
+        || (classification.uci === step.best_move_uci ? step.post_best_fen : null)
       : null;
 
     return {
@@ -344,7 +411,9 @@
       stepIndex: index,
       step,
       isFinalStep,
-      solved: mayAdvance && isFinalStep,
+      solved: mayAdvance && isFinalStep && !completesAfterReply,
+      completesAfterReply,
+      attemptedPostFen,
       nextStepIndex,
       nextStep,
       reply,
@@ -532,8 +601,19 @@
     return value || "anonymous";
   }
 
-  function storageKey(username) {
-    return STORAGE_PREFIX + encodeURIComponent(normalizedUsername(username));
+  function normalizedNamespace(namespace) {
+    if (namespace === undefined || namespace === null || String(namespace).trim() === "") {
+      return null;
+    }
+    return String(namespace).trim().toLowerCase();
+  }
+
+  function storageKey(username, namespace) {
+    const subject = encodeURIComponent(normalizedUsername(username));
+    const scope = normalizedNamespace(namespace);
+    return scope
+      ? STORAGE_PREFIX + encodeURIComponent(scope) + ":" + subject
+      : STORAGE_PREFIX + subject;
   }
 
   function emptyState(username) {
@@ -610,10 +690,10 @@
    * Username-isolated puzzle progress. Storage failures transparently fall
    * back to the in-memory state so a private-mode/quota error never breaks play.
    */
-  function createProgressStore(username, suppliedStorage) {
-    const key = storageKey(username);
+  function createProgressStore(username, suppliedStorage, namespace) {
+    const key = storageKey(username, namespace);
     let state = emptyState(username);
-    let storage = arguments.length >= 2 ? suppliedStorage : browserStorage();
+    let storage = suppliedStorage === undefined ? browserStorage() : suppliedStorage;
     let persistent = Boolean(
       storage && typeof storage.getItem === "function" && typeof storage.setItem === "function"
     );
@@ -787,6 +867,7 @@
     partitionCandidates,
     rotateQueue,
     normalizedUsername,
+    normalizedNamespace,
     storageKey,
     createProgressStore,
   });

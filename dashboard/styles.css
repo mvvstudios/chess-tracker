@@ -531,6 +531,87 @@ span.severity-red     { background: var(--border-strong); color: var(--text); }
   border-radius: var(--radius);
   font-size: 0.82rem;
 }
+.caro-puzzle-filters {
+  min-width: 0;
+  margin: 0 0 1rem;
+  padding: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.caro-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 0.65rem;
+  align-items: end;
+  min-width: 0;
+}
+.caro-filter-grid label {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+.caro-filter-grid select,
+.caro-filter-grid button {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0.45rem 0.55rem;
+  color: var(--text);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font: inherit;
+  font-size: 0.82rem;
+  touch-action: manipulation;
+}
+.caro-filter-grid button { cursor: pointer; }
+.caro-filter-grid select:focus-visible,
+.caro-filter-grid button:focus-visible,
+.caro-opening-filter input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.caro-opening-filter {
+  display: flex !important;
+  grid-auto-flow: column;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  min-height: 44px;
+  padding: 0.45rem 0.55rem;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.caro-opening-filter input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0 0.45rem 0 0;
+  accent-color: var(--accent);
+}
+.caro-filter-status {
+  margin: 0.6rem 0 0;
+  color: var(--subtle);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.puzzle-locked-details {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.caro-solution-line {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
 .puzzle-tabs {
   display: flex;
   gap: 0.25rem;
@@ -936,6 +1017,20 @@ span.severity-red     { background: var(--border-strong); color: var(--text); }
     font-size: 0.75rem;
     text-align: center;
   }
+  .caro-puzzle-filters {
+    width: 100%;
+    max-width: 100%;
+    margin-bottom: 0.75rem;
+    padding: 0.65rem;
+  }
+  .caro-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+  .caro-filter-grid label,
+  .caro-filter-grid select,
+  .caro-filter-grid button { min-width: 0; }
+  .caro-filter-status { margin-top: 0.5rem; }
   .puzzle-tabs { margin-bottom: 0.8rem; }
   .puzzle-tab {
     flex: 1;
@@ -1004,6 +1099,7 @@ span.severity-red     { background: var(--border-strong); color: var(--text); }
 
 @media (max-width: 380px) {
   .puzzles-heading h1 { font-size: 1.2rem; }
+  .caro-filter-grid { grid-template-columns: minmax(0, 1fr); }
   .puzzle-context-grid .row {
     grid-template-columns: minmax(0, 1fr);
     gap: 0.05rem;

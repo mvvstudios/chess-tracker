@@ -77,6 +77,8 @@
     queueSeed: null,
     currentId: null,
     completedCandidate: null,
+    completedPostFen: null,
+    completedMoveUci: null,
     revealed: false,
     feedbackMode: "idle",
     activeTab: "unsolved",
@@ -549,9 +551,13 @@
     if (!line) return;
     const step = line.step;
     const locked = completed || state.linePhase !== "awaiting_user";
-    const fen = (completed || state.linePhase === "playing_reply") && step.post_best_fen
-      ? step.post_best_fen
-      : step.fen_before;
+    const finalStep = line.steps[line.steps.length - 1];
+    const fen = completed
+      ? state.completedPostFen
+        || finalStep.post_reply_fen || finalStep.post_best_fen || step.fen_before
+      : state.linePhase === "playing_reply" && step.post_best_fen
+        ? step.post_best_fen
+        : step.fen_before;
     const previousReply = line.index > 0
       ? line.steps[line.index - 1].opponent_reply_uci
       : null;
@@ -566,7 +572,8 @@
       viewOnly: false,
       turnColor: color,
       lastMove: completed
-        ? uciSquares(step.best_move_uci)
+        ? uciSquares(state.completedMoveUci
+          || finalStep.opponent_reply_uci || finalStep.best_move_uci)
         : previousReply ? uciSquares(previousReply) : undefined,
       check: false,
       drawable: { enabled: false, visible: true },
@@ -591,7 +598,9 @@
       return;
     }
     if (completed || state.revealed || state.linePhase === "playing_reply") {
-      drawMove(step.best_move_uci, "green");
+      drawMove(completed && state.completedMoveUci
+        ? state.completedMoveUci
+        : step.best_move_uci, "green");
     } else {
       state.board.setShapes([]);
     }
@@ -704,6 +713,8 @@
     }
     if (kind === "correct") {
       if (result.solved) {
+        state.completedPostFen = result.attemptedPostFen || null;
+        state.completedMoveUci = result.uci || null;
         recordAttempt(candidate, true);
         markSolved(candidate);
       } else {
@@ -799,7 +810,8 @@
   }
 
   function playOpponentReply(candidate, result) {
-    if (!result || !result.reply || result.nextStepIndex == null) {
+    if (!result || !result.reply
+        || (result.nextStepIndex == null && !result.completesAfterReply)) {
       elements.feedback.textContent = "The stored continuation is incomplete. Reset the puzzle and try again.";
       resetPuzzleLine(candidate, false);
       return;
@@ -819,6 +831,13 @@
       state.opponentReplyTimer = null;
       const current = currentCandidate();
       if (!current || puzzleId(current) !== candidateId || state.completedCandidate) return;
+      if (result.completesAfterReply) {
+        state.completedPostFen = result.reply.fen || null;
+        state.completedMoveUci = result.reply.uci || null;
+        recordAttempt(candidate, true);
+        markSolved(candidate);
+        return;
+      }
       state.stepIndex = result.nextStepIndex;
       state.linePhase = "awaiting_user";
       state.feedbackMode = state.revealed ? "revealed" : "continuation";
@@ -918,6 +937,8 @@
     clearIncorrectTimer();
     clearOpponentReplyTimer();
     state.completedCandidate = null;
+    state.completedPostFen = null;
+    state.completedMoveUci = null;
     state.currentId = state.sessionIds[0] || null;
     state.revealed = false;
     state.feedbackMode = "idle";
@@ -1180,6 +1201,8 @@
         clearOpponentReplyTimer();
         state.store = Domain.createProgressStore(DATA.username || "unknown");
         state.completedCandidate = null;
+        state.completedPostFen = null;
+        state.completedMoveUci = null;
         state.stepIndex = 0;
         state.linePhase = "awaiting_user";
         state.lastReplySan = null;
