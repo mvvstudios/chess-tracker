@@ -9,20 +9,26 @@ data/
 !data/annotations.json
 dashboard/*.html
 
-# The canonical Caro-Kann web sample is versioned under public/. Complete
-# extraction shards remain reproducible local artifacts; refresh.py copies
-# only the manifest and referenced balanced chunks into ignored dashboard/data.
+# Canonical opening-puzzle catalogs and browser samples are versioned under
+# public/. Complete exports and analytical shards remain reproducible local
+# artifacts; refresh.py copies only the catalog, manifests, and referenced
+# balanced chunks into ignored dashboard/data.
 !public/
 !public/data/
+!public/data/opening-puzzle-catalog.json
 !public/data/caro-kann-black/
-public/data/caro-kann-black/all.jsonl
-public/data/caro-kann-black/balanced.jsonl
-public/data/caro-kann-black/by-difficulty/
-public/data/caro-kann-black/by-variation/
-public/data/caro-kann-black/by-source/
-public/data/caro-kann-black/rejected-rows.jsonl
-public/data/caro-kann-black/*.sqlite*
-public/data/caro-kann-black-dev/
+!public/data/colle-white/
+!public/data/englund-white/
+!public/data/pirc-black/
+!public/data/modern-black/
+public/data/*/all.jsonl
+public/data/*/balanced.jsonl
+public/data/*/by-difficulty/
+public/data/*/by-variation/
+public/data/*/by-source/
+public/data/*/rejected-rows.jsonl
+public/data/*/*.sqlite*
+public/data/*-dev/
 
 # OS
 .DS_Store

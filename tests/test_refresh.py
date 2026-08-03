@@ -464,6 +464,248 @@ def test_caro_kann_sync_rejects_unsafe_paths_and_bad_counts(
         sync_caro_kann_web_data(source, tmp_path / "dashboard")
 
 
+# --- catalog-driven opening-puzzle Pages dataset sync ---
+
+def _write_opening_deck(source_root, deck_id, family, color, chunks):
+    source = source_root / deck_id
+    manifest_chunks = []
+    total = 0
+    for name, records in chunks.items():
+        path = source / "chunks" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(records))
+        manifest_chunks.append({"path": f"chunks/{name}", "count": len(records)})
+        total += len(records)
+    manifest = {
+        "schemaVersion": 2,
+        "deckId": deck_id,
+        "openingFamily": family,
+        "solverColor": color,
+        "orientation": color,
+        "openingTagRoots": [f"Test_{deck_id.replace('-', '_')}"],
+        "counts": {"balancedExported": total},
+        "chunks": manifest_chunks,
+    }
+    (source / "manifest.json").write_text(json.dumps(manifest))
+    return manifest
+
+
+def _write_opening_catalog(source_root, decks, default="caro-kann-black"):
+    source_root.mkdir(parents=True, exist_ok=True)
+    catalog = {
+        "schemaVersion": 1,
+        "defaultDeckId": default,
+        "decks": [
+            {
+                "id": deck_id,
+                "label": label,
+                "openingFamily": family,
+                "solverColor": color,
+                "orientation": color,
+                "manifestPath": f"{deck_id}/manifest.json",
+            }
+            for deck_id, label, family, color in decks
+        ],
+    }
+    (source_root / "opening-puzzle-catalog.json").write_text(json.dumps(catalog))
+    return catalog
+
+
+def test_opening_puzzle_sync_copies_catalog_manifests_and_chunks_only(tmp_path):
+    from refresh import sync_opening_puzzle_web_data
+
+    source = tmp_path / "public" / "data"
+    decks = [
+        ("caro-kann-black", "Caro-Kann Defense — Black", "Caro-Kann Defense", "black"),
+        ("colle-white", "Colle System — White", "Colle System", "white"),
+    ]
+    catalog = _write_opening_catalog(source, decks)
+    manifests = {
+        "caro-kann-black": _write_opening_deck(
+            source, "caro-kann-black", "Caro-Kann Defense", "black",
+            {"chunk-0001.json": [{"id": "caro-1"}, {"id": "caro-2"}]},
+        ),
+        "colle-white": _write_opening_deck(
+            source, "colle-white", "Colle System", "white",
+            {
+                "chunk-0001.json": [{"id": "colle-1"}],
+                "chunk-0002.json": [{"id": "colle-2"}],
+            },
+        ),
+    }
+    for deck_id in manifests:
+        (source / deck_id / "all.jsonl").write_text('{"not":"deployed"}\n')
+        (source / deck_id / "by-source").mkdir()
+        (source / deck_id / "by-source" / "standard.jsonl").write_text("{}\n")
+
+    dashboard = tmp_path / "dashboard"
+    data_dir = dashboard / "data"
+    (data_dir / "retired-deck" / "chunks").mkdir(parents=True)
+    (data_dir / "retired-deck" / "chunks" / "old.json").write_text("[]")
+    old_catalog = {
+        "decks": [{"id": "retired-deck"}],
+    }
+    (data_dir / "opening-puzzle-catalog.json").write_text(json.dumps(old_catalog))
+    (data_dir / "unrelated.txt").write_text("preserve me")
+
+    result = sync_opening_puzzle_web_data(source, dashboard)
+
+    assert result == {
+        "available": True,
+        "decks": 2,
+        "chunks": 3,
+        "puzzles": 4,
+        "deckCounts": {
+            "caro-kann-black": {"chunks": 1, "puzzles": 2},
+            "colle-white": {"chunks": 2, "puzzles": 2},
+        },
+    }
+    assert json.loads((data_dir / "opening-puzzle-catalog.json").read_text()) == catalog
+    assert not (data_dir / "retired-deck").exists()
+    assert (data_dir / "unrelated.txt").read_text() == "preserve me"
+    for deck_id, manifest in manifests.items():
+        deployed = data_dir / deck_id
+        assert json.loads((deployed / "manifest.json").read_text()) == manifest
+        assert not (deployed / "all.jsonl").exists()
+        assert not (deployed / "by-source").exists()
+
+
+@pytest.mark.parametrize(
+    "manifest_path",
+    [
+        "../outside/manifest.json",
+        "/absolute/manifest.json",
+        "other-deck/manifest.json",
+        "caro-kann-black/../manifest.json",
+        "caro-kann-black//manifest.json",
+        "caro-kann-black/./manifest.json",
+        r"caro-kann-black\manifest.json",
+    ],
+)
+def test_opening_puzzle_sync_rejects_unsafe_catalog_manifest_paths(
+    tmp_path, manifest_path
+):
+    from refresh import sync_opening_puzzle_web_data
+
+    source = tmp_path / "public" / "data"
+    decks = [
+        ("caro-kann-black", "Caro-Kann Defense — Black", "Caro-Kann Defense", "black"),
+    ]
+    catalog = _write_opening_catalog(source, decks)
+    catalog["decks"][0]["manifestPath"] = manifest_path
+    (source / "opening-puzzle-catalog.json").write_text(json.dumps(catalog))
+
+    with pytest.raises(ValueError, match="manifestPath"):
+        sync_opening_puzzle_web_data(source, tmp_path / "dashboard")
+
+
+def test_opening_puzzle_sync_rejects_manifest_identity_or_perspective_mismatch(tmp_path):
+    from refresh import sync_opening_puzzle_web_data
+
+    source = tmp_path / "public" / "data"
+    decks = [
+        ("colle-white", "Colle System — White", "Colle System", "white"),
+    ]
+    _write_opening_catalog(source, decks, default="colle-white")
+    manifest = _write_opening_deck(
+        source, "colle-white", "Colle System", "white",
+        {"chunk-0001.json": [{"id": "one"}]},
+    )
+    manifest["orientation"] = "black"
+    (source / "colle-white" / "manifest.json").write_text(json.dumps(manifest))
+
+    with pytest.raises(ValueError, match="orientation"):
+        sync_opening_puzzle_web_data(source, tmp_path / "dashboard")
+
+
+def test_opening_puzzle_sync_rejects_unsafe_chunk_before_touching_deployment(tmp_path):
+    from refresh import sync_opening_puzzle_web_data
+
+    source = tmp_path / "public" / "data"
+    decks = [
+        ("pirc-black", "Pirc Defense — Black", "Pirc Defense", "black"),
+    ]
+    _write_opening_catalog(source, decks, default="pirc-black")
+    manifest = _write_opening_deck(
+        source, "pirc-black", "Pirc Defense", "black",
+        {"chunk-0001.json": [{"id": "one"}]},
+    )
+    manifest["chunks"][0]["path"] = "../outside.json"
+    (source / "pirc-black" / "manifest.json").write_text(json.dumps(manifest))
+
+    dashboard = tmp_path / "dashboard"
+    sentinel = dashboard / "data" / "pirc-black" / "must-survive.txt"
+    sentinel.parent.mkdir(parents=True)
+    sentinel.write_text("old valid deployment")
+
+    with pytest.raises(ValueError, match=r"relative chunks/.*\.json"):
+        sync_opening_puzzle_web_data(source, dashboard)
+
+    assert sentinel.read_text() == "old valid deployment"
+
+
+def test_opening_puzzle_sync_missing_catalog_clears_managed_data_only(tmp_path):
+    from refresh import sync_opening_puzzle_web_data
+
+    dashboard = tmp_path / "dashboard"
+    data_dir = dashboard / "data"
+    for deck_id in ("caro-kann-black", "colle-white"):
+        stale = data_dir / deck_id / "chunks" / "old.json"
+        stale.parent.mkdir(parents=True, exist_ok=True)
+        stale.write_text("[]")
+    (data_dir / "opening-puzzle-catalog.json").write_text(json.dumps({
+        "decks": [{"id": "colle-white"}],
+    }))
+    (data_dir / "unrelated.txt").write_text("preserve me")
+
+    result = sync_opening_puzzle_web_data(tmp_path / "missing", dashboard)
+
+    assert result == {"available": False, "decks": 0, "chunks": 0, "puzzles": 0}
+    assert not (data_dir / "opening-puzzle-catalog.json").exists()
+    assert not (data_dir / "caro-kann-black").exists()
+    assert not (data_dir / "colle-white").exists()
+    assert (data_dir / "unrelated.txt").read_text() == "preserve me"
+
+
+def test_opening_puzzle_sync_refuses_symlinked_data_parent_escape(tmp_path):
+    from refresh import sync_opening_puzzle_web_data
+
+    dashboard = tmp_path / "dashboard"
+    dashboard.mkdir()
+    outside = tmp_path / "outside-dashboard"
+    escaped_dataset = outside / "caro-kann-black"
+    escaped_dataset.mkdir(parents=True)
+    sentinel = escaped_dataset / "must-survive.txt"
+    sentinel.write_text("user data")
+    (dashboard / "data").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="outside the resolved dashboard root"):
+        sync_opening_puzzle_web_data(tmp_path / "missing", dashboard)
+
+    assert sentinel.read_text() == "user data"
+
+
+def test_opening_puzzle_sync_refuses_symlinked_source_manifest_escape(tmp_path):
+    from refresh import sync_opening_puzzle_web_data
+
+    source = tmp_path / "public" / "data"
+    decks = [
+        ("modern-black", "Modern Defense — Black", "Modern Defense", "black"),
+    ]
+    _write_opening_catalog(source, decks, default="modern-black")
+    outside = tmp_path / "outside-source"
+    _write_opening_deck(
+        outside, "modern-black", "Modern Defense", "black",
+        {"chunk-0001.json": [{"id": "one"}]},
+    )
+    (source / "modern-black").symlink_to(
+        outside / "modern-black", target_is_directory=True
+    )
+
+    with pytest.raises(ValueError, match="escapes the canonical data directory"):
+        sync_opening_puzzle_web_data(source, tmp_path / "dashboard")
+
+
 # --- puzzle-line backfill wiring ---
 
 def _refresh_game_for_backfill():

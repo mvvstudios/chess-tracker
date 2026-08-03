@@ -1,0 +1,388 @@
+{
+  "balancedCounts": {
+    "difficulty": {
+      "advanced": 410,
+      "beginner": 986,
+      "developing": 870,
+      "expert": 177,
+      "intermediate": 706
+    },
+    "primaryTacticalTheme": {
+      "advancedPawn": 30,
+      "advantage": 670,
+      "attackingF2F7": 7,
+      "attraction": 21,
+      "capturingDefender": 21,
+      "castling": 1,
+      "clearance": 24,
+      "crushing": 360,
+      "defensiveMove": 93,
+      "deflection": 43,
+      "discoveredAttack": 184,
+      "doubleCheck": 9,
+      "fork": 472,
+      "interference": 19,
+      "mateIn1": 368,
+      "mateIn2": 197,
+      "mateIn3": 67,
+      "mateIn4": 13,
+      "mateIn5": 3,
+      "middlegame": 24,
+      "pin": 255,
+      "quietMove": 38,
+      "sacrifice": 98,
+      "skewer": 43,
+      "trappedPiece": 83,
+      "unclassified": 4,
+      "xRayAttack": 2
+    },
+    "provenance": {
+      "master": 567,
+      "masterVsMaster": 48,
+      "standard": 2533,
+      "superGM": 1
+    },
+    "theme": {
+      "advancedPawn": 54,
+      "advantage": 1590,
+      "arabianMate": 1,
+      "attackingF2F7": 27,
+      "attraction": 96,
+      "backRankMate": 48,
+      "bodenMate": 1,
+      "capturingDefender": 54,
+      "castling": 7,
+      "clearance": 61,
+      "collinearMove": 3,
+      "cornerMate": 3,
+      "crushing": 883,
+      "defensiveMove": 115,
+      "deflection": 86,
+      "discoveredAttack": 241,
+      "discoveredCheck": 100,
+      "doubleBishopMate": 1,
+      "doubleCheck": 53,
+      "enPassant": 6,
+      "endgame": 23,
+      "epauletteMate": 14,
+      "exposedKing": 65,
+      "fork": 491,
+      "hangingPiece": 180,
+      "interference": 27,
+      "intermezzo": 106,
+      "kingsideAttack": 309,
+      "long": 725,
+      "master": 616,
+      "masterVsMaster": 49,
+      "mate": 648,
+      "mateIn1": 368,
+      "mateIn2": 197,
+      "mateIn3": 67,
+      "mateIn4": 13,
+      "mateIn5": 3,
+      "middlegame": 2525,
+      "morphysMate": 3,
+      "oneMove": 371,
+      "opening": 601,
+      "operaMate": 5,
+      "pillsburysMate": 12,
+      "pin": 284,
+      "promotion": 10,
+      "queensideAttack": 290,
+      "quietMove": 49,
+      "sacrifice": 205,
+      "short": 1863,
+      "skewer": 47,
+      "smotheredMate": 11,
+      "superGM": 1,
+      "trappedPiece": 105,
+      "veryLong": 162,
+      "xRayAttack": 6
+    },
+    "variation": {
+      "Pirc Defense: 150 Attack": 18,
+      "Pirc Defense: Austrian Attack": 517,
+      "Pirc Defense: Bayonet Attack": 28,
+      "Pirc Defense: Byrne Variation": 409,
+      "Pirc Defense: Chinese Variation": 11,
+      "Pirc Defense: Classical Variation": 1000,
+      "Pirc Defense: Kholmov System": 118,
+      "Pirc Defense: Other variations": 1000,
+      "Pirc Defense: Roscher Gambit": 38,
+      "Pirc Defense: Sveshnikov System": 10
+    }
+  },
+  "chunks": [
+    {
+      "count": 1000,
+      "path": "chunks/chunk-0001.json"
+    },
+    {
+      "count": 1000,
+      "path": "chunks/chunk-0002.json"
+    },
+    {
+      "count": 1000,
+      "path": "chunks/chunk-0003.json"
+    },
+    {
+      "count": 149,
+      "path": "chunks/chunk-0004.json"
+    }
+  ],
+  "counts": {
+    "allExported": 6845,
+    "balancedExported": 3149,
+    "blackToSolveRows": 6845,
+    "invalidRows": 6094115,
+    "openingMatchedRows": 17648,
+    "perspectiveMatchedRows": 6845,
+    "rowsScanned": 6100960,
+    "validRows": 6845
+  },
+  "dataset": "Pirc Defense puzzles for Black",
+  "datasetName": "Pirc Defense puzzles for Black",
+  "deckId": "pirc-black",
+  "difficultyBuckets": {
+    "advanced": {
+      "max": 2399,
+      "min": 2000
+    },
+    "beginner": {
+      "max": 1199,
+      "min": null
+    },
+    "developing": {
+      "max": 1599,
+      "min": 1200
+    },
+    "expert": {
+      "max": null,
+      "min": 2400
+    },
+    "intermediate": {
+      "max": 1999,
+      "min": 1600
+    }
+  },
+  "difficultyCounts": {
+    "advanced": 651,
+    "beginner": 2816,
+    "developing": 1838,
+    "expert": 211,
+    "intermediate": 1329
+  },
+  "displayName": "Pirc Defense — Black",
+  "generatedAt": "2026-08-03T21:00:28.582762Z",
+  "generatedAtUtc": "2026-08-03T21:00:28.582762Z",
+  "inputByteSize": 304384407,
+  "inputFile": "lichess_db_puzzle.csv.zst",
+  "inputFilename": "lichess_db_puzzle.csv.zst",
+  "inputKind": "file",
+  "inputSha256": "a0ea9129c6b6434dfb34a9ac4ec660c9cfff22b2de465e01854f018fc847f073",
+  "inputSha256Scope": "complete-file-bytes",
+  "license": "CC0",
+  "matchedRootCounts": {
+    "Pirc_Defense": 6845
+  },
+  "openingFamily": "Pirc Defense",
+  "openingPrefix": "Pirc_Defense",
+  "openingTagRoots": [
+    "Pirc_Defense"
+  ],
+  "orientation": "black",
+  "provenanceCounts": {
+    "master": 715,
+    "masterVsMaster": 48,
+    "standard": 6081,
+    "superGM": 1
+  },
+  "qualityFilter": {
+    "maxRatingDeviation": 150,
+    "minPlays": 20,
+    "minPopularity": 0
+  },
+  "qualityFilters": {
+    "maxRatingDeviation": 150,
+    "minPlays": 20,
+    "minPopularity": 0,
+    "qualityEligible": 6715
+  },
+  "sampling": {
+    "algorithm": "sha256-cell-round-robin-v1",
+    "balancedLimit": 10000,
+    "dimensions": [
+      "primaryVariation",
+      "difficulty",
+      "provenance",
+      "primaryTacticalTheme"
+    ],
+    "maxPerVariation": 1000,
+    "seed": 20260803
+  },
+  "scanComplete": true,
+  "scanLimit": null,
+  "schemaVersion": 2,
+  "solverColor": "black",
+  "source": {
+    "exportUrl": "https://database.lichess.org/lichess_db_puzzle.csv.zst",
+    "name": "Lichess Open Database: Puzzles",
+    "url": "https://database.lichess.org/#puzzles"
+  },
+  "themeCounts": {
+    "advancedPawn": 66,
+    "advantage": 3176,
+    "arabianMate": 1,
+    "attackingF2F7": 110,
+    "attraction": 138,
+    "backRankMate": 121,
+    "balestraMate": 1,
+    "bodenMate": 4,
+    "capturingDefender": 96,
+    "castling": 9,
+    "clearance": 84,
+    "collinearMove": 5,
+    "cornerMate": 8,
+    "crushing": 1529,
+    "defensiveMove": 151,
+    "deflection": 112,
+    "discoveredAttack": 429,
+    "discoveredCheck": 141,
+    "doubleBishopMate": 4,
+    "doubleCheck": 70,
+    "dovetailMate": 2,
+    "enPassant": 9,
+    "endgame": 50,
+    "epauletteMate": 26,
+    "exposedKing": 100,
+    "fork": 1017,
+    "hangingPiece": 398,
+    "hookMate": 1,
+    "interference": 28,
+    "intermezzo": 200,
+    "kingsideAttack": 884,
+    "long": 1286,
+    "master": 764,
+    "masterVsMaster": 49,
+    "mate": 2097,
+    "mateIn1": 1545,
+    "mateIn2": 461,
+    "mateIn3": 75,
+    "mateIn4": 13,
+    "mateIn5": 3,
+    "middlegame": 5369,
+    "morphysMate": 10,
+    "oneMove": 1557,
+    "opening": 1426,
+    "operaMate": 15,
+    "pillsburysMate": 29,
+    "pin": 494,
+    "promotion": 11,
+    "queensideAttack": 579,
+    "quietMove": 56,
+    "sacrifice": 327,
+    "short": 3715,
+    "skewer": 50,
+    "smotheredMate": 54,
+    "superGM": 1,
+    "swallowstailMate": 12,
+    "trappedPiece": 173,
+    "veryLong": 244,
+    "xRayAttack": 7
+  },
+  "truncated": false,
+  "variationCounts": {
+    "Pirc Defense: 150 Attack": 19,
+    "Pirc Defense: Austrian Attack": 523,
+    "Pirc Defense: Bayonet Attack": 29,
+    "Pirc Defense: Byrne Variation": 412,
+    "Pirc Defense: Chinese Variation": 11,
+    "Pirc Defense: Classical Variation": 1226,
+    "Pirc Defense: Kholmov System": 118,
+    "Pirc Defense: Other variations": 4458,
+    "Pirc Defense: Roscher Gambit": 39,
+    "Pirc Defense: Sveshnikov System": 10
+  },
+  "variations": [
+    {
+      "balancedCount": 18,
+      "count": 19,
+      "matchedTagRoot": "Pirc_Defense",
+      "name": "Pirc Defense: 150 Attack",
+      "slug": "pirc-defense-150-attack",
+      "tag": "Pirc_Defense_150_Attack"
+    },
+    {
+      "balancedCount": 517,
+      "count": 523,
+      "matchedTagRoot": "Pirc_Defense",
+      "name": "Pirc Defense: Austrian Attack",
+      "slug": "pirc-defense-austrian-attack",
+      "tag": "Pirc_Defense_Austrian_Attack"
+    },
+    {
+      "balancedCount": 28,
+      "count": 29,
+      "matchedTagRoot": "Pirc_Defense",
+      "name": "Pirc Defense: Bayonet Attack",
+      "slug": "pirc-defense-bayonet-attack",
+      "tag": "Pirc_Defense_Bayonet_Attack"
+    },
+    {
+      "balancedCount": 409,
+      "count": 412,
+      "matchedTagRoot": "Pirc_Defense",
+      "name": "Pirc Defense: Byrne Variation",
+      "slug": "pirc-defense-byrne-variation",
+      "tag": "Pirc_Defense_Byrne_Variation"
+    },
+    {
+      "balancedCount": 11,
+      "count": 11,
+      "matchedTagRoot": "Pirc_Defense",
+      "name": "Pirc Defense: Chinese Variation",
+      "slug": "pirc-defense-chinese-variation",
+      "tag": "Pirc_Defense_Chinese_Variation"
+    },
+    {
+      "balancedCount": 1000,
+      "count": 1226,
+      "matchedTagRoot": "Pirc_Defense",
+      "name": "Pirc Defense: Classical Variation",
+      "slug": "pirc-defense-classical-variation",
+      "tag": "Pirc_Defense_Classical_Variation"
+    },
+    {
+      "balancedCount": 118,
+      "count": 118,
+      "matchedTagRoot": "Pirc_Defense",
+      "name": "Pirc Defense: Kholmov System",
+      "slug": "pirc-defense-kholmov-system",
+      "tag": "Pirc_Defense_Kholmov_System"
+    },
+    {
+      "balancedCount": 1000,
+      "count": 4458,
+      "matchedTagRoot": "Pirc_Defense",
+      "name": "Pirc Defense: Other variations",
+      "slug": "pirc-defense-other-variations",
+      "tag": "Pirc_Defense_Other_variations"
+    },
+    {
+      "balancedCount": 38,
+      "count": 39,
+      "matchedTagRoot": "Pirc_Defense",
+      "name": "Pirc Defense: Roscher Gambit",
+      "slug": "pirc-defense-roscher-gambit",
+      "tag": "Pirc_Defense_Roscher_Gambit"
+    },
+    {
+      "balancedCount": 10,
+      "count": 10,
+      "matchedTagRoot": "Pirc_Defense",
+      "name": "Pirc Defense: Sveshnikov System",
+      "slug": "pirc-defense-sveshnikov-system",
+      "tag": "Pirc_Defense_Sveshnikov_System"
+    }
+  ]
+}

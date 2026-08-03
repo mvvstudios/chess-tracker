@@ -1461,7 +1461,78 @@ def main(argv: Sequence[str] | None = None) -> int:
         validate_only=args.validate_only,
         debug_rejections=args.debug_rejections,
     )
-    result = extract_dataset(config)
+    # Keep the importable legacy implementation above stable for existing
+    # callers and regression tests, but make the documented CLI rebuild the
+    # schema-v2 deck consumed by the generalized catalog/browser.  The import
+    # is intentionally local because the generic module reuses the hardened
+    # parsing and balancing primitives from this module.
+    if config.validate_only:
+        result = extract_dataset(config)
+    else:
+        try:
+            from scripts.extract_opening_puzzles import (
+                MultiExtractionConfig,
+                extract_opening_puzzles,
+            )
+        except ModuleNotFoundError:  # Direct ``python scripts/...`` execution.
+            from extract_opening_puzzles import (  # type: ignore[no-redef]
+                MultiExtractionConfig,
+                extract_opening_puzzles,
+            )
+
+        assert config.output_path is not None
+        output = config.output_path
+        output.parent.mkdir(parents=True, exist_ok=True)
+        debug_relative_path = _debug_relative_to_output(config)
+        with tempfile.TemporaryDirectory(
+            prefix="caro-kann-cli-", dir=output.parent
+        ) as compatibility_temp:
+            temporary_root = Path(compatibility_temp)
+            generic_debug_path = (
+                temporary_root / "rejected-rows.jsonl"
+                if debug_relative_path is not None
+                else config.debug_rejections
+            )
+            direct_catalog_output = output.name == DEFAULT_OUTPUT_PATH.name
+            generic_root = output.parent if direct_catalog_output else temporary_root
+            generic_result = extract_opening_puzzles(
+                MultiExtractionConfig(
+                    input_path=config.input_path,
+                    deck_ids=("caro-kann-black",),
+                    output_root=generic_root,
+                    balanced_limit=config.balanced_limit,
+                    max_per_variation=config.max_per_variation,
+                    min_popularity=config.min_popularity,
+                    min_plays=config.min_plays,
+                    max_rating_deviation=config.max_rating_deviation,
+                    seed=config.seed,
+                    scan_limit=config.scan_limit,
+                    chunk_size=config.chunk_size,
+                    progress_every=config.progress_every,
+                    validate_only=False,
+                    debug_rejections=generic_debug_path,
+                )
+            )
+            generated = generic_root / DEFAULT_OUTPUT_PATH.name
+            if not direct_catalog_output:
+                backup = output.with_name(f".{output.name}-previous")
+                if backup.exists():
+                    shutil.rmtree(backup)
+                if output.exists():
+                    os.replace(output, backup)
+                try:
+                    os.replace(generated, output)
+                except BaseException:
+                    if backup.exists() and not output.exists():
+                        os.replace(backup, output)
+                    raise
+                if backup.exists():
+                    shutil.rmtree(backup)
+            if debug_relative_path is not None:
+                debug_destination = output / debug_relative_path
+                debug_destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(generic_debug_path, debug_destination)
+            result = generic_result["manifests"]["caro-kann-black"]
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     return 0
 

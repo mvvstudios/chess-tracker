@@ -1,6 +1,7 @@
 """CLI: pull Chess.com archives → compute metrics → render dashboard."""
 import argparse
 import json
+import re
 import shutil
 import sys
 import tempfile
@@ -30,6 +31,9 @@ DEFAULT_ANALYSIS_MAX_GAMES = 0
 DEFAULT_PUZZLE_LINE_MAX = 100
 CARO_KANN_DATASET_NAME = "caro-kann-black"
 DEFAULT_CARO_KANN_DATA_DIR = Path("public/data") / CARO_KANN_DATASET_NAME
+OPENING_PUZZLE_CATALOG_NAME = "opening-puzzle-catalog.json"
+DEFAULT_OPENING_PUZZLE_DATA_DIR = Path("public/data")
+_SAFE_DECK_ID = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
 def _validate_caro_kann_deployment_path(
@@ -201,6 +205,358 @@ def sync_caro_kann_web_data(
         "available": True,
         "chunks": len(chunks),
         "puzzles": _manifest_balanced_count(manifest),
+    }
+
+
+def _opening_puzzle_dashboard_data_dir(dashboard_dir: Path) -> Path:
+    """Return ``dashboard/data`` only when it cannot escape the dashboard.
+
+    Resolve the parent before creating a staging directory. In particular, an
+    existing ``dashboard/data`` symlink must never let a refresh remove or
+    replace files outside the generated Pages tree.
+    """
+    dashboard_dir = Path(dashboard_dir)
+    dashboard_root = dashboard_dir.resolve()
+    data_dir = dashboard_dir / "data"
+    if data_dir.exists() and not data_dir.is_dir():
+        raise ValueError(f"dashboard data path must be a directory: {data_dir}")
+    resolved_data_dir = data_dir.resolve()
+    if resolved_data_dir != dashboard_root / "data":
+        raise ValueError(
+            "refusing opening-puzzle deployment outside the resolved "
+            f"dashboard root: {data_dir}"
+        )
+    return resolved_data_dir
+
+
+def _safe_catalog_manifest_path(raw_path: object, deck_id: str) -> Path:
+    """Validate the URL/filesystem-relative manifest path from the catalog."""
+    if not isinstance(raw_path, str) or not raw_path or "\\" in raw_path:
+        raise ValueError(f"catalog deck {deck_id!r} has an unsafe manifestPath")
+    relative = PurePosixPath(raw_path)
+    if (
+        relative.is_absolute()
+        or ".." in relative.parts
+        or relative.as_posix() != raw_path
+        or len(relative.parts) != 2
+        or relative.parts[0] != deck_id
+        or relative.parts[1] != "manifest.json"
+    ):
+        raise ValueError(
+            "catalog manifestPath must be a safe relative "
+            f"<deckId>/manifest.json path: {raw_path!r}"
+        )
+    return Path(*relative.parts)
+
+
+def _read_json_object(path: Path, description: str) -> dict:
+    try:
+        value = json.loads(path.read_text())
+    except FileNotFoundError as exc:
+        raise ValueError(f"{description} does not exist: {path}") from exc
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{description} is not valid JSON: {path}") from exc
+    if not isinstance(value, dict):
+        raise ValueError(f"{description} must be a JSON object: {path}")
+    return value
+
+
+def _validated_opening_puzzle_chunks(
+    source_dir: Path,
+    manifest: dict,
+    *,
+    deck: dict,
+) -> list[tuple[Path, int]]:
+    """Validate one catalog deck's identity, perspective, and browser chunks."""
+    deck_id = deck["id"]
+    schema_version = manifest.get("schemaVersion")
+    if (
+        isinstance(schema_version, bool)
+        or not isinstance(schema_version, int)
+        or schema_version < 2
+    ):
+        raise ValueError(f"manifest schemaVersion must be at least 2 for {deck_id!r}")
+    if manifest.get("deckId") != deck_id:
+        raise ValueError(f"manifest deckId must be {deck_id!r}")
+    if manifest.get("solverColor") != deck["solverColor"]:
+        raise ValueError(f"manifest solverColor does not match catalog deck {deck_id!r}")
+    if manifest.get("orientation") != deck["orientation"]:
+        raise ValueError(f"manifest orientation does not match catalog deck {deck_id!r}")
+    if manifest.get("orientation") != manifest.get("solverColor"):
+        raise ValueError(f"manifest orientation must equal solverColor for {deck_id!r}")
+    if manifest.get("openingFamily") != deck["openingFamily"]:
+        raise ValueError(f"manifest openingFamily does not match catalog deck {deck_id!r}")
+    opening_tag_roots = manifest.get("openingTagRoots")
+    if (
+        not isinstance(opening_tag_roots, list)
+        or not opening_tag_roots
+        or any(not isinstance(root, str) or not root for root in opening_tag_roots)
+        or len(set(opening_tag_roots)) != len(opening_tag_roots)
+    ):
+        raise ValueError(
+            f"manifest openingTagRoots must be unique non-empty strings for {deck_id!r}"
+        )
+
+    chunks = manifest.get("chunks")
+    if not isinstance(chunks, list):
+        raise ValueError(f"manifest chunks must be a list for {deck_id!r}")
+
+    source_root = source_dir.resolve()
+    validated: list[tuple[Path, int]] = []
+    seen_paths: set[str] = set()
+    total = 0
+    for index, item in enumerate(chunks):
+        if not isinstance(item, dict):
+            raise ValueError(f"manifest chunk {index} must be an object for {deck_id!r}")
+        raw_path = item.get("path")
+        count = item.get("count")
+        if not isinstance(raw_path, str) or not raw_path or "\\" in raw_path:
+            raise ValueError(f"manifest chunk {index} has an unsafe path for {deck_id!r}")
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            raise ValueError(f"manifest chunk {raw_path!r} has an invalid count")
+
+        relative = PurePosixPath(raw_path)
+        if (
+            relative.is_absolute()
+            or ".." in relative.parts
+            or relative.as_posix() != raw_path
+            or len(relative.parts) != 2
+            or relative.parts[0] != "chunks"
+            or relative.suffix != ".json"
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*\.json", relative.name)
+        ):
+            raise ValueError(
+                "manifest chunk path must be a relative chunks/*.json path: "
+                f"{raw_path!r}"
+            )
+        normalized = relative.as_posix()
+        if normalized in seen_paths:
+            raise ValueError(f"duplicate manifest chunk path: {raw_path!r}")
+        seen_paths.add(normalized)
+
+        relative_path = Path(*relative.parts)
+        chunk_path = (source_dir / relative_path).resolve()
+        if source_root not in chunk_path.parents:
+            raise ValueError(f"manifest chunk escapes the dataset directory: {raw_path!r}")
+        try:
+            records = json.loads(chunk_path.read_text())
+        except FileNotFoundError as exc:
+            raise ValueError(f"manifest chunk does not exist: {raw_path!r}") from exc
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"manifest chunk is not valid JSON: {raw_path!r}") from exc
+        if not isinstance(records, list):
+            raise ValueError(f"manifest chunk is not a JSON array: {raw_path!r}")
+        if len(records) != count:
+            raise ValueError(
+                f"manifest chunk count mismatch for {raw_path!r}: "
+                f"expected {count}, found {len(records)}"
+            )
+        validated.append((relative_path, count))
+        total += count
+
+    balanced_count = _manifest_balanced_count(manifest)
+    if total != balanced_count:
+        raise ValueError(
+            f"manifest balancedExported count for {deck_id!r} does not match "
+            f"its chunks: expected {balanced_count}, found {total}"
+        )
+    return validated
+
+
+def _validate_opening_puzzle_catalog(
+    source_root: Path,
+    catalog: dict,
+) -> list[dict]:
+    """Validate catalog entries and all referenced manifests before copying."""
+    schema_version = catalog.get("schemaVersion")
+    if (
+        isinstance(schema_version, bool)
+        or not isinstance(schema_version, int)
+        or schema_version < 1
+    ):
+        raise ValueError("opening-puzzle catalog requires a positive integer schemaVersion")
+    decks = catalog.get("decks")
+    if not isinstance(decks, list) or not decks:
+        raise ValueError("opening-puzzle catalog decks must be a non-empty list")
+
+    source_root = Path(source_root).resolve()
+    plans: list[dict] = []
+    seen_ids: set[str] = set()
+    seen_manifest_paths: set[str] = set()
+    for index, deck in enumerate(decks):
+        if not isinstance(deck, dict):
+            raise ValueError(f"catalog deck {index} must be an object")
+        deck_id = deck.get("id")
+        if not isinstance(deck_id, str) or not _SAFE_DECK_ID.fullmatch(deck_id):
+            raise ValueError(f"catalog deck {index} has an unsafe id")
+        if deck_id in seen_ids:
+            raise ValueError(f"duplicate catalog deck id: {deck_id!r}")
+        seen_ids.add(deck_id)
+
+        solver_color = deck.get("solverColor")
+        orientation = deck.get("orientation")
+        if solver_color not in {"white", "black"}:
+            raise ValueError(f"catalog deck {deck_id!r} has an invalid solverColor")
+        if orientation != solver_color:
+            raise ValueError(
+                f"catalog deck {deck_id!r} orientation must equal solverColor"
+            )
+        if not isinstance(deck.get("label"), str) or not deck["label"].strip():
+            raise ValueError(f"catalog deck {deck_id!r} has no label")
+        if (
+            not isinstance(deck.get("openingFamily"), str)
+            or not deck["openingFamily"].strip()
+        ):
+            raise ValueError(f"catalog deck {deck_id!r} has no openingFamily")
+
+        manifest_relative = _safe_catalog_manifest_path(
+            deck.get("manifestPath"), deck_id
+        )
+        manifest_key = manifest_relative.as_posix()
+        if manifest_key in seen_manifest_paths:
+            raise ValueError(f"duplicate catalog manifestPath: {manifest_key!r}")
+        seen_manifest_paths.add(manifest_key)
+
+        manifest_path = (source_root / manifest_relative).resolve()
+        if source_root not in manifest_path.parents:
+            raise ValueError(
+                f"catalog manifest escapes the canonical data directory: {manifest_key!r}"
+            )
+        manifest = _read_json_object(manifest_path, "opening-puzzle manifest")
+        source_dir = manifest_path.parent
+        chunks = _validated_opening_puzzle_chunks(
+            source_dir,
+            manifest,
+            deck=deck,
+        )
+        plans.append({
+            "deck": deck,
+            "manifest": manifest,
+            "manifestPath": manifest_path,
+            "sourceDir": source_dir,
+            "chunks": chunks,
+        })
+
+    default_deck_id = catalog.get("defaultDeckId")
+    if default_deck_id not in seen_ids:
+        raise ValueError("catalog defaultDeckId must reference a catalog deck")
+    return plans
+
+
+def _deployed_opening_puzzle_deck_ids(data_dir: Path) -> set[str]:
+    """Read only safe deck IDs from the previous generated catalog."""
+    catalog_path = data_dir / OPENING_PUZZLE_CATALOG_NAME
+    try:
+        catalog = json.loads(catalog_path.read_text())
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return set()
+    decks = catalog.get("decks") if isinstance(catalog, dict) else None
+    if not isinstance(decks, list):
+        return set()
+    return {
+        deck["id"]
+        for deck in decks
+        if isinstance(deck, dict)
+        and isinstance(deck.get("id"), str)
+        and _SAFE_DECK_ID.fullmatch(deck["id"])
+    }
+
+
+def _remove_opening_puzzle_deployment(path: Path, data_dir: Path) -> None:
+    """Remove one generated catalog/deck path without following symlinks."""
+    path = Path(path)
+    data_dir = Path(data_dir)
+    if path.parent != data_dir or data_dir.resolve() != data_dir:
+        raise ValueError(f"refusing to remove an unmanaged dashboard path: {path}")
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+    elif path.exists():
+        shutil.rmtree(path)
+
+
+def sync_opening_puzzle_web_data(
+    source_root: Path = DEFAULT_OPENING_PUZZLE_DATA_DIR,
+    dashboard_dir: Path = Path("dashboard"),
+) -> dict:
+    """Deploy the catalog plus only each deck's manifest and balanced chunks.
+
+    The complete JSONL exports and analytical shards remain canonical local
+    artifacts under ``public/data``. Every path and count is validated before
+    the generated Pages tree is changed, and the old Caro-Kann-only sync entry
+    point remains available for callers that have not adopted the catalog.
+    """
+    source_root = Path(source_root)
+    dashboard_dir = Path(dashboard_dir)
+    data_dir = _opening_puzzle_dashboard_data_dir(dashboard_dir)
+    catalog_path = source_root / OPENING_PUZZLE_CATALOG_NAME
+    previous_deck_ids = _deployed_opening_puzzle_deck_ids(data_dir)
+
+    if not catalog_path.is_file():
+        # Caro-Kann predates the catalog, so clear that one legacy path even
+        # when there is no previous catalog from which to discover it.
+        previous_deck_ids.add(CARO_KANN_DATASET_NAME)
+        if data_dir.exists():
+            for deck_id in sorted(previous_deck_ids):
+                _remove_opening_puzzle_deployment(data_dir / deck_id, data_dir)
+            _remove_opening_puzzle_deployment(
+                data_dir / OPENING_PUZZLE_CATALOG_NAME,
+                data_dir,
+            )
+        return {"available": False, "decks": 0, "chunks": 0, "puzzles": 0}
+
+    source_root_resolved = source_root.resolve()
+    if catalog_path.resolve().parent != source_root_resolved:
+        raise ValueError("opening-puzzle catalog escapes the canonical data directory")
+    catalog = _read_json_object(catalog_path, "opening-puzzle catalog")
+    plans = _validate_opening_puzzle_catalog(source_root, catalog)
+
+    data_dir.mkdir(parents=True, exist_ok=True)
+    if data_dir.resolve() != data_dir:
+        raise ValueError(
+            "refusing opening-puzzle deployment outside the resolved dashboard root"
+        )
+    staging = Path(tempfile.mkdtemp(prefix=".opening-puzzles-sync-", dir=data_dir))
+    try:
+        shutil.copyfile(catalog_path, staging / OPENING_PUZZLE_CATALOG_NAME)
+        for plan in plans:
+            deck_id = plan["deck"]["id"]
+            staged_deck = staging / deck_id
+            staged_deck.mkdir()
+            shutil.copyfile(plan["manifestPath"], staged_deck / "manifest.json")
+            for relative_path, _count in plan["chunks"]:
+                target = staged_deck / relative_path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(plan["sourceDir"] / relative_path, target)
+
+        new_deck_ids = {plan["deck"]["id"] for plan in plans}
+        for deck_id in sorted(previous_deck_ids | new_deck_ids):
+            _remove_opening_puzzle_deployment(data_dir / deck_id, data_dir)
+        for deck_id in sorted(new_deck_ids):
+            (staging / deck_id).replace(data_dir / deck_id)
+        _remove_opening_puzzle_deployment(
+            data_dir / OPENING_PUZZLE_CATALOG_NAME,
+            data_dir,
+        )
+        (staging / OPENING_PUZZLE_CATALOG_NAME).replace(
+            data_dir / OPENING_PUZZLE_CATALOG_NAME
+        )
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
+
+    deck_counts = {
+        plan["deck"]["id"]: {
+            "chunks": len(plan["chunks"]),
+            "puzzles": _manifest_balanced_count(plan["manifest"]),
+        }
+        for plan in plans
+    }
+    return {
+        "available": True,
+        "decks": len(plans),
+        "chunks": sum(item["chunks"] for item in deck_counts.values()),
+        "puzzles": sum(item["puzzles"] for item in deck_counts.values()),
+        "deckCounts": deck_counts,
     }
 
 
@@ -611,20 +967,21 @@ def main(argv=None) -> int:
 
     print("[5/5] Rendering dashboard...")
     render_all_pages(template_dir=template_dir, output_dir=dashboard_dir, payload=payload)
-    caro_kann_sync = sync_caro_kann_web_data(
-        source_dir=DEFAULT_CARO_KANN_DATA_DIR,
+    opening_puzzle_sync = sync_opening_puzzle_web_data(
+        source_root=DEFAULT_OPENING_PUZZLE_DATA_DIR,
         dashboard_dir=dashboard_dir,
     )
-    if caro_kann_sync["available"]:
+    if opening_puzzle_sync["available"]:
         print(
-            "      Caro-Kann trainer data: "
-            f"{caro_kann_sync['puzzles']} puzzles in "
-            f"{caro_kann_sync['chunks']} chunk(s)."
+            "      Opening trainer data: "
+            f"{opening_puzzle_sync['puzzles']} puzzles across "
+            f"{opening_puzzle_sync['decks']} deck(s) in "
+            f"{opening_puzzle_sync['chunks']} chunk(s)."
         )
     else:
         print(
-            "      Caro-Kann trainer data unavailable; "
-            f"run the extractor to create {DEFAULT_CARO_KANN_DATA_DIR}."
+            "      Opening trainer data unavailable; run the extractor to "
+            f"create {DEFAULT_OPENING_PUZZLE_DATA_DIR / OPENING_PUZZLE_CATALOG_NAME}."
         )
 
     print(f"\nDone. Rendered to: {(dashboard_dir / 'index.html').resolve()}")

@@ -1,0 +1,536 @@
+{
+  "balancedCounts": {
+    "difficulty": {
+      "advanced": 489,
+      "beginner": 1605,
+      "developing": 1082,
+      "expert": 186,
+      "intermediate": 917
+    },
+    "primaryTacticalTheme": {
+      "advancedPawn": 27,
+      "advantage": 887,
+      "attackingF2F7": 2,
+      "attraction": 23,
+      "capturingDefender": 21,
+      "clearance": 36,
+      "collinearMove": 1,
+      "crushing": 367,
+      "defensiveMove": 136,
+      "deflection": 60,
+      "discoveredAttack": 206,
+      "doubleCheck": 10,
+      "fork": 605,
+      "interference": 19,
+      "mateIn1": 885,
+      "mateIn2": 262,
+      "mateIn3": 74,
+      "mateIn4": 5,
+      "mateIn5": 1,
+      "middlegame": 23,
+      "pin": 291,
+      "quietMove": 64,
+      "sacrifice": 112,
+      "skewer": 47,
+      "trappedPiece": 101,
+      "unclassified": 12,
+      "xRayAttack": 2
+    },
+    "provenance": {
+      "master": 843,
+      "masterVsMaster": 73,
+      "standard": 3356,
+      "superGM": 7
+    },
+    "theme": {
+      "advancedPawn": 53,
+      "advantage": 2056,
+      "attackingF2F7": 59,
+      "attraction": 93,
+      "backRankMate": 64,
+      "bodenMate": 1,
+      "capturingDefender": 78,
+      "castling": 4,
+      "clearance": 87,
+      "collinearMove": 4,
+      "cornerMate": 3,
+      "crushing": 961,
+      "defensiveMove": 156,
+      "deflection": 94,
+      "discoveredAttack": 275,
+      "discoveredCheck": 77,
+      "doubleBishopMate": 3,
+      "doubleCheck": 33,
+      "dovetailMate": 1,
+      "enPassant": 2,
+      "endgame": 25,
+      "epauletteMate": 9,
+      "exposedKing": 75,
+      "fork": 622,
+      "hangingPiece": 225,
+      "interference": 29,
+      "intermezzo": 107,
+      "kingsideAttack": 572,
+      "long": 913,
+      "master": 923,
+      "masterVsMaster": 78,
+      "mate": 1227,
+      "mateIn1": 885,
+      "mateIn2": 262,
+      "mateIn3": 74,
+      "mateIn4": 5,
+      "mateIn5": 1,
+      "middlegame": 3365,
+      "morphysMate": 5,
+      "oneMove": 885,
+      "opening": 889,
+      "operaMate": 16,
+      "pillsburysMate": 11,
+      "pin": 354,
+      "promotion": 13,
+      "queensideAttack": 383,
+      "quietMove": 83,
+      "sacrifice": 257,
+      "short": 2294,
+      "skewer": 53,
+      "smotheredMate": 31,
+      "superGM": 7,
+      "swallowstailMate": 6,
+      "trappedPiece": 137,
+      "triangleMate": 1,
+      "veryLong": 152,
+      "xRayAttack": 6
+    },
+    "variation": {
+      "Modern Defense: Averbakh System": 177,
+      "Modern Defense: Averbakh Variation": 11,
+      "Modern Defense: Beefeater Variation": 25,
+      "Modern Defense: Bishop Attack": 67,
+      "Modern Defense: Fianchetto Gambit": 14,
+      "Modern Defense: Gellers System": 133,
+      "Modern Defense: Gurgenidze Defense": 5,
+      "Modern Defense: Kotov Variation": 89,
+      "Modern Defense: Lizard Defense": 17,
+      "Modern Defense: Modern Pterodactyl": 30,
+      "Modern Defense: Mongredien Defense": 146,
+      "Modern Defense: Neo-Modern Defense": 6,
+      "Modern Defense: Norwegian Defense": 111,
+      "Modern Defense: Other variations": 1000,
+      "Modern Defense: Pseudo-Austrian Attack": 146,
+      "Modern Defense: Pterodactyl Variation": 2,
+      "Modern Defense: Queen’s Pawn Move Order": 935,
+      "Modern Defense: Randspringer Variation": 10,
+      "Modern Defense: Semi-Averbakh Variation": 5,
+      "Modern Defense: Standard Defense": 541,
+      "Modern Defense: Standard Line": 256,
+      "Modern Defense: Three Pawns Attack": 235,
+      "Modern Defense: Two Knights Variation": 314,
+      "Modern Defense: Wind Gambit": 4
+    }
+  },
+  "chunks": [
+    {
+      "count": 1000,
+      "path": "chunks/chunk-0001.json"
+    },
+    {
+      "count": 1000,
+      "path": "chunks/chunk-0002.json"
+    },
+    {
+      "count": 1000,
+      "path": "chunks/chunk-0003.json"
+    },
+    {
+      "count": 1000,
+      "path": "chunks/chunk-0004.json"
+    },
+    {
+      "count": 279,
+      "path": "chunks/chunk-0005.json"
+    }
+  ],
+  "counts": {
+    "allExported": 8029,
+    "balancedExported": 4279,
+    "blackToSolveRows": 8029,
+    "invalidRows": 6092931,
+    "openingMatchedRows": 20446,
+    "perspectiveMatchedRows": 8029,
+    "rowsScanned": 6100960,
+    "validRows": 8029
+  },
+  "dataset": "Modern Defense puzzles for Black",
+  "datasetName": "Modern Defense puzzles for Black",
+  "deckId": "modern-black",
+  "difficultyBuckets": {
+    "advanced": {
+      "max": 2399,
+      "min": 2000
+    },
+    "beginner": {
+      "max": 1199,
+      "min": null
+    },
+    "developing": {
+      "max": 1599,
+      "min": 1200
+    },
+    "expert": {
+      "max": null,
+      "min": 2400
+    },
+    "intermediate": {
+      "max": 1999,
+      "min": 1600
+    }
+  },
+  "difficultyCounts": {
+    "advanced": 803,
+    "beginner": 3165,
+    "developing": 2117,
+    "expert": 231,
+    "intermediate": 1713
+  },
+  "displayName": "Modern Defense — Black",
+  "generatedAt": "2026-08-03T21:00:28.582762Z",
+  "generatedAtUtc": "2026-08-03T21:00:28.582762Z",
+  "inputByteSize": 304384407,
+  "inputFile": "lichess_db_puzzle.csv.zst",
+  "inputFilename": "lichess_db_puzzle.csv.zst",
+  "inputKind": "file",
+  "inputSha256": "a0ea9129c6b6434dfb34a9ac4ec660c9cfff22b2de465e01854f018fc847f073",
+  "inputSha256Scope": "complete-file-bytes",
+  "license": "CC0",
+  "matchedRootCounts": {
+    "Modern_Defense": 7066,
+    "Queens_Pawn_Game_Modern_Defense": 963
+  },
+  "openingFamily": "Modern Defense",
+  "openingPrefix": "Modern_Defense",
+  "openingTagRoots": [
+    "Modern_Defense",
+    "Queens_Pawn_Game_Modern_Defense"
+  ],
+  "orientation": "black",
+  "provenanceCounts": {
+    "master": 1041,
+    "masterVsMaster": 75,
+    "standard": 6906,
+    "superGM": 7
+  },
+  "qualityFilter": {
+    "maxRatingDeviation": 150,
+    "minPlays": 20,
+    "minPopularity": 0
+  },
+  "qualityFilters": {
+    "maxRatingDeviation": 150,
+    "minPlays": 20,
+    "minPopularity": 0,
+    "qualityEligible": 7836
+  },
+  "sampling": {
+    "algorithm": "sha256-cell-round-robin-v1",
+    "balancedLimit": 10000,
+    "dimensions": [
+      "primaryVariation",
+      "difficulty",
+      "provenance",
+      "primaryTacticalTheme"
+    ],
+    "maxPerVariation": 1000,
+    "seed": 20260803
+  },
+  "scanComplete": true,
+  "scanLimit": null,
+  "schemaVersion": 2,
+  "solverColor": "black",
+  "source": {
+    "exportUrl": "https://database.lichess.org/lichess_db_puzzle.csv.zst",
+    "name": "Lichess Open Database: Puzzles",
+    "url": "https://database.lichess.org/#puzzles"
+  },
+  "themeCounts": {
+    "advancedPawn": 63,
+    "advantage": 3843,
+    "attackingF2F7": 105,
+    "attraction": 137,
+    "backRankMate": 142,
+    "balestraMate": 1,
+    "bodenMate": 1,
+    "capturingDefender": 133,
+    "castling": 6,
+    "clearance": 113,
+    "collinearMove": 4,
+    "cornerMate": 7,
+    "crushing": 1884,
+    "defensiveMove": 219,
+    "deflection": 122,
+    "discoveredAttack": 456,
+    "discoveredCheck": 107,
+    "doubleBishopMate": 4,
+    "doubleCheck": 44,
+    "dovetailMate": 1,
+    "enPassant": 4,
+    "endgame": 56,
+    "epauletteMate": 14,
+    "exposedKing": 113,
+    "fork": 1334,
+    "hangingPiece": 458,
+    "hookMate": 1,
+    "interference": 35,
+    "intermezzo": 203,
+    "kingsideAttack": 1132,
+    "long": 1701,
+    "master": 1123,
+    "masterVsMaster": 80,
+    "mate": 2253,
+    "mateIn1": 1671,
+    "mateIn2": 477,
+    "mateIn3": 99,
+    "mateIn4": 5,
+    "mateIn5": 1,
+    "middlegame": 6208,
+    "morphysMate": 6,
+    "oneMove": 1676,
+    "opening": 1765,
+    "operaMate": 31,
+    "pillsburysMate": 17,
+    "pin": 552,
+    "promotion": 14,
+    "queensideAttack": 560,
+    "quietMove": 95,
+    "sacrifice": 376,
+    "short": 4342,
+    "skewer": 56,
+    "smotheredMate": 57,
+    "superGM": 7,
+    "swallowstailMate": 8,
+    "trappedPiece": 212,
+    "triangleMate": 1,
+    "veryLong": 261,
+    "xRayAttack": 7
+  },
+  "truncated": false,
+  "variationCounts": {
+    "Modern Defense: Averbakh System": 179,
+    "Modern Defense: Averbakh Variation": 12,
+    "Modern Defense: Beefeater Variation": 27,
+    "Modern Defense: Bishop Attack": 68,
+    "Modern Defense: Fianchetto Gambit": 15,
+    "Modern Defense: Gellers System": 133,
+    "Modern Defense: Gurgenidze Defense": 5,
+    "Modern Defense: Kotov Variation": 92,
+    "Modern Defense: Lizard Defense": 17,
+    "Modern Defense: Modern Pterodactyl": 30,
+    "Modern Defense: Mongredien Defense": 146,
+    "Modern Defense: Neo-Modern Defense": 6,
+    "Modern Defense: Norwegian Defense": 113,
+    "Modern Defense: Other variations": 4685,
+    "Modern Defense: Pseudo-Austrian Attack": 150,
+    "Modern Defense: Pterodactyl Variation": 2,
+    "Modern Defense: Queen’s Pawn Move Order": 963,
+    "Modern Defense: Randspringer Variation": 10,
+    "Modern Defense: Semi-Averbakh Variation": 5,
+    "Modern Defense: Standard Defense": 551,
+    "Modern Defense: Standard Line": 260,
+    "Modern Defense: Three Pawns Attack": 238,
+    "Modern Defense: Two Knights Variation": 318,
+    "Modern Defense: Wind Gambit": 4
+  },
+  "variations": [
+    {
+      "balancedCount": 177,
+      "count": 179,
+      "matchedTagRoot": "Modern_Defense",
+      "name": "Modern Defense: Averbakh System",
+      "slug": "modern-defense-averbakh-system",
+      "tag": "Modern_Defense_Averbakh_System"
+    },
+    {
+      "balancedCount": 11,
+      "count": 12,
+      "matchedTagRoot": "Modern_Defense",
+      "name": "Modern Defense: Averbakh Variation",
+      "slug": "modern-defense-averbakh-variation",
+      "tag": "Modern_Defense_Averbakh_Variation"
+    },
+    {
+      "balancedCount": 25,
+      "count": 27,
+      "matchedTagRoot": "Modern_Defense",
+      "name": "Modern Defense: Beefeater Variation",
+      "slug": "modern-defense-beefeater-variation",
+      "tag": "Modern_Defense_Beefeater_Variation"
+    },
+    {
+      "balancedCount": 67,
+      "count": 68,
+      "matchedTagRoot": "Modern_Defense",
+      "name": "Modern Defense: Bishop Attack",
+      "slug": "modern-defense-bishop-attack",
+      "tag": "Modern_Defense_Bishop_Attack"
+    },
+    {
+      "balancedCount": 14,
+      "count": 15,
+      "matchedTagRoot": "Modern_Defense",
+      "name": "Modern Defense: Fianchetto Gambit",
+      "slug": "modern-defense-fianchetto-gambit",
+      "tag": "Modern_Defense_Fianchetto_Gambit"
+    },
+    {
+      "balancedCount": 133,
+      "count": 133,
+      "matchedTagRoot": "Modern_Defense",
+      "name": "Modern Defense: Gellers System",
+      "slug": "modern-defense-gellers-system",
+      "tag": "Modern_Defense_Gellers_System"
+    },
+    {
+      "balancedCount": 5,
+      "count": 5,
+      "matchedTagRoot": "Modern_Defense",
+      "name": "Modern Defense: Gurgenidze Defense",
+      "slug": "modern-defense-gurgenidze-defense",
+      "tag": "Modern_Defense_Gurgenidze_Defense"
+    },
+    {
+      "balancedCount": 89,
+      "count": 92,
+      "matchedTagRoot": "Modern_Defense",
+      "name": "Modern Defense: Kotov Variation",
+      "slug": "modern-defense-kotov-variation",
+      "tag": "Modern_Defense_Kotov_Variation"
+    },
+    {
+      "balancedCount": 17,
+      "count": 17,
+      "matchedTagRoot": "Modern_Defense",
+      "name": "Modern Defense: Lizard Defense",
+      "slug": "modern-defense-lizard-defense",
+      "tag": "Modern_Defense_Lizard_Defense"
+    },
+    {
+      "balancedCount": 30,
+      "count": 30,
+      "matchedTagRoot": "Modern_Defense",
+      "name": "Modern Defense: Modern Pterodactyl",
+      "slug": "modern-defense-modern-pterodactyl",
+      "tag": "Modern_Defense_Modern_Pterodactyl"
+    },
+    {
+      "balancedCount": 146,
+      "count": 146,
+      "matchedTagRoot": "Modern_Defense",
+      "name": "Modern Defense: Mongredien Defense",
+      "slug": "modern-defense-mongredien-defense",
+      "tag": "Modern_Defense_Mongredien_Defense"
+    },
+    {
+      "balancedCount": 6,
+      "count": 6,
+      "matchedTagRoot": "Modern_Defense",
+      "name": "Modern Defense: Neo-Modern Defense",
+      "slug": "modern-defense-neo-modern-defense",
+      "tag": "Modern_Defense_Neo-Modern_Defense"
+    },
+    {
+      "balancedCount": 111,
+      "count": 113,
+      "matchedTagRoot": "Modern_Defense",
+      "name": "Modern Defense: Norwegian Defense",
+      "slug": "modern-defense-norwegian-defense",
+      "tag": "Modern_Defense_Norwegian_Defense"
+    },
+    {
+      "balancedCount": 1000,
+      "count": 4685,
+      "matchedTagRoot": "Modern_Defense",
+      "name": "Modern Defense: Other variations",
+      "slug": "modern-defense-other-variations",
+      "tag": "Modern_Defense_Other_variations"
+    },
+    {
+      "balancedCount": 146,
+      "count": 150,
+      "matchedTagRoot": "Modern_Defense",
+      "name": "Modern Defense: Pseudo-Austrian Attack",
+      "slug": "modern-defense-pseudo-austrian-attack",
+      "tag": "Modern_Defense_Pseudo-Austrian_Attack"
+    },
+    {
+      "balancedCount": 2,
+      "count": 2,
+      "matchedTagRoot": "Modern_Defense",
+      "name": "Modern Defense: Pterodactyl Variation",
+      "slug": "modern-defense-pterodactyl-variation",
+      "tag": "Modern_Defense_Pterodactyl_Variation"
+    },
+    {
+      "balancedCount": 935,
+      "count": 963,
+      "matchedTagRoot": "Queens_Pawn_Game_Modern_Defense",
+      "name": "Modern Defense: Queen’s Pawn Move Order",
+      "slug": "queens-pawn-game-modern-defense",
+      "tag": "Queens_Pawn_Game_Modern_Defense"
+    },
+    {
+      "balancedCount": 10,
+      "count": 10,
+      "matchedTagRoot": "Modern_Defense",
+      "name": "Modern Defense: Randspringer Variation",
+      "slug": "modern-defense-randspringer-variation",
+      "tag": "Modern_Defense_Randspringer_Variation"
+    },
+    {
+      "balancedCount": 5,
+      "count": 5,
+      "matchedTagRoot": "Modern_Defense",
+      "name": "Modern Defense: Semi-Averbakh Variation",
+      "slug": "modern-defense-semi-averbakh-variation",
+      "tag": "Modern_Defense_Semi-Averbakh_Variation"
+    },
+    {
+      "balancedCount": 541,
+      "count": 551,
+      "matchedTagRoot": "Modern_Defense",
+      "name": "Modern Defense: Standard Defense",
+      "slug": "modern-defense-standard-defense",
+      "tag": "Modern_Defense_Standard_Defense"
+    },
+    {
+      "balancedCount": 256,
+      "count": 260,
+      "matchedTagRoot": "Modern_Defense",
+      "name": "Modern Defense: Standard Line",
+      "slug": "modern-defense-standard-line",
+      "tag": "Modern_Defense_Standard_Line"
+    },
+    {
+      "balancedCount": 235,
+      "count": 238,
+      "matchedTagRoot": "Modern_Defense",
+      "name": "Modern Defense: Three Pawns Attack",
+      "slug": "modern-defense-three-pawns-attack",
+      "tag": "Modern_Defense_Three_Pawns_Attack"
+    },
+    {
+      "balancedCount": 314,
+      "count": 318,
+      "matchedTagRoot": "Modern_Defense",
+      "name": "Modern Defense: Two Knights Variation",
+      "slug": "modern-defense-two-knights-variation",
+      "tag": "Modern_Defense_Two_Knights_Variation"
+    },
+    {
+      "balancedCount": 4,
+      "count": 4,
+      "matchedTagRoot": "Modern_Defense",
+      "name": "Modern Defense: Wind Gambit",
+      "slug": "modern-defense-wind-gambit",
+      "tag": "Modern_Defense_Wind_Gambit"
+    }
+  ]
+}

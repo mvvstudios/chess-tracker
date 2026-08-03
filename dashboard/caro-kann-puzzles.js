@@ -1,5 +1,6 @@
-// Static Caro-Kann puzzle trainer for Black. Chess legality, continuation
-// validation, queue helpers, and persistence are shared with PuzzleDomain.
+// Static opening puzzle trainer. Chess legality, continuation validation,
+// queue helpers, and persistence are shared with PuzzleDomain. The historical
+// filename and public global remain for backward compatibility.
 (function () {
   "use strict";
 
@@ -11,9 +12,9 @@
   const Domain = window.PuzzleDomain;
   const Caro = window.CaroKannDomain;
   const UI = window.ChessTrackerUI;
-  const DATASET_BASE = "data/caro-kann-black/";
-  const MANIFEST_URL = DATASET_BASE + "manifest.json";
-  const STORAGE_NAMESPACE = "caro-kann-black";
+  const CATALOG_URL = "data/opening-puzzle-catalog.json";
+  const LEGACY_MANIFEST_URL = "data/caro-kann-black/manifest.json";
+  const LEGACY_STORAGE_NAMESPACE = "caro-kann-black";
   const fallbackEscape = value => String(value == null ? "" : value).replace(
     /[&"'<>]/g,
     character => ({
@@ -33,9 +34,12 @@
     && window.matchMedia("(pointer: coarse)").matches;
 
   const elements = {
+    title: document.getElementById("puzzles-title"),
+    intro: document.getElementById("puzzle-intro"),
     summary: document.getElementById("puzzle-progress-summary"),
     warning: document.getElementById("puzzle-storage-warning"),
     filters: document.getElementById("caro-puzzle-filters"),
+    deck: document.getElementById("opening-puzzle-deck"),
     filterMode: document.getElementById("caro-filter-mode"),
     filterVariation: document.getElementById("caro-filter-variation"),
     filterDifficulty: document.getElementById("caro-filter-difficulty"),
@@ -52,6 +56,7 @@
     pageState: document.getElementById("puzzle-page-state"),
     workspace: document.getElementById("puzzle-workspace"),
     board: document.getElementById("puzzle-board"),
+    boardHelp: document.getElementById("puzzle-board-help"),
     prompt: document.getElementById("puzzle-prompt"),
     sideToMove: document.getElementById("puzzle-side-to-move"),
     feedback: document.getElementById("puzzle-feedback"),
@@ -79,7 +84,12 @@
   };
 
   const state = {
+    catalog: null,
+    deck: null,
     manifest: null,
+    datasetBase: "",
+    loadGeneration: 0,
+    abortController: null,
     candidates: [],
     candidateIds: new Set(),
     invalidCount: 0,
@@ -118,8 +128,13 @@
   const ready = initialize();
   window.CaroKannTrainer = Object.freeze({
     ready,
-    manifestUrl: MANIFEST_URL,
-    storageNamespace: STORAGE_NAMESPACE,
+    catalogUrl: CATALOG_URL,
+    // Retain these two legacy fields for callers that only need the original
+    // default deck's static locations.
+    manifestUrl: LEGACY_MANIFEST_URL,
+    storageNamespace: LEGACY_STORAGE_NAMESPACE,
+    get selectedDeckId() { return state.deck ? state.deck.id : null; },
+    selectDeck(deckId) { return switchDeck(deckId, false); },
   });
 
   async function initialize() {
@@ -130,10 +145,11 @@
       showFatal("The shared puzzle rules module did not load.");
       return false;
     }
-    if (!Caro || typeof Caro.normalizeManifest !== "function"
+    if (!Caro || typeof Caro.normalizeCatalog !== "function"
+        || typeof Caro.normalizeManifest !== "function"
         || typeof Caro.adaptRecord !== "function"
         || typeof Caro.filterRecords !== "function") {
-      showFatal("The Caro-Kann dataset module did not load.");
+      showFatal("The opening-puzzle dataset module did not load.");
       return false;
     }
     if (!UI || typeof UI.makeBoard !== "function") {
@@ -145,40 +161,32 @@
       return false;
     }
 
-    const username = window.DATA && window.DATA.username
-      ? window.DATA.username
-      : "local";
     try {
-      state.store = Domain.createProgressStore(username, undefined, STORAGE_NAMESPACE);
-    } catch (error) {
-      showFatal("Puzzle progress could not be opened in this browser.");
-      console.error("Could not create Caro-Kann progress store", error);
-      return false;
-    }
-
-    try {
-      const rawManifest = await fetchJson(MANIFEST_URL);
-      state.manifest = Caro.normalizeManifest(rawManifest);
-      if (!state.manifest.chunks.length) {
-        throw new Error("The manifest contains no deployable balanced chunks.");
+      const rawCatalog = await fetchJson(CATALOG_URL, 0, null);
+      state.catalog = Caro.normalizeCatalog(rawCatalog);
+      if (state.catalog.schemaVersion !== "1") {
+        throw new Error("The opening catalog schema is unsupported.");
       }
-      populateFilterOptions();
-      await loadNextChunk(false);
-      rebuildPartition(true);
-      renderAll();
-      if (!state.unsolved.length && hasMoreChunks()) {
-        await ensureUnsolvedCandidates();
-      }
-      return true;
+      if (!state.catalog.decks.length) throw new Error("The opening catalog contains no valid decks.");
+      populateDeckOptions();
+      const requested = requestedDeckId();
+      return await switchDeck(requested, true);
     } catch (error) {
-      console.error("Could not initialize Caro-Kann puzzles", error);
-      showFatal("The balanced Caro-Kann dataset is unavailable. Rebuild the dashboard data and reload this page.");
+      console.error("Could not initialize opening puzzles", error);
+      showFatal("The opening puzzle catalog is unavailable. Rebuild the dashboard data and reload this page.");
       return false;
     }
   }
 
-  async function fetchJson(url) {
-    const response = await window.fetch(url, { credentials: "same-origin" });
+  async function fetchJson(url, generation, signal) {
+    const options = { credentials: "same-origin" };
+    if (signal) options.signal = signal;
+    const response = await window.fetch(url, options);
+    if (generation && generation !== state.loadGeneration) {
+      const error = new Error("A newer opening deck was selected.");
+      error.name = "AbortError";
+      throw error;
+    }
     if (!response || response.ok === false) {
       const status = response && response.status ? ` (${response.status})` : "";
       throw new Error(`Could not fetch ${url}${status}`);
@@ -186,15 +194,209 @@
     return response.json();
   }
 
+  function requestedDeckId() {
+    let requested = "";
+    try {
+      if (typeof window.URLSearchParams === "function" && window.location) {
+        requested = new window.URLSearchParams(window.location.search || "").get("deck") || "";
+      }
+    } catch (_error) {
+      requested = "";
+    }
+    return state.catalog.decks.some(deck => deck.id === requested)
+      ? requested : state.catalog.defaultDeckId;
+  }
+
+  function populateDeckOptions() {
+    if (!elements.deck || !state.catalog) return;
+    elements.deck.innerHTML = state.catalog.decks.map(deck =>
+      `<option value="${escapeHtml(deck.id)}">${escapeHtml(deck.label)}</option>`
+    ).join("");
+    elements.deck.value = state.catalog.defaultDeckId;
+  }
+
+  function deckById(deckId) {
+    const requested = String(deckId || "").trim().toLowerCase();
+    return state.catalog && (state.catalog.decks.find(deck => deck.id === requested)
+      || state.catalog.decks.find(deck => deck.id === state.catalog.defaultDeckId)) || null;
+  }
+
+  function datasetBaseForManifest(path) {
+    const safe = Caro.safeRelativePath(path);
+    if (!safe) return "";
+    const slash = safe.lastIndexOf("/");
+    return "data/" + (slash >= 0 ? safe.slice(0, slash + 1) : "");
+  }
+
+  function resetDatasetState() {
+    clearIncorrectTimer();
+    clearOpponentReplyTimer();
+    closePromotionChooser(false);
+    state.manifest = null;
+    state.datasetBase = "";
+    state.candidates = [];
+    state.candidateIds = new Set();
+    state.invalidCount = 0;
+    state.invalidCandidateIds = new Set();
+    state.chunkIndex = 0;
+    state.chunkLoading = null;
+    state.chunkErrors = [];
+    state.filtered = [];
+    state.unsolved = [];
+    state.solved = [];
+    state.sessionIds = [];
+    state.currentId = null;
+    state.completedCandidate = null;
+    state.completedPostFen = null;
+    state.completedMoveUci = null;
+    state.revealed = false;
+    state.feedbackMode = "idle";
+    state.selectedSolvedId = null;
+    state.pendingPromotion = null;
+    state.store = null;
+    state.stepIndex = 0;
+    state.linePhase = "awaiting_user";
+    state.lastReplySan = null;
+    state.lastReplyUci = null;
+    state.transientWarning = null;
+    state.filterSignature = "";
+    if (elements.filterVariation) elements.filterVariation.value = "all";
+  }
+
+  async function switchDeck(deckId, initial) {
+    const deck = deckById(deckId);
+    if (!deck) return false;
+    state.loadGeneration += 1;
+    const generation = state.loadGeneration;
+    if (state.abortController && typeof state.abortController.abort === "function") {
+      state.abortController.abort();
+    }
+    state.abortController = typeof window.AbortController === "function"
+      ? new window.AbortController() : null;
+    resetDatasetState();
+    state.deck = deck;
+    if (elements.deck) elements.deck.value = deck.id;
+    updateDeckChrome(true);
+    renderAll();
+
+    const manifestPath = Caro.safeRelativePath(deck.manifestPath);
+    const manifestUrl = manifestPath ? `data/${manifestPath}` : "";
+    state.datasetBase = datasetBaseForManifest(manifestPath);
+    try {
+      if (!manifestUrl || !state.datasetBase) throw new Error("The catalog manifest path is invalid.");
+      const rawManifest = await fetchJson(
+        manifestUrl,
+        generation,
+        state.abortController && state.abortController.signal,
+      );
+      if (generation !== state.loadGeneration) return false;
+      const manifest = Caro.normalizeManifest(rawManifest, deck);
+      const schemaV2 = /^2(?:\.|$)/.test(String(rawManifest.schemaVersion || rawManifest.schema_version || ""));
+      const explicitRoots = rawManifest.openingTagRoots || rawManifest.opening_tag_roots;
+      if (schemaV2 && (!rawManifest.deckId && !rawManifest.deck_id
+          || !rawManifest.openingFamily && !rawManifest.opening_family
+          || !rawManifest.solverColor && !rawManifest.solver_color
+          || !rawManifest.orientation || !Array.isArray(explicitRoots) || !explicitRoots.length)) {
+        throw new Error("The schema-v2 manifest is missing required deck identity fields.");
+      }
+      if (deck.openingTagRoots.length) {
+        const catalogRoots = deck.openingTagRoots.slice().sort();
+        const manifestRoots = manifest.openingTagRoots.slice().sort();
+        if (catalogRoots.length !== manifestRoots.length
+            || catalogRoots.some((root, index) => root !== manifestRoots[index])) {
+          throw new Error("The selected manifest opening roots do not match its catalog entry.");
+        }
+      }
+      if (manifest.deckId !== deck.id || manifest.solverColor !== deck.solverColor
+          || manifest.orientation !== deck.orientation
+          || manifest.openingFamily !== deck.openingFamily
+          || manifest.orientation !== manifest.solverColor
+          || !manifest.openingTagRoots.length) {
+        throw new Error("The selected manifest does not match its catalog deck.");
+      }
+      if (!manifest.chunks.length) throw new Error("The manifest contains no deployable balanced chunks.");
+      state.manifest = manifest;
+      updateDeckChrome(false);
+      const username = window.DATA && window.DATA.username ? window.DATA.username : "local";
+      state.store = Domain.createProgressStore(username, undefined, deck.id);
+      populateFilterOptions();
+      await loadNextChunk(false, generation);
+      if (generation !== state.loadGeneration) return false;
+      rebuildPartition(true);
+      renderAll();
+      if (!state.unsolved.length && hasMoreChunks()) await ensureUnsolvedCandidates(1, generation);
+      updateDeckUrl(deck.id, initial);
+      return true;
+    } catch (error) {
+      if (error && error.name === "AbortError") return false;
+      console.error(`Could not initialize ${deck.id} puzzles`, error);
+      if (generation === state.loadGeneration) {
+        showFatal(`The balanced ${deck.openingFamily} dataset is unavailable. Rebuild the dashboard data and reload this page.`);
+      }
+      return false;
+    }
+  }
+
+  function updateDeckUrl(deckId, initial) {
+    if (initial || !window.history || typeof window.history.replaceState !== "function"
+        || !window.location || typeof window.URL !== "function") return;
+    try {
+      const url = new window.URL(window.location.href);
+      if (deckId === state.catalog.defaultDeckId) url.searchParams.delete("deck");
+      else url.searchParams.set("deck", deckId);
+      window.history.replaceState(null, "", url.toString());
+    } catch (_error) {
+      // Query-string support is an enhancement; deck switching remains usable
+      // in older browsers with an immutable location object.
+    }
+  }
+
+  function solverColor() {
+    return state.manifest && state.manifest.solverColor
+      || state.deck && state.deck.solverColor || "black";
+  }
+
+  function boardOrientation() {
+    return state.manifest && state.manifest.orientation
+      || state.deck && state.deck.orientation || solverColor();
+  }
+
+  function openingFamily() {
+    return state.manifest && state.manifest.openingFamily
+      || state.deck && state.deck.openingFamily || "Opening";
+  }
+
+  function colorLabel(value) {
+    return value === "white" ? "White" : "Black";
+  }
+
+  function opponentColor() {
+    return solverColor() === "white" ? "black" : "white";
+  }
+
+  function updateDeckChrome(loading) {
+    if (!state.deck) return;
+    const side = colorLabel(state.deck.solverColor);
+    if (elements.title) elements.title.textContent = `${state.deck.openingFamily} Puzzles`;
+    if (elements.intro) {
+      elements.intro.textContent = `Play ${side} through complete tactical continuations from the Lichess puzzle database.`;
+    }
+    const allOption = elements.filterMode && elements.filterMode.querySelector
+      ? elements.filterMode.querySelector('option[value="all"]') : null;
+    if (allOption) allOption.textContent = `All ${state.deck.openingFamily}`;
+    if (elements.boardHelp) {
+      elements.boardHelp.textContent = `Select a piece and destination on the ${side}-oriented board, or use the keyboard move field below the puzzle controls.`;
+    }
+    if (loading) elements.summary.textContent = `Loading ${state.deck.openingFamily} manifest…`;
+  }
+
   function resolveChunkPath(path) {
-    const value = String(path || "").trim().replace(/^\.\//, "");
+    const value = Caro.safeRelativePath(String(path || "").trim().replace(/^\.\//, ""));
     if (!value || /(?:^|\/)all\.jsonl(?:$|\?)/i.test(value)
         || /(?:^|\/)balanced\.jsonl(?:$|\?)/i.test(value)) {
       return null;
     }
-    if (/^https?:\/\//i.test(value) || value.startsWith("/")) return value;
-    if (value.startsWith(DATASET_BASE)) return value;
-    return DATASET_BASE + value;
+    return state.datasetBase + value;
   }
 
   function chunkRecords(payload) {
@@ -207,7 +409,8 @@
     return Boolean(state.manifest && state.chunkIndex < state.manifest.chunks.length);
   }
 
-  async function loadNextChunk(renderAfter) {
+  async function loadNextChunk(renderAfter, requestedGeneration) {
+    const generation = requestedGeneration || state.loadGeneration;
     if (state.chunkLoading) return state.chunkLoading;
     if (!hasMoreChunks()) return false;
 
@@ -225,9 +428,14 @@
         return false;
       }
       try {
-        const payload = await fetchJson(path);
+        const payload = await fetchJson(
+          path,
+          generation,
+          state.abortController && state.abortController.signal,
+        );
+        if (generation !== state.loadGeneration) return false;
         chunkRecords(payload).forEach(rawRecord => {
-          const candidate = Caro.adaptRecord(rawRecord);
+          const candidate = Caro.adaptRecord(rawRecord, state.manifest);
           if (!candidate) {
             state.invalidCount += 1;
             return;
@@ -244,9 +452,10 @@
         }
         return true;
       } catch (error) {
+        if (generation !== state.loadGeneration || error && error.name === "AbortError") return false;
         state.chunkErrors.push(`${chunk.path}: ${error.message || error}`);
         state.transientWarning = "One balanced puzzle chunk could not be loaded; the remaining chunks are still available.";
-        console.error("Could not load Caro-Kann puzzle chunk", error);
+        console.error("Could not load opening puzzle chunk", error);
         if (renderAfter) {
           rebuildPartition(false);
           renderAll();
@@ -262,13 +471,16 @@
     }
   }
 
-  async function ensureUnsolvedCandidates(minimum) {
+  async function ensureUnsolvedCandidates(minimum, requestedGeneration) {
+    const generation = requestedGeneration || state.loadGeneration;
     const target = Math.max(1, Math.floor(Number(minimum) || 1));
-    while (state.unsolved.length < target && hasMoreChunks()) {
-      await loadNextChunk(false);
+    while (generation === state.loadGeneration && state.unsolved.length < target && hasMoreChunks()) {
+      await loadNextChunk(false, generation);
+      if (generation !== state.loadGeneration) return false;
       rebuildPartition(false);
     }
     renderAll();
+    return true;
   }
 
   function storedSolvedIds() {
@@ -284,11 +496,13 @@
   }
 
   async function loadStoredSolvedCandidates() {
+    const generation = state.loadGeneration;
     const missing = storedSolvedIds();
     if (!missing.size) return;
     state.candidateIds.forEach(id => missing.delete(id));
-    while (missing.size && hasMoreChunks()) {
-      await loadNextChunk(false);
+    while (generation === state.loadGeneration && missing.size && hasMoreChunks()) {
+      await loadNextChunk(false, generation);
+      if (generation !== state.loadGeneration) return false;
       state.candidateIds.forEach(id => missing.delete(id));
     }
     if (missing.size) {
@@ -296,6 +510,7 @@
     }
     rebuildPartition(false);
     renderAll();
+    return true;
   }
 
   function currentFilters() {
@@ -322,7 +537,7 @@
     try {
       partition = Domain.partitionCandidates(selected, state.store) || {};
     } catch (error) {
-      console.error("Could not partition Caro-Kann candidates", error);
+      console.error("Could not partition opening-puzzle candidates", error);
       showFatal("The loaded puzzle chunk contains incomplete move data.");
       return false;
     }
@@ -364,7 +579,7 @@
 
   function dailyQueueSeed(signature) {
     const day = new Date().toISOString().slice(0, 10);
-    return `caro-kann-black:${day}:${signature}`;
+    return `${state.deck ? state.deck.id : LEGACY_STORAGE_NAMESPACE}:${day}:${signature}`;
   }
 
   function unwrapCandidates(items) {
@@ -442,7 +657,7 @@
     const loadedChunks = state.chunkIndex;
     const totalChunks = state.manifest.chunks.length;
     const group = currentFilters().mode === "curriculum" && currentCandidate()
-      ? ` · ${Caro.curriculumGroup(currentCandidate().variation)}`
+      ? ` · ${Caro.curriculumGroup(currentCandidate())}`
       : "";
     elements.filterStatus.textContent = `${state.filtered.length} matching puzzle${state.filtered.length === 1 ? "" : "s"} loaded`
       + ` · chunk ${loadedChunks} of ${totalChunks}${group}`;
@@ -454,7 +669,7 @@
       elements.workspace.hidden = true;
       elements.pageState.hidden = false;
       if (!state.manifest) {
-        elements.pageState.innerHTML = "<h2>Loading Caro-Kann puzzles…</h2><p>The manifest is loaded before any puzzle chunks.</p>";
+        elements.pageState.innerHTML = `<h2>Loading ${escapeHtml(openingFamily())} puzzles…</h2><p>The catalog and manifest are loaded before any puzzle chunks.</p>`;
       } else if (hasMoreChunks()) {
         elements.pageState.innerHTML = "<h2>Searching the remaining chunks…</h2><p>The selected study filter is not in the chunks loaded so far.</p>";
       } else if (state.filtered.length && state.solved.length === state.filtered.length) {
@@ -483,21 +698,22 @@
     else if (state.revealed && state.feedbackMode === "idle") state.feedbackMode = "revealed";
 
     const attempts = Number(progress.attempts || 0);
+    const side = colorLabel(solverColor());
     const decisionLabel = line.steps.length > 1
-      ? ` · Black move ${line.index + 1} of ${line.steps.length}`
+      ? ` · ${side} move ${line.index + 1} of ${line.steps.length}`
       : "";
     elements.prompt.textContent = completed
       ? "Solved"
       : line.index > 0 ? "Find the continuation" : "Find the best sequence";
     elements.sideToMove.textContent = completed
-      ? `Sequence complete · You played Black${decisionLabel}`
-      : `Black to move · You are Black${decisionLabel}`;
+      ? `Sequence complete · You played ${side}${decisionLabel}`
+      : `${side} to move · You are ${side}${decisionLabel}`;
     elements.queuePosition.textContent = completed
       ? `${state.unsolved.length} filtered puzzles remaining`
       : `${state.unsolved.length} filtered puzzles remaining`
         + `${attempts ? ` · ${attempts} attempt${attempts === 1 ? "" : "s"}` : ""}`;
     elements.board.setAttribute("aria-label",
-      `${completed ? "Solved" : "Interactive"} Caro-Kann puzzle, Black to move, board oriented for Black${decisionLabel}`
+      `${completed ? "Solved" : "Interactive"} ${openingFamily()} puzzle, ${side} to move, board oriented for ${side}${decisionLabel}`
     );
     elements.context.innerHTML = contextMarkup(candidate, progress, state.revealed);
     setFeedbackForMode(candidate);
@@ -526,7 +742,7 @@
       ${detailRow("Setup move", setup)}
       ${detailRow("Rating", candidate.rating == null ? "—" : candidate.rating)}
       ${detailRow("Difficulty", titleCase(candidate.difficulty || "—"))}
-      ${detailRow("Variation", candidate.variation || "Caro-Kann Defense")}
+      ${detailRow("Variation", candidate.variation || openingFamily())}
       ${detailRow("Themes", themes)}
       ${detailRow("Provenance", provenanceLabel(candidate.provenance))}
       ${detailRow("Opening puzzle", candidate.isOpeningPuzzle ? "Yes" : "No")}
@@ -596,15 +812,15 @@
       elements.feedback.innerHTML = `<span class="puzzle-revealed-status">Solution revealed.</span> `
         + `Play ${escapeHtml(best)} to ${line && line.isFinalStep ? "finish" : "continue"}.`;
     } else if (state.feedbackMode === "continuation") {
-      elements.feedback.innerHTML = `<span class="ok">Correct.</span> White replied ${escapeHtml(state.lastReplySan || "with the stored move")}. Find Black’s next move.`;
+      elements.feedback.innerHTML = `<span class="ok">Correct.</span> ${colorLabel(opponentColor())} replied ${escapeHtml(state.lastReplySan || "with the stored move")}. Find ${colorLabel(solverColor())}’s next move.`;
     } else if (state.feedbackMode === "incorrect") {
       elements.feedback.innerHTML = `<span class="bad">Try again.</span> That move was legal, but not part of the stored continuation.`;
     } else if (state.linePhase === "playing_reply") {
-      elements.feedback.innerHTML = `<span class="ok">Correct.</span> White is replying ${escapeHtml(state.lastReplySan || "with the stored move")}…`;
+      elements.feedback.innerHTML = `<span class="ok">Correct.</span> ${colorLabel(opponentColor())} is replying ${escapeHtml(state.lastReplySan || "with the stored move")}…`;
     } else {
       elements.feedback.textContent = line && (line.steps.length > 1 || step.opponent_reply_uci)
-        ? "Find Black’s best move, then finish the complete continuation."
-        : "Find Black’s best move.";
+        ? `Find ${colorLabel(solverColor())}’s best move, then finish the complete continuation.`
+        : `Find ${colorLabel(solverColor())}’s best move.`;
     }
   }
 
@@ -646,18 +862,18 @@
     }
     const config = {
       fen,
-      orientation: "black",
+      orientation: boardOrientation(),
       coordinatesOnSquares: true,
       // Never put the reusable queue board through Chessground's view-only
       // lifecycle; disabling movable/selectable preserves phone listeners.
       viewOnly: false,
-      turnColor: "black",
+      turnColor: solverColor(),
       lastMove: uciSquares(lastMove),
       check: false,
       drawable: { enabled: false, visible: true },
       movable: {
         free: false,
-        color: locked ? undefined : "black",
+        color: locked ? undefined : solverColor(),
         dests: locked ? new Map() : legalDests(step),
         events: { after: handleBoardMove },
       },
@@ -738,7 +954,7 @@
     ).join("");
     elements.promotionChooser.hidden = false;
     elements.promotionChooser.setAttribute("aria-describedby", "puzzle-feedback");
-    elements.feedback.textContent = "Choose the piece for Black’s promotion.";
+    elements.feedback.textContent = `Choose the piece for ${colorLabel(solverColor())}’s promotion.`;
     setControlState(false);
     const candidate = currentCandidate();
     if (candidate) paintInteractiveBoard(candidate, false);
@@ -770,12 +986,12 @@
       result = Domain.evaluatePuzzleStep(candidate, state.stepIndex, move);
     } catch (error) {
       elements.feedback.textContent = "That move could not be checked. Reset the position and try again.";
-      console.error("Caro-Kann attempt evaluation failed", error);
+      console.error("Opening-puzzle attempt evaluation failed", error);
       return;
     }
     const kind = result && result.kind;
     if (kind === "illegal") {
-      elements.feedback.innerHTML = `<span class="bad">Illegal move.</span> Choose a legal move for Black.`;
+      elements.feedback.innerHTML = `<span class="bad">Illegal move.</span> Choose a legal move for ${colorLabel(solverColor())}.`;
       resetBoardPosition(candidate, false);
       elements.uciInput.focus();
       return;
@@ -808,7 +1024,7 @@
       state.store.recordAttempt(puzzleId(candidate), correct, new Date().toISOString());
     } catch (error) {
       state.transientWarning = "This attempt could not be saved. Progress may be lost when the page closes.";
-      console.error("Could not save Caro-Kann attempt", error);
+      console.error("Could not save opening-puzzle attempt", error);
     }
     renderWarnings();
   }
@@ -884,7 +1100,7 @@
 
   function playOpponentReply(candidate, result) {
     if (!result || !result.reply) {
-      elements.feedback.textContent = "The stored White reply is incomplete. Reset the puzzle and try again.";
+      elements.feedback.textContent = `The stored ${colorLabel(opponentColor())} reply is incomplete. Reset the puzzle and try again.`;
       resetPuzzleLine(candidate, true);
       return;
     }
@@ -954,7 +1170,7 @@
       state.store.revealSolution(puzzleId(candidate), new Date().toISOString());
     } catch (error) {
       state.transientWarning = "The revealed-solution state could not be saved.";
-      console.error("Could not save Caro-Kann reveal", error);
+      console.error("Could not save opening-puzzle reveal", error);
     }
     state.revealed = true;
     state.feedbackMode = "revealed";
@@ -973,7 +1189,7 @@
       return;
     }
     state.board.setShapes([{ orig: best.slice(0, 2), brush: "yellow" }]);
-    elements.feedback.textContent = `Hint: start with the Black piece on ${best.slice(0, 2)}.`;
+    elements.feedback.textContent = `Hint: start with the ${colorLabel(solverColor())} piece on ${best.slice(0, 2)}.`;
   }
 
   async function skipCurrent() {
@@ -1051,7 +1267,7 @@
     if (!state.solved.length) {
       elements.solvedLayout.hidden = true;
       elements.solvedEmpty.hidden = false;
-      elements.solvedEmpty.innerHTML = "<h2>No solved puzzles in this study set yet</h2><p>Solved Caro-Kann puzzles stay here on this device.</p>";
+      elements.solvedEmpty.innerHTML = `<h2>No solved puzzles in this study set yet</h2><p>Solved ${escapeHtml(openingFamily())} puzzles stay here on this device.</p>`;
       elements.solvedReview.hidden = true;
       return;
     }
@@ -1065,11 +1281,11 @@
       const progress = getProgress(candidate);
       return `<article class="puzzle-solved-item">
         <div class="puzzle-solved-item-main">
-          <h2>${escapeHtml(candidate.variation || "Caro-Kann Defense")}</h2>
-          <p>Black · ${escapeHtml(titleCase(candidate.difficulty || "—"))} · rating ${escapeHtml(candidate.rating == null ? "—" : candidate.rating)}</p>
+          <h2>${escapeHtml(candidate.variation || openingFamily())}</h2>
+          <p>${escapeHtml(colorLabel(solverColor()))} · ${escapeHtml(titleCase(candidate.difficulty || "—"))} · rating ${escapeHtml(candidate.rating == null ? "—" : candidate.rating)}</p>
           <p class="puzzle-solved-meta">${escapeHtml(provenanceLabel(candidate.provenance))} · solved ${escapeHtml(formatTimestamp(solvedTimestamp(progress)))}</p>
         </div>
-        <button type="button" class="puzzle-review-button" data-solved-index="${index}" aria-label="Review solved ${escapeHtml(candidate.variation || "Caro-Kann")} puzzle">Review</button>
+        <button type="button" class="puzzle-review-button" data-solved-index="${index}" aria-label="Review solved ${escapeHtml(candidate.variation || openingFamily())} puzzle">Review</button>
       </article>`;
     }).join("");
     elements.solvedList._renderedCandidates = solved;
@@ -1097,13 +1313,13 @@
     state.selectedSolvedId = puzzleId(candidate);
     const progress = getProgress(candidate);
     elements.solvedReview.hidden = false;
-    elements.solvedReviewTitle.textContent = `Solved puzzle · ${candidate.variation || "Caro-Kann Defense"}`;
+    elements.solvedReviewTitle.textContent = `Solved puzzle · ${candidate.variation || openingFamily()}`;
     elements.solvedDetails.innerHTML = contextMarkup(candidate, progress, true)
       + `<p class="puzzle-readonly-note">Read-only review · solved ${escapeHtml(formatTimestamp(solvedTimestamp(progress)))}</p>`;
     const first = candidateSteps(candidate)[0];
     const config = {
       fen: candidate.puzzleFen || candidate.fen_before,
-      orientation: "black",
+      orientation: boardOrientation(),
       coordinatesOnSquares: true,
       viewOnly: true,
       lastMove: undefined,
@@ -1136,7 +1352,8 @@
     if (!state.manifest) return;
     const selectedVariation = elements.filterVariation.value || "all";
     const variations = Caro.variationNames(state.manifest, state.candidates)
-      .map(value => Caro.hasCaroKannTag(value) ? Caro.readableVariation(value) : value);
+      .map(value => Caro.matchingOpeningTags([value], state.manifest.openingTagRoots).length
+        ? Caro.readableVariation(value, state.manifest) : value);
     const uniqueVariations = [...new Set(variations)].sort((left, right) => left.localeCompare(right));
     elements.filterVariation.innerHTML = `<option value="all">All variations</option>`
       + uniqueVariations.map(variation => `<option value="${escapeHtml(variation)}">${escapeHtml(variation)}</option>`).join("");
@@ -1168,9 +1385,9 @@
       const persistent = typeof state.store.isPersistent === "function"
         ? state.store.isPersistent()
         : state.store.isPersistent !== false;
-      if (!persistent) messages.push("Caro-Kann progress is available only for this page session because browser storage is unavailable.");
+      if (!persistent) messages.push(`${openingFamily()} progress is available only for this page session because browser storage is unavailable.`);
       if (typeof state.store.getLastError === "function" && state.store.getLastError() && persistent) {
-        messages.push("The last Caro-Kann progress update may not have been saved.");
+        messages.push(`The last ${openingFamily()} progress update may not have been saved.`);
       }
     }
     const invalidCount = state.invalidCount + state.invalidCandidateIds.size;
@@ -1183,9 +1400,9 @@
 
   function showFatal(message) {
     elements.workspace.hidden = true;
-    elements.summary.textContent = "Caro-Kann puzzles unavailable";
+    elements.summary.textContent = "Opening puzzles unavailable";
     elements.pageState.hidden = false;
-    elements.pageState.innerHTML = `<h2>Couldn’t load Caro-Kann puzzles</h2><p>${escapeHtml(message)}</p>`
+    elements.pageState.innerHTML = `<h2>Couldn’t load opening puzzles</h2><p>${escapeHtml(message)}</p>`
       + `<p><a href="index.html">Back to repertoire</a></p>`;
   }
 
@@ -1229,6 +1446,9 @@
   }
 
   function bindEvents() {
+    if (elements.deck) {
+      elements.deck.addEventListener("change", () => { void switchDeck(elements.deck.value, false); });
+    }
     elements.unsolvedTab.addEventListener("click", () => activateTab("unsolved", false));
     elements.solvedTab.addEventListener("click", () => activateTab("solved", false));
     [elements.unsolvedTab, elements.solvedTab].forEach(tab => {
@@ -1242,7 +1462,10 @@
     [elements.filterMode, elements.filterVariation, elements.filterDifficulty,
       elements.filterProvenance, elements.filterTheme, elements.filterOpening]
       .forEach(control => control.addEventListener("change", () => { void handleFilterChange(); }));
-    elements.filters.addEventListener("reset", () => queueMicrotask(() => { void handleFilterChange(); }));
+    elements.filters.addEventListener("reset", () => queueMicrotask(() => {
+      if (elements.deck && state.deck) elements.deck.value = state.deck.id;
+      void handleFilterChange();
+    }));
 
     elements.uciForm.addEventListener("submit", event => {
       event.preventDefault();
@@ -1306,7 +1529,7 @@
       if (!state.store || (event && event.key && event.key !== state.store.key)) return;
       try {
         const username = window.DATA && window.DATA.username ? window.DATA.username : "local";
-        state.store = Domain.createProgressStore(username, undefined, STORAGE_NAMESPACE);
+        state.store = Domain.createProgressStore(username, undefined, state.deck.id);
         state.completedCandidate = null;
         state.completedPostFen = null;
         state.completedMoveUci = null;

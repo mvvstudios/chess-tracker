@@ -1,5 +1,11 @@
 # Caro-Kann puzzles for Black
 
+> This document preserves the Caro-Kann-specific extraction and validation
+> details, including the backward-compatible single-deck command. The trainer
+> now serves five opening decks from one catalog; see
+> [Opening puzzle decks](OPENING_PUZZLE_DECKS.md) for the generalized registry,
+> one-pass build, dropdown, and deployment contract.
+
 The Caro-Kann trainer is a static, Black-only puzzle queue built from the
 [official Lichess puzzle database](https://database.lichess.org/#puzzles).
 Lichess publishes that database under
@@ -244,23 +250,25 @@ summary, JSONL exports, chunks, or analytical shard directories are rejected.
 The normal rejection summary contains aggregate reasons without copying the
 source export.
 
-GitHub Pages uploads `dashboard/`, so `refresh.py` performs a narrow build-time
-sync into `dashboard/data/caro-kann-black/`. It validates the manifest, safe
-relative chunk paths, JSON-array shape, and exact chunk counts, then copies only
-`manifest.json` and the balanced `chunks/*.json` files referenced by it. It does
-not copy `all.jsonl` or analytical shards. The generated dashboard copy is
-ignored and replaced on each refresh so obsolete chunks cannot leak into a
-deployment. If the canonical manifest is absent, refresh still succeeds and
-removes any stale deployment copy.
+GitHub Pages uploads `dashboard/`, so `refresh.py` performs a narrow,
+catalog-driven build-time sync. It copies
+`public/data/opening-puzzle-catalog.json`, then validates and copies each
+referenced manifest and its balanced chunks. For Caro-Kann those files land in
+`dashboard/data/caro-kann-black/`. Full JSONL exports and analytical shards are
+never copied. The generated dashboard data is ignored and replaced on refresh
+so obsolete chunks cannot leak into a deployment. If the canonical catalog is
+absent, refresh still succeeds and clears stale managed trainer data.
 
 The browser first fetches:
 
 ```text
-data/caro-kann-black/manifest.json
+data/opening-puzzle-catalog.json
 ```
 
-It then loads only the balanced chunks needed by the static trainer. It never
-needs a backend or the potentially large complete JSONL export.
+After selecting Caro-Kann, it fetches
+`data/caro-kann-black/manifest.json`, then loads only the balanced chunks needed
+by the static trainer. It never needs a backend or the potentially large
+complete JSONL export.
 
 ## Training state
 

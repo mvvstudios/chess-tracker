@@ -2,16 +2,32 @@
   if (typeof module === "object" && module.exports) {
     module.exports = factory();
   } else {
+    // Keep the original public name so bookmarks, tests, and cached pages that
+    // load this script continue to work while the implementation serves every
+    // configured opening deck.
     root.CaroKannDomain = factory();
+    root.OpeningPuzzleDomain = root.CaroKannDomain;
   }
 }(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 
+  const DEFAULT_DECK_ID = "caro-kann-black";
   const CARO_TAG = "Caro-Kann_Defense";
+  const DEFAULT_CARO_CONFIG = Object.freeze({
+    id: DEFAULT_DECK_ID,
+    deckId: DEFAULT_DECK_ID,
+    label: "Caro-Kann Defense — Black",
+    displayName: "Caro-Kann Defense — Black",
+    openingFamily: "Caro-Kann Defense",
+    solverColor: "black",
+    orientation: "black",
+    openingTagRoots: Object.freeze([CARO_TAG]),
+    manifestPath: "caro-kann-black/manifest.json",
+  });
   const DIFFICULTY_ORDER = Object.freeze([
     "beginner", "developing", "intermediate", "advanced", "expert",
   ]);
-  const CURRICULUM_ORDER = Object.freeze([
+  const CARO_CURRICULUM_ORDER = Object.freeze([
     "Main lines",
     "Advance",
     "Exchange",
@@ -41,24 +57,122 @@
     return Number.isFinite(parsed) ? parsed : fallback;
   }
 
-  function hasCaroKannTag(tag) {
-    const value = text(tag);
-    return value === CARO_TAG || value.startsWith(CARO_TAG + "_");
+  function color(value) {
+    const normalized = text(value).toLowerCase();
+    return normalized === "white" || normalized === "black" ? normalized : "";
   }
 
-  function primaryVariationTag(tags) {
-    return array(tags)
-      .map(text)
-      .filter(hasCaroKannTag)
+  function oppositeColor(value) {
+    return value === "white" ? "black" : value === "black" ? "white" : "";
+  }
+
+  function safeRelativePath(value) {
+    const raw = value === undefined || value === null ? "" : String(value);
+    const path = raw.trim();
+    if (!path || raw !== path || path.includes("\\") || path.startsWith("/")
+        || path.includes("?") || path.includes("#") || path.includes("\0")
+        || /^[a-z][a-z0-9+.-]*:/i.test(path)) return "";
+    const parts = path.split("/");
+    if (parts.some(part => !part || part === "." || part === "..")) return "";
+    return path;
+  }
+
+  function normalizeDeck(rawDeck) {
+    const raw = object(rawDeck);
+    const id = text(raw.id || raw.deckId || raw.deck_id).toLowerCase();
+    const solverColor = color(raw.solverColor || raw.solver_color || raw.sideToMove);
+    const orientation = color(raw.orientation);
+    const manifestPath = safeRelativePath(raw.manifestPath || raw.manifest_path);
+    const roots = array(raw.openingTagRoots || raw.opening_tag_roots)
+      .map(text).filter(Boolean);
+    // The deploy catalog is intentionally compact and may leave tag roots to
+    // the authoritative manifest. Record adaptation still requires manifest
+    // roots and therefore never turns this into fuzzy matching.
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id) || !manifestPath
+        || manifestPath !== `${id}/manifest.json`
+        || !solverColor || orientation !== solverColor) return null;
+    const openingFamily = text(raw.openingFamily || raw.opening_family) || id;
+    const displayName = text(raw.label || raw.displayName || raw.display_name)
+      || `${openingFamily} — ${solverColor === "white" ? "White" : "Black"}`;
+    return {
+      raw,
+      id,
+      deckId: id,
+      label: displayName,
+      displayName,
+      openingFamily,
+      solverColor,
+      orientation,
+      openingTagRoots: [...new Set(roots)],
+      manifestPath,
+    };
+  }
+
+  function normalizeCatalog(rawCatalog) {
+    const raw = object(rawCatalog);
+    const seen = new Set();
+    const decks = array(raw.decks).map(normalizeDeck).filter(deck => {
+      if (!deck || seen.has(deck.id)) return false;
+      seen.add(deck.id);
+      return true;
+    });
+    const requestedDefault = text(raw.defaultDeckId || raw.default_deck_id).toLowerCase();
+    const fallback = decks.find(deck => deck.id === DEFAULT_DECK_ID) || decks[0] || null;
+    const selected = decks.find(deck => deck.id === requestedDefault) || fallback;
+    return {
+      raw,
+      schemaVersion: text(raw.schemaVersion || raw.schema_version || ""),
+      defaultDeckId: selected ? selected.id : "",
+      decks,
+    };
+  }
+
+  function matchesOpeningRoot(tag, root) {
+    const value = text(tag);
+    const prefix = text(root);
+    return Boolean(value && prefix && (value === prefix || value.startsWith(prefix + "_")));
+  }
+
+  function matchingOpeningTags(tags, roots) {
+    const configuredRoots = array(roots).map(text).filter(Boolean);
+    return array(tags).map(text).filter(Boolean).filter(tag =>
+      configuredRoots.some(root => matchesOpeningRoot(tag, root))
+    ).sort((left, right) => right.length - left.length || left.localeCompare(right));
+  }
+
+  function matchingRoot(tag, roots) {
+    return array(roots).map(text).filter(root => matchesOpeningRoot(tag, root))
       .sort((left, right) => right.length - left.length || left.localeCompare(right))[0] || "";
   }
 
-  function readableVariation(tag) {
-    const value = text(tag);
-    if (!hasCaroKannTag(value)) return "Caro-Kann Defense";
-    const suffix = value.slice(CARO_TAG.length).replace(/^_/, "");
-    if (!suffix) return "Caro-Kann Defense";
-    return "Caro-Kann Defense: " + suffix.replace(/_/g, " ");
+  function hasCaroKannTag(tag) {
+    return matchesOpeningRoot(tag, CARO_TAG);
+  }
+
+  function primaryVariationTag(tags) {
+    return matchingOpeningTags(tags, [CARO_TAG])[0] || "";
+  }
+
+  function readableSuffix(value) {
+    return text(value).replace(/_/g, " ");
+  }
+
+  function readableVariation(tag, config, explicitRoot) {
+    const deck = config && (config.openingFamily || config.openingTagRoots)
+      ? config : DEFAULT_CARO_CONFIG;
+    const family = text(deck.openingFamily) || "Opening";
+    const roots = array(deck.openingTagRoots).length
+      ? deck.openingTagRoots : DEFAULT_CARO_CONFIG.openingTagRoots;
+    const root = text(explicitRoot) || matchingRoot(tag, roots);
+    if (!root) return family;
+    const suffix = text(tag).slice(root.length).replace(/^_/, "");
+    if (!suffix) {
+      if (deck.id === "modern-black" && root === "Queens_Pawn_Game_Modern_Defense") {
+        return "Modern Defense: Queen’s Pawn Move Order";
+      }
+      return family;
+    }
+    return `${family}: ${readableSuffix(suffix)}`;
   }
 
   function countMap(raw, directKeys, nestedKeys) {
@@ -80,14 +194,24 @@
       : countMap(raw, directKeys, nestedKeys);
   }
 
-  function normalizeManifest(rawManifest) {
+  function normalizeManifest(rawManifest, catalogDeck) {
     const raw = object(rawManifest);
+    const fallbackDeck = normalizeDeck(catalogDeck) || DEFAULT_CARO_CONFIG;
+    const deckId = text(raw.deckId || raw.deck_id || fallbackDeck.id).toLowerCase();
+    const solverColor = color(raw.solverColor || raw.solver_color || fallbackDeck.solverColor);
+    const orientation = color(raw.orientation || fallbackDeck.orientation);
+    const roots = array(raw.openingTagRoots || raw.opening_tag_roots).map(text).filter(Boolean);
+    const openingTagRoots = roots.length ? roots : array(fallbackDeck.openingTagRoots).slice();
+    const openingFamily = text(raw.openingFamily || raw.opening_family || fallbackDeck.openingFamily);
+    const displayName = text(raw.displayName || raw.display_name || fallbackDeck.displayName
+      || fallbackDeck.label) || openingFamily;
     const chunks = array(raw.chunks).map((entry, index) => {
       if (typeof entry === "string") {
-        return { path: entry, count: null, index };
+        const path = safeRelativePath(entry);
+        return path ? { path, count: null, index } : null;
       }
       const item = object(entry);
-      const path = text(item.path || item.file || item.url);
+      const path = safeRelativePath(item.path || item.file || item.url);
       return path ? { path, count: number(item.count, null), index } : null;
     }).filter(Boolean);
     const exact = object(raw.exactCounts || raw.exact_counts);
@@ -104,7 +228,14 @@
 
     return {
       raw,
-      name: text(raw.datasetName || raw.name || "Caro-Kann Puzzles for Black"),
+      deckId,
+      id: deckId,
+      name: text(raw.datasetName || raw.dataset || raw.name || displayName),
+      displayName,
+      openingFamily,
+      solverColor,
+      orientation,
+      openingTagRoots,
       schemaVersion: text(raw.schemaVersion || raw.schema_version || ""),
       generatedAt: text(raw.generatedAtUtc || raw.generatedAt || raw.generated_at || ""),
       balancedExported,
@@ -120,24 +251,39 @@
     return text(fen).split(/\s+/)[1] || "";
   }
 
-  function adaptRecord(rawRecord) {
+  function adaptRecord(rawRecord, rawConfig) {
     const record = object(rawRecord);
+    const config = rawConfig && rawConfig.openingTagRoots
+      ? rawConfig : DEFAULT_CARO_CONFIG;
+    const deckId = text(config.deckId || config.id || DEFAULT_DECK_ID).toLowerCase();
+    const solverColor = color(config.solverColor) || "black";
+    const orientation = color(config.orientation) || solverColor;
+    const roots = array(config.openingTagRoots).map(text).filter(Boolean);
     const id = text(record.id || record.puzzleId || record.puzzle_id);
+    const recordDeckId = text(record.deckId || record.deck_id).toLowerCase();
+    const requiresDeckId = /^2(?:\.|$)/.test(text(config.schemaVersion));
     const originalFen = text(record.originalFen || record.original_fen);
     const puzzleFen = text(record.puzzleFen || record.puzzle_fen);
     const openingTags = array(record.openingTags || record.opening_tags).map(text).filter(Boolean);
-    const tag = primaryVariationTag(openingTags);
-    const sideToMove = text(record.sideToMove || record.side_to_move).toLowerCase();
-    const orientation = text(record.orientation).toLowerCase();
+    const matches = matchingOpeningTags(openingTags, roots);
+    const tag = matches[0] || "";
+    const root = matchingRoot(tag, roots);
+    const sideToMove = color(record.sideToMove || record.side_to_move);
+    const recordSolver = color(record.solverColor || record.solver_color);
+    const recordOrientation = color(record.orientation);
     const rawSteps = array(record.solutionSteps || record.solution_steps);
     const firstRawStep = object(rawSteps[0]);
     const firstFen = rawSteps.length
       ? text(firstRawStep.fenBefore || firstRawStep.fen_before)
       : "";
-    if (!id || !tag || !originalFen || sideFromFen(originalFen) !== "w"
-        || !puzzleFen || sideFromFen(puzzleFen) !== "b"
-        || sideToMove !== "black" || orientation !== "black" || !rawSteps.length
-        || firstFen !== puzzleFen) {
+    if (!id || !tag || (requiresDeckId && !recordDeckId)
+        || (recordDeckId && recordDeckId !== deckId)
+        || !originalFen || sideFromFen(originalFen) !== oppositeColor(solverColor)[0]
+        || !puzzleFen || sideFromFen(puzzleFen) !== solverColor[0]
+        || sideToMove !== solverColor || (requiresDeckId && !recordSolver)
+        || (recordSolver && recordSolver !== solverColor)
+        || recordOrientation !== orientation || orientation !== solverColor
+        || !rawSteps.length || firstFen !== puzzleFen) {
       return null;
     }
 
@@ -159,22 +305,33 @@
       return step;
     });
     const first = object(steps[0]);
-    const variation = text(record.variation) || readableVariation(tag);
+    // Display classification is derived from the same audited primary tag and
+    // root used for inclusion; contradictory source fields cannot leak a
+    // variation label from another deck into the UI.
+    const variation = readableVariation(tag, config, root);
 
     return Object.assign({}, record, {
       id,
       puzzle_id: id,
+      deckId,
+      deck_id: deckId,
+      openingFamily: text(config.openingFamily || record.openingFamily) || "Opening",
       openingTags,
+      matchedOpeningTags: matches,
+      matchedTagRoot: root,
+      primaryOpeningTag: tag,
       primaryVariationTag: tag,
       variation,
       originalFen,
       puzzleFen,
       fen_before: puzzleFen,
-      sideToMove: "black",
-      side_to_move: "black",
-      side: "black",
-      user_color: "black",
-      orientation: "black",
+      solverColor,
+      solver_color: solverColor,
+      sideToMove: solverColor,
+      side_to_move: solverColor,
+      side: solverColor,
+      user_color: solverColor,
+      orientation,
       solutionSteps: steps,
       solution_steps: steps,
       best_move_uci: first.bestMoveUci || first.best_move_uci,
@@ -190,22 +347,36 @@
     return text(value).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   }
 
-  function curriculumGroup(variation) {
+  function curriculumGroup(value) {
+    const record = value && typeof value === "object" ? value : null;
+    const variation = record ? record.variation : value;
+    const family = record ? normalizedWords(record.openingFamily) : "";
     const words = normalizedWords(variation);
-    if (words.includes("accelerated panov")) return "Accelerated Panov";
-    if (words.includes("panov")) return "Panov";
-    if (words.includes("advance")) return "Advance";
-    if (words.includes("exchange")) return "Exchange";
-    if (words.includes("classical")) return "Classical";
-    if (words.includes("tartakower")) return "Tartakower";
-    if (words.includes("karpov")) return "Karpov";
-    if (words.includes("two knights")) return "Two Knights";
-    if (words === "caro kann defense" || words.endsWith(" main line")) return "Main lines";
-    return "Rare sidelines and gambits";
+    if (!family || family === "caro kann defense" || words.startsWith("caro kann defense")) {
+      if (words.includes("accelerated panov")) return "Accelerated Panov";
+      if (words.includes("panov")) return "Panov";
+      if (words.includes("advance")) return "Advance";
+      if (words.includes("exchange")) return "Exchange";
+      if (words.includes("classical")) return "Classical";
+      if (words.includes("tartakower")) return "Tartakower";
+      if (words.includes("karpov")) return "Karpov";
+      if (words.includes("two knights")) return "Two Knights";
+      if (words === "caro kann defense" || words.endsWith(" main line")) return "Main lines";
+      return "Rare sidelines and gambits";
+    }
+    if (words === family || words.endsWith(" main line")) return "Main lines";
+    const suffix = words.startsWith(family) ? words.slice(family.length).trim() : words;
+    return suffix ? suffix.replace(/\b\w/g, character => character.toUpperCase()) : "Main lines";
   }
 
   function isMainLine(record) {
-    return curriculumGroup(record && record.variation) !== "Rare sidelines and gambits";
+    const group = curriculumGroup(record);
+    if (group === "Main lines") return true;
+    const words = normalizedWords(record && record.variation);
+    const family = normalizedWords(record && record.openingFamily);
+    if ((!family || family === "caro kann defense" || words.startsWith("caro kann defense"))
+        && group !== "Rare sidelines and gambits") return true;
+    return ["classical", "standard", "traditional", "main line"].some(term => words.includes(term));
   }
 
   function themeMatches(themes, requested) {
@@ -256,16 +427,15 @@
   function curriculumOrder(records) {
     const groups = new Map();
     array(records).forEach(record => {
-      const group = curriculumGroup(record && record.variation);
+      const group = curriculumGroup(record);
       if (!groups.has(group)) groups.set(group, []);
       groups.get(group).push(record);
     });
     groups.forEach(items => items.sort(recordSort));
-    const names = CURRICULUM_ORDER.filter(name => groups.has(name));
+    const names = CARO_CURRICULUM_ORDER.filter(name => groups.has(name));
     [...groups.keys()].sort().forEach(name => {
       if (!names.includes(name)) names.push(name);
     });
-
     const ordered = [];
     let added = true;
     while (added) {
@@ -296,9 +466,16 @@
   }
 
   return Object.freeze({
+    DEFAULT_DECK_ID,
+    DEFAULT_CARO_CONFIG,
     CARO_TAG,
     DIFFICULTY_ORDER,
-    CURRICULUM_ORDER,
+    CURRICULUM_ORDER: CARO_CURRICULUM_ORDER,
+    safeRelativePath,
+    normalizeDeck,
+    normalizeCatalog,
+    matchesOpeningRoot,
+    matchingOpeningTags,
     hasCaroKannTag,
     primaryVariationTag,
     readableVariation,

@@ -10,13 +10,14 @@ const CARO_DOMAIN_SOURCE = fs.readFileSync(path.join(ROOT, "dashboard", "caro-ka
 const CONTROLLER_SOURCE = fs.readFileSync(path.join(ROOT, "dashboard", "caro-kann-puzzles.js"), "utf8");
 
 const ELEMENT_IDS = [
-  "puzzles-page", "puzzle-progress-summary", "puzzle-storage-warning",
+  "puzzles-page", "puzzles-title", "puzzle-intro", "puzzle-progress-summary", "puzzle-storage-warning",
+  "opening-puzzle-deck",
   "caro-puzzle-filters", "caro-filter-mode", "caro-filter-variation",
   "caro-filter-difficulty", "caro-filter-provenance", "caro-filter-theme",
   "caro-filter-opening", "caro-filter-status", "caro-filter-reset",
   "puzzles-unsolved-tab", "puzzles-solved-tab", "puzzles-unsolved-count",
   "puzzles-solved-count", "puzzles-unsolved-panel", "puzzles-solved-panel",
-  "puzzle-page-state", "puzzle-workspace", "puzzle-board", "puzzle-prompt",
+  "puzzle-page-state", "puzzle-workspace", "puzzle-board", "puzzle-board-help", "puzzle-prompt",
   "puzzle-side-to-move", "puzzle-feedback", "puzzle-context-body",
   "puzzle-queue-position", "puzzle-continue", "puzzle-skip", "puzzle-reset",
   "puzzle-hint", "puzzle-show", "puzzle-uci-disclosure", "puzzle-uci-form",
@@ -228,6 +229,56 @@ function exchangeRecord(id) {
   return puzzle;
 }
 
+function whiteDeckRecord(id = "colle-white-one") {
+  const puzzleFen = "8/8/8/8/8/2k5/3K4/8 w - - 1 2";
+  return {
+    id,
+    deckId: "colle-white",
+    source: "lichess",
+    sourceUrl: "https://lichess.org/colle#12",
+    openingFamily: "Colle System",
+    variation: "Colle System: Traditional Colle",
+    openingTags: ["Queens_Pawn_Game_Colle_System_Traditional_Colle"],
+    originalFen: "8/8/8/8/8/8/2kK4/8 b - - 0 1",
+    setupMoveUci: "c2c3",
+    setupMoveSan: "Kc3",
+    puzzleFen,
+    solverColor: "white",
+    sideToMove: "white",
+    orientation: "white",
+    solutionUci: ["d2e3"],
+    solutionSan: ["Ke3"],
+    solutionSteps: [{
+      fenBefore: puzzleFen,
+      bestMoveUci: "d2e3",
+      bestMoveSan: "Ke3",
+      postBestFen: "8/8/8/8/8/2k1K3/8/8 b - - 2 2",
+      legalMovesUci: ["d2e3", "d2e2"],
+      legalDests: { d2: ["e3", "e2"] },
+      promotionOptions: {},
+      opponentReplyUci: null,
+      opponentReplySan: null,
+      postReplyFen: null,
+    }],
+    rating: 1300,
+    difficulty: "developing",
+    provenance: "standard",
+    themes: ["opening", "quietMove"],
+    isOpeningPuzzle: true,
+  };
+}
+
+function blackDeckRecord(deckId, root, family, id = `${deckId}-one`) {
+  const puzzle = continuationRecord();
+  puzzle.id = id;
+  puzzle.deckId = deckId;
+  puzzle.openingFamily = family;
+  puzzle.openingTags = [`${root}_Main_Line`];
+  puzzle.variation = `${family}: Main Line`;
+  puzzle.solverColor = "black";
+  return puzzle;
+}
+
 function seedSolved(storage, ids) {
   const at = "2026-08-03T12:00:00Z";
   const records = Object.fromEntries(ids.map(id => [id, {
@@ -249,6 +300,12 @@ function seedSolved(storage, ids) {
 function manifest(chunkCount = 1) {
   return {
     schemaVersion: "1",
+    deckId: "caro-kann-black",
+    displayName: "Caro-Kann Defense — Black",
+    openingFamily: "Caro-Kann Defense",
+    solverColor: "black",
+    orientation: "black",
+    openingTagRoots: ["Caro-Kann_Defense"],
     counts: { balancedExported: chunkCount },
     variationCounts: { "Caro-Kann Defense: Advance Variation": chunkCount },
     difficultyCounts: { intermediate: chunkCount },
@@ -261,10 +318,76 @@ function manifest(chunkCount = 1) {
   };
 }
 
+const DECKS = [{
+  id: "caro-kann-black",
+  label: "Caro-Kann Defense — Black",
+  openingFamily: "Caro-Kann Defense",
+  solverColor: "black",
+  orientation: "black",
+  manifestPath: "caro-kann-black/manifest.json",
+}, {
+  id: "colle-white",
+  label: "Colle System — White",
+  openingFamily: "Colle System",
+  solverColor: "white",
+  orientation: "white",
+  manifestPath: "colle-white/manifest.json",
+}, {
+  id: "englund-white",
+  label: "Englund Gambit — White",
+  openingFamily: "Englund Gambit",
+  solverColor: "white",
+  orientation: "white",
+  manifestPath: "englund-white/manifest.json",
+}, {
+  id: "pirc-black",
+  label: "Pirc Defense — Black",
+  openingFamily: "Pirc Defense",
+  solverColor: "black",
+  orientation: "black",
+  manifestPath: "pirc-black/manifest.json",
+}, {
+  id: "modern-black",
+  label: "Modern Defense — Black",
+  openingFamily: "Modern Defense",
+  solverColor: "black",
+  orientation: "black",
+  manifestPath: "modern-black/manifest.json",
+}];
+
+function catalog() {
+  return { schemaVersion: 1, defaultDeckId: "caro-kann-black", decks: DECKS };
+}
+
+function deckManifest(deckId, chunkCount = 1) {
+  const deck = DECKS.find(item => item.id === deckId) || DECKS[0];
+  const roots = {
+    "caro-kann-black": ["Caro-Kann_Defense"],
+    "colle-white": ["Queens_Pawn_Game_Colle_System", "Indian_Defense_Colle_System", "Colle_System"],
+    "englund-white": ["Englund_Gambit"],
+    "pirc-black": ["Pirc_Defense"],
+    "modern-black": ["Modern_Defense", "Queens_Pawn_Game_Modern_Defense"],
+  }[deck.id];
+  return {
+    ...manifest(chunkCount),
+    deckId: deck.id,
+    displayName: deck.label,
+    openingFamily: deck.openingFamily,
+    solverColor: deck.solverColor,
+    orientation: deck.orientation,
+    openingTagRoots: roots,
+    variationCounts: {},
+  };
+}
+
 async function createHarness(records, {
   chunkCount = 1,
   storage = new MemoryStorage(),
   failedChunks = [],
+  recordsByDeck = null,
+  manifestsByDeck = null,
+  delayedManifestDecks = [],
+  delayedChunkUrls = [],
 } = {}) {
   const elements = Object.fromEntries(ELEMENT_IDS.map(id => [id, new FakeElement(id)]));
   elements["caro-filter-mode"].value = "all";
@@ -278,6 +401,8 @@ async function createHarness(records, {
   const boards = [];
   const fetches = [];
   const timers = new Map();
+  const delayedManifestResolvers = new Map();
+  const delayedChunkResolvers = new Map();
   let nextTimer = 1;
   const document = {
     getElementById(id) {
@@ -318,13 +443,34 @@ async function createHarness(records, {
   context.window.clearTimeout = id => timers.delete(id);
   context.window.fetch = async url => {
     fetches.push(String(url));
-    if (String(url).endsWith("manifest.json")) {
-      return { ok: true, async json() { return manifest(chunkCount); } };
+    if (String(url) === "data/opening-puzzle-catalog.json") {
+      return { ok: true, async json() { return catalog(); } };
     }
+    const manifestMatch = String(url).match(/^data\/([^/]+)\/manifest\.json$/);
+    if (manifestMatch) {
+      const deckId = manifestMatch[1];
+      const payload = manifestsByDeck && manifestsByDeck[deckId]
+        || deckManifest(deckId, chunkCount);
+      if (delayedManifestDecks.includes(deckId)) {
+        return new Promise(resolve => delayedManifestResolvers.set(deckId, () => resolve({
+          ok: true,
+          async json() { return payload; },
+        })));
+      }
+      return { ok: true, async json() { return payload; } };
+    }
+    const deckMatch = String(url).match(/^data\/([^/]+)\/chunks\/chunk-(\d+)\.json$/);
     const match = String(url).match(/chunk-(\d+)\.json$/);
     const index = match ? Number(match[1]) - 1 : 0;
     if (failedChunks.includes(index + 1)) return { ok: false, status: 503 };
-    return { ok: true, async json() { return [records[index] || records[0]]; } };
+    const deckRecords = recordsByDeck && deckMatch && recordsByDeck[deckMatch[1]] || records;
+    if (delayedChunkUrls.includes(String(url))) {
+      return new Promise(resolve => delayedChunkResolvers.set(String(url), () => resolve({
+        ok: true,
+        async json() { return [deckRecords[index] || deckRecords[0]]; },
+      })));
+    }
+    return { ok: true, async json() { return [deckRecords[index] || deckRecords[0]]; } };
   };
   context.window.ChessTrackerUI = {
     escapeHtml(value) { return String(value == null ? "" : value); },
@@ -353,10 +499,22 @@ async function createHarness(records, {
       timers.delete(id);
       callback();
     },
-    progress(id = records[0].id) {
-      const key = "chess-tracker:puzzle-progress:v1:caro-kann-black:me";
+    progress(id = records[0].id, deckId = "caro-kann-black") {
+      const key = `chess-tracker:puzzle-progress:v1:${deckId}:me`;
       const raw = storage.getItem(key);
       return raw ? JSON.parse(raw).records[id] || null : null;
+    },
+    resolveManifest(deckId) {
+      const resolve = delayedManifestResolvers.get(deckId);
+      assert.ok(resolve, `expected a delayed ${deckId} manifest request`);
+      delayedManifestResolvers.delete(deckId);
+      resolve();
+    },
+    resolveChunk(url) {
+      const resolve = delayedChunkResolvers.get(url);
+      assert.ok(resolve, `expected a delayed ${url} request`);
+      delayedChunkResolvers.delete(url);
+      resolve();
     },
     async settle() {
       for (let index = 0; index < 4; index += 1) {
@@ -366,13 +524,124 @@ async function createHarness(records, {
   };
 }
 
-test("loader fetches manifest first and only the first balanced chunk initially", async () => {
+test("loader fetches catalog, then manifest, then only the first balanced chunk initially", async () => {
   const harness = await createHarness([continuationRecord(), continuationRecord()], { chunkCount: 2 });
   assert.deepEqual(harness.fetches, [
+    "data/opening-puzzle-catalog.json",
     "data/caro-kann-black/manifest.json",
     "data/caro-kann-black/chunks/chunk-0001.json",
   ]);
   assert.equal(CONTROLLER_SOURCE.includes("all.jsonl"), false);
+});
+
+test("catalog dropdown exposes all five opening decks", async () => {
+  const harness = await createHarness([continuationRecord()]);
+  const options = harness.elements["opening-puzzle-deck"].innerHTML;
+  ["caro-kann-black", "colle-white", "englund-white", "pirc-black", "modern-black"]
+    .forEach(deckId => assert.match(options, new RegExp(`value="${deckId}"`)));
+});
+
+test("switching to a White deck clears the old queue and changes solver orientation", async () => {
+  const caro = continuationRecord();
+  const colle = whiteDeckRecord();
+  const harness = await createHarness([caro], {
+    recordsByDeck: {
+      "caro-kann-black": [caro],
+      "colle-white": [colle],
+    },
+  });
+  harness.elements["caro-filter-variation"].value = caro.variation;
+
+  assert.equal(await harness.context.CaroKannTrainer.selectDeck("colle-white"), true);
+  assert.equal(harness.context.CaroKannTrainer.selectedDeckId, "colle-white");
+  assert.equal(harness.elements["opening-puzzle-deck"].value, "colle-white");
+  assert.equal(harness.elements["caro-filter-variation"].value, "all");
+  assert.equal(harness.board.config.fen, colle.puzzleFen);
+  assert.equal(harness.board.config.orientation, "white");
+  assert.equal(harness.board.config.turnColor, "white");
+  assert.equal(harness.board.config.movable.color, "white");
+  assert.match(harness.elements["puzzles-title"].textContent, /Colle System/);
+  assert.match(harness.elements["puzzle-side-to-move"].textContent, /White to move.*You are White/);
+  assert.equal(harness.fetches.includes("data/colle-white/chunks/chunk-0001.json"), true);
+  assert.notEqual(harness.board.config.fen, caro.puzzleFen);
+
+  harness.board.config.movable.events.after("d2", "e3");
+  assert.equal(harness.progress(colle.id, "colle-white").status, "solved");
+  assert.equal(harness.progress(colle.id, "caro-kann-black"), null);
+});
+
+test("a slow previous manifest cannot overwrite a newer deck selection", async () => {
+  const caro = continuationRecord();
+  const colle = whiteDeckRecord();
+  const pirc = blackDeckRecord("pirc-black", "Pirc_Defense", "Pirc Defense");
+  const harness = await createHarness([caro], {
+    recordsByDeck: {
+      "caro-kann-black": [caro],
+      "colle-white": [colle],
+      "pirc-black": [pirc],
+    },
+    delayedManifestDecks: ["colle-white"],
+  });
+
+  const stale = harness.context.CaroKannTrainer.selectDeck("colle-white");
+  await harness.settle();
+  const latest = harness.context.CaroKannTrainer.selectDeck("pirc-black");
+  assert.equal(await latest, true);
+  harness.resolveManifest("colle-white");
+  assert.equal(await stale, false);
+
+  assert.equal(harness.context.CaroKannTrainer.selectedDeckId, "pirc-black");
+  assert.equal(harness.board.config.fen, pirc.puzzleFen);
+  assert.equal(harness.board.config.orientation, "black");
+  assert.equal(harness.fetches.some(url => url.includes("colle-white/chunks/")), false);
+  assert.equal(harness.fetches.some(url => url.includes("pirc-black/chunks/chunk-0001.json")), true);
+});
+
+test("a stale solved-archive chunk cannot consume or mutate the newly selected deck", async () => {
+  const storage = new MemoryStorage();
+  const caro = recordWithId("caro-current");
+  const saved = recordWithId("caro-saved-in-later-chunk");
+  const colle = whiteDeckRecord();
+  seedSolved(storage, [saved.id]);
+  const delayedUrl = "data/caro-kann-black/chunks/chunk-0002.json";
+  const harness = await createHarness([caro, saved], {
+    chunkCount: 2,
+    storage,
+    recordsByDeck: {
+      "caro-kann-black": [caro, saved],
+      "colle-white": [colle],
+    },
+    delayedChunkUrls: [delayedUrl],
+  });
+
+  harness.elements["puzzles-solved-tab"].dispatch("click");
+  await harness.settle();
+  assert.equal(harness.fetches.includes(delayedUrl), true);
+
+  assert.equal(await harness.context.CaroKannTrainer.selectDeck("colle-white"), true);
+  harness.resolveChunk(delayedUrl);
+  await harness.settle();
+
+  assert.equal(harness.context.CaroKannTrainer.selectedDeckId, "colle-white");
+  assert.equal(harness.board.config.fen, colle.puzzleFen);
+  assert.equal(harness.board.config.orientation, "white");
+  assert.equal(harness.fetches.some(url => url.includes("colle-white/chunks/chunk-0002")), false);
+  assert.equal(harness.elements["puzzles-solved-count"].textContent, "(0)");
+});
+
+test("schema-v2 manifest identity fields fail closed before any chunk request", async () => {
+  const broken = deckManifest("caro-kann-black", 1);
+  broken.schemaVersion = 2;
+  delete broken.openingTagRoots;
+  const harness = await createHarness([continuationRecord()], {
+    manifestsByDeck: { "caro-kann-black": broken },
+  });
+  assert.deepEqual(harness.fetches, [
+    "data/opening-puzzle-catalog.json",
+    "data/caro-kann-black/manifest.json",
+  ]);
+  assert.match(harness.elements["puzzle-progress-summary"].textContent, /unavailable/i);
+  assert.equal(harness.elements["puzzle-workspace"].hidden, true);
 });
 
 test("aggregate tactical filters do not duplicate their raw Lichess themes", async () => {
@@ -388,10 +657,10 @@ test("opening an empty solved archive does not fetch more chunks", async () => {
     recordWithId("archive-current"),
     recordWithId("archive-later"),
   ], { chunkCount: 2 });
-  assert.equal(harness.fetches.length, 2);
+  assert.equal(harness.fetches.length, 3);
   harness.elements["puzzles-solved-tab"].dispatch("click");
   await harness.settle();
-  assert.equal(harness.fetches.length, 2);
+  assert.equal(harness.fetches.length, 3);
   assert.match(harness.elements["puzzles-solved-empty"].innerHTML, /No solved puzzles/i);
 });
 
@@ -405,12 +674,12 @@ test("solved archive loads only until all stored solved IDs are found", async ()
     chunkCount: 3,
     storage,
   });
-  assert.equal(harness.fetches.length, 2);
+  assert.equal(harness.fetches.length, 3);
 
   harness.elements["puzzles-solved-tab"].dispatch("click");
   await harness.settle();
-  assert.equal(harness.fetches.length, 3);
-  assert.match(harness.fetches[2], /chunk-0002\.json$/);
+  assert.equal(harness.fetches.length, 4);
+  assert.match(harness.fetches[3], /chunk-0002\.json$/);
   assert.equal(harness.elements["puzzles-solved-count"].textContent, "(1)");
   assert.equal(harness.elements["puzzles-solved-layout"].hidden, false);
 });
@@ -423,6 +692,7 @@ test("initial loading continues past an all-solved matching chunk", async () => 
 
   const harness = await createHarness([solved, fresh], { chunkCount: 2, storage });
   assert.deepEqual(harness.fetches, [
+    "data/opening-puzzle-catalog.json",
     "data/caro-kann-black/manifest.json",
     "data/caro-kann-black/chunks/chunk-0001.json",
     "data/caro-kann-black/chunks/chunk-0002.json",
@@ -444,8 +714,8 @@ test("a failed chunk is consumed while seeking a later unsolved match", async ()
     storage,
     failedChunks: [2],
   });
-  assert.equal(harness.fetches.length, 4);
-  assert.match(harness.fetches[3], /chunk-0003\.json$/);
+  assert.equal(harness.fetches.length, 5);
+  assert.match(harness.fetches[4], /chunk-0003\.json$/);
   assert.equal(harness.board.config.fen, fresh.puzzleFen);
   assert.match(harness.elements["puzzle-storage-warning"].textContent, /could not be loaded/);
 });
@@ -454,13 +724,13 @@ test("changing to a filter with no loaded unsolved match loads later chunks", as
   const advance = recordWithId("loaded-advance");
   const exchange = exchangeRecord("later-exchange");
   const harness = await createHarness([advance, exchange], { chunkCount: 2 });
-  assert.equal(harness.fetches.length, 2);
+  assert.equal(harness.fetches.length, 3);
 
   harness.elements["caro-filter-variation"].value = exchange.variation;
   harness.elements["caro-filter-variation"].dispatch("change");
   await harness.settle();
-  assert.equal(harness.fetches.length, 3);
-  assert.match(harness.fetches[2], /chunk-0002\.json$/);
+  assert.equal(harness.fetches.length, 4);
+  assert.match(harness.fetches[3], /chunk-0002\.json$/);
   assert.equal(harness.elements["caro-filter-variation"].value, exchange.variation);
   assert.equal(harness.board.config.fen, exchange.puzzleFen);
 });
@@ -598,7 +868,7 @@ test("completion scans past solved-only chunks before Continue advances", async 
   harness.board.config.movable.events.after("c3", "d2");
   assert.equal(harness.progress(current.id).status, "solved");
   await harness.settle();
-  assert.equal(harness.fetches.length, 4);
+  assert.equal(harness.fetches.length, 5);
 
   harness.elements["puzzle-continue"].dispatch("click");
   await harness.settle();
@@ -620,7 +890,7 @@ test("Skip scans solved-only chunks until another unsolved match is available", 
 
   harness.elements["puzzle-skip"].dispatch("click");
   await harness.settle();
-  assert.equal(harness.fetches.length, 4);
+  assert.equal(harness.fetches.length, 5);
   assert.equal(harness.board.config.fen, next.puzzleFen);
   assert.equal(harness.progress(current.id), null);
   assert.equal(harness.progress(next.id), null);

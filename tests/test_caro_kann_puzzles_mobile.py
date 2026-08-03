@@ -31,6 +31,7 @@ def test_caro_page_keeps_filters_and_primary_phone_flow_in_visual_order():
     assert filters < task < board < feedback < controls < keyboard
     assert 'id="puzzle-board-help" class="visually-hidden"' in TEMPLATE
     assert 'role="group" aria-label="Puzzle controls"' in TEMPLATE
+    assert 'id="opening-puzzle-deck"' in TEMPLATE
 
 
 def test_caro_phone_layout_is_square_full_width_and_overflow_free():
@@ -55,22 +56,24 @@ def test_caro_phone_layout_is_square_full_width_and_overflow_free():
     assert "outline: 2px solid var(--accent)" in STYLES
 
 
-def test_caro_controller_locks_orientation_and_preserves_phone_interaction():
+def test_opening_controller_uses_selected_orientation_and_preserves_phone_interaction():
     interactive = CONTROLLER.index("function paintInteractiveBoard")
     solved_review = CONTROLLER.index("function renderSolvedReview")
     queue_controller = CONTROLLER[interactive:solved_review]
-    assert 'orientation: "black"' in queue_controller
-    assert 'turnColor: "black"' in queue_controller
+    assert "orientation: boardOrientation()" in queue_controller
+    assert "turnColor: solverColor()" in queue_controller
     assert "viewOnly: false" in queue_controller
-    assert 'color: locked ? undefined : "black"' in queue_controller
+    assert "color: locked ? undefined : solverColor()" in queue_controller
     assert "draggable: { enabled: !completed && !coarsePointer && !locked }" in queue_controller
     assert "selectable: { enabled: !locked }" in queue_controller
     assert "focus({ preventScroll: true })" in CONTROLLER
     assert "scrollIntoView" not in CONTROLLER
 
     review_controller = CONTROLLER[solved_review:]
-    assert 'orientation: "black"' in review_controller
+    assert "orientation: boardOrientation()" in review_controller
     assert "viewOnly: true" in review_controller
+    assert 'const CATALOG_URL = "data/opening-puzzle-catalog.json"' in CONTROLLER
+    assert "state.loadGeneration += 1" in CONTROLLER
 
 
 def test_caro_solved_review_precedes_the_responsive_archive():

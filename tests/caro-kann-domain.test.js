@@ -192,3 +192,113 @@ test("Caro-Kann progress uses a key distinct from personal blunder progress", ()
   assert.equal(caro, "chess-tracker:puzzle-progress:v1:caro-kann-black:alice");
   assert.notEqual(caro, personal);
 });
+
+test("catalog accepts compact entries without roots and rejects unsafe manifest paths", () => {
+  const normalized = Caro.normalizeCatalog({
+    schemaVersion: 1,
+    defaultDeckId: "caro-kann-black",
+    decks: [{
+      id: "caro-kann-black",
+      label: "Caro-Kann Defense — Black",
+      openingFamily: "Caro-Kann Defense",
+      solverColor: "black",
+      orientation: "black",
+      manifestPath: "caro-kann-black/manifest.json",
+    }, {
+      id: "unsafe-white",
+      label: "Unsafe — White",
+      openingFamily: "Unsafe",
+      solverColor: "white",
+      orientation: "white",
+      manifestPath: "../outside.json",
+    }],
+  });
+  assert.deepEqual(normalized.decks.map(deck => deck.id), ["caro-kann-black"]);
+  assert.deepEqual(normalized.decks[0].openingTagRoots, []);
+  assert.equal(Caro.safeRelativePath("caro-kann-black\\manifest.json"), "");
+  assert.equal(Caro.safeRelativePath("caro-kann-black//manifest.json"), "");
+  assert.equal(Caro.safeRelativePath(" caro-kann-black/manifest.json"), "");
+});
+
+test("generic root matching requires an exact root or root plus underscore", () => {
+  assert.equal(Caro.matchesOpeningRoot("Pirc_Defense", "Pirc_Defense"), true);
+  assert.equal(Caro.matchesOpeningRoot("Pirc_Defense_Austrian_Attack", "Pirc_Defense"), true);
+  assert.equal(Caro.matchesOpeningRoot("Pirc_Defensive_System", "Pirc_Defense"), false);
+  assert.equal(Caro.matchesOpeningRoot("Nimzowitsch_Defense_Pirc_Defense", "Pirc_Defense"), false);
+  assert.equal(Caro.matchesOpeningRoot("Kings_Gambit_Accepted_Modern_Defense", "Modern_Defense"), false);
+});
+
+test("White deck record adaptation enforces perspective, orientation, roots, and deck ID", () => {
+  const config = Caro.normalizeManifest({
+    schemaVersion: 2,
+    deckId: "colle-white",
+    displayName: "Colle System — White",
+    openingFamily: "Colle System",
+    solverColor: "white",
+    orientation: "white",
+    openingTagRoots: [
+      "Queens_Pawn_Game_Colle_System",
+      "Indian_Defense_Colle_System",
+      "Colle_System",
+    ],
+  }, {
+    id: "colle-white",
+    label: "Colle System — White",
+    openingFamily: "Colle System",
+    solverColor: "white",
+    orientation: "white",
+    manifestPath: "colle-white/manifest.json",
+  });
+  const puzzleFen = "8/8/8/8/8/2k5/3K4/8 w - - 1 2";
+  const whiteRecord = {
+    ...record(),
+    id: "colle-1",
+    deckId: "colle-white",
+    openingFamily: "Colle System",
+    openingTags: ["Indian_Defense_Colle_System_Kings_Indian_Variation"],
+    originalFen: "8/8/8/8/8/8/2kK4/8 b - - 0 1",
+    puzzleFen,
+    solverColor: "white",
+    sideToMove: "white",
+    orientation: "white",
+    solutionSteps: [{
+      fenBefore: puzzleFen,
+      bestMoveUci: "d2e3",
+      bestMoveSan: "Ke3",
+      postBestFen: "8/8/8/8/8/2k1K3/8/8 b - - 2 2",
+      legalMovesUci: ["d2e3"],
+      legalDests: { d2: ["e3"] },
+      promotionOptions: {},
+      opponentReplyUci: null,
+      opponentReplySan: null,
+      postReplyFen: null,
+    }],
+  };
+  const adapted = Caro.adaptRecord(whiteRecord, config);
+  assert.equal(adapted.user_color, "white");
+  assert.equal(adapted.orientation, "white");
+  assert.equal(adapted.variation, "Colle System: Kings Indian Variation");
+  assert.equal(adapted.matchedTagRoot, "Indian_Defense_Colle_System");
+  assert.equal(Caro.adaptRecord({ ...whiteRecord, deckId: "caro-kann-black" }, config), null);
+  assert.equal(Caro.adaptRecord({ ...whiteRecord, deckId: undefined }, config), null);
+  assert.equal(Caro.adaptRecord({ ...whiteRecord, originalFen: puzzleFen }, config), null);
+  assert.equal(Caro.adaptRecord({ ...whiteRecord, orientation: "black" }, config), null);
+  assert.equal(Caro.adaptRecord({ ...whiteRecord, openingTags: ["Queens_Pawn_Game_Zukertort_Variation"] }, config), null);
+});
+
+test("generic readable variations flatten configured opening roots", () => {
+  const colle = {
+    id: "colle-white",
+    openingFamily: "Colle System",
+    openingTagRoots: ["Queens_Pawn_Game_Colle_System"],
+  };
+  assert.equal(
+    Caro.readableVariation("Queens_Pawn_Game_Colle_System_Traditional_Colle", colle),
+    "Colle System: Traditional Colle",
+  );
+  assert.equal(Caro.readableVariation("Queens_Pawn_Game_Modern_Defense", {
+    id: "modern-black",
+    openingFamily: "Modern Defense",
+    openingTagRoots: ["Modern_Defense", "Queens_Pawn_Game_Modern_Defense"],
+  }), "Modern Defense: Queen’s Pawn Move Order");
+});

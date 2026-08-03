@@ -1,0 +1,24 @@
+{
+  "counts": {
+    "duplicateId": 0,
+    "illegalSetupMove": 0,
+    "illegalSolutionMove": 0,
+    "invalidCsvRow": 0,
+    "invalidFen": 0,
+    "missingId": 0,
+    "missingMoves": 0,
+    "missingOpeningTag": 6095296,
+    "resultingPositionWrongSideToMove": 0,
+    "wrongOriginalSideToMove": 2654
+  },
+  "deckId": "colle-white",
+  "inputByteSize": 304384407,
+  "inputKind": "file",
+  "inputSha256": "a0ea9129c6b6434dfb34a9ac4ec660c9cfff22b2de465e01854f018fc847f073",
+  "inputSha256Scope": "complete-file-bytes",
+  "rowsScanned": 6100960,
+  "scanComplete": true,
+  "scanLimit": null,
+  "totalRejected": 6097950,
+  "truncated": false
+}

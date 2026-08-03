@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
-  <title>Chess Tracker — Caro-Kann Puzzles — {{USERNAME}}</title>
+  <title>Chess Tracker — Opening Puzzles — {{USERNAME}}</title>
   <link rel="stylesheet" href="vendor/tabulator.min.css">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="vendor/chessground.base.css">
@@ -17,8 +17,8 @@
     <section id="puzzles-page" data-caro-kann-trainer aria-labelledby="puzzles-title">
       <div class="puzzles-heading">
         <div>
-          <h1 id="puzzles-title">Caro-Kann Puzzles</h1>
-          <p class="puzzle-intro">Play Black through complete tactical continuations from the Lichess puzzle database.</p>
+          <h1 id="puzzles-title">Opening Puzzles</h1>
+          <p id="puzzle-intro" class="puzzle-intro">Choose an opening deck and play its complete tactical continuations from the Lichess puzzle database.</p>
         </div>
         <p id="puzzle-progress-summary" class="puzzle-progress-summary" role="status" aria-live="polite">
           Loading puzzle manifest…
@@ -27,12 +27,18 @@
 
       <div id="puzzle-storage-warning" class="puzzle-page-alert" role="alert" hidden></div>
 
-      <form id="caro-puzzle-filters" class="caro-puzzle-filters" aria-label="Caro-Kann puzzle filters">
+      <form id="caro-puzzle-filters" class="caro-puzzle-filters" aria-label="Opening puzzle filters">
         <div class="caro-filter-grid">
+          <label class="opening-deck-filter">
+            <span>Opening deck</span>
+            <select id="opening-puzzle-deck" name="deck" aria-describedby="caro-filter-status">
+              <option value="caro-kann-black">Caro-Kann Defense — Black</option>
+            </select>
+          </label>
           <label>
             <span>Study mode</span>
             <select id="caro-filter-mode" name="mode">
-              <option value="all">All Caro-Kann</option>
+              <option value="all">All opening puzzles</option>
               <option value="curriculum">Curriculum</option>
               <option value="main-lines">Main lines</option>
               <option value="sidelines">Sidelines</option>
@@ -113,15 +119,15 @@
               <span id="puzzle-queue-position"></span>
             </div>
             <h2 id="puzzle-prompt" class="puzzle-prompt" tabindex="-1">Find the best sequence</h2>
-            <p id="puzzle-side-to-move" class="puzzle-side-to-move">Black to move · You are Black</p>
+            <p id="puzzle-side-to-move" class="puzzle-side-to-move">Loading solver color…</p>
           </div>
 
           <div class="puzzle-board-column">
             <div id="puzzle-board" class="puzzle-board puzzle-queue-board"
-                 role="img" aria-label="Interactive Caro-Kann puzzle board, Black to move"
+                 role="img" aria-label="Interactive opening puzzle board"
                  aria-describedby="puzzle-side-to-move puzzle-board-help"></div>
             <p id="puzzle-board-help" class="visually-hidden">
-              Select a piece and destination on the Black-oriented board, or use the keyboard move field below the puzzle controls.
+              Select a piece and destination on the solver-oriented board, or use the keyboard move field below the puzzle controls.
             </p>
 
             <fieldset id="puzzle-promotion-chooser" class="puzzle-promotion-chooser" hidden>
@@ -180,11 +186,11 @@
             </div>
             <div class="puzzle-solved-review-grid">
               <div id="puzzle-solved-board" class="puzzle-board puzzle-review-board"
-                   role="img" aria-label="Read-only solved Caro-Kann puzzle, Black orientation"></div>
+                   role="img" aria-label="Read-only solved opening puzzle"></div>
               <div id="puzzle-solved-details" class="puzzle-solved-details"></div>
             </div>
           </section>
-          <div id="puzzles-solved-list" class="puzzles-solved-list" aria-label="Solved Caro-Kann puzzles"></div>
+          <div id="puzzles-solved-list" class="puzzles-solved-list" aria-label="Solved opening puzzles"></div>
         </div>
       </div>
     </section>

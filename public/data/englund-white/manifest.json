@@ -1,0 +1,557 @@
+{
+  "balancedCounts": {
+    "difficulty": {
+      "advanced": 535,
+      "beginner": 2143,
+      "developing": 1234,
+      "expert": 212,
+      "intermediate": 991
+    },
+    "primaryTacticalTheme": {
+      "advancedPawn": 9,
+      "advantage": 835,
+      "attackingF2F7": 3,
+      "attraction": 21,
+      "capturingDefender": 14,
+      "castling": 1,
+      "clearance": 24,
+      "crushing": 438,
+      "defensiveMove": 138,
+      "deflection": 62,
+      "discoveredAttack": 346,
+      "doubleCheck": 2,
+      "fork": 619,
+      "interference": 10,
+      "mateIn1": 1299,
+      "mateIn2": 497,
+      "mateIn3": 135,
+      "mateIn4": 10,
+      "mateIn5": 4,
+      "middlegame": 29,
+      "pin": 277,
+      "quietMove": 55,
+      "sacrifice": 120,
+      "skewer": 36,
+      "trappedPiece": 125,
+      "unclassified": 5,
+      "xRayAttack": 1
+    },
+    "provenance": {
+      "master": 223,
+      "masterVsMaster": 7,
+      "standard": 4885
+    },
+    "theme": {
+      "advancedPawn": 88,
+      "advantage": 1981,
+      "anastasiaMate": 6,
+      "arabianMate": 1,
+      "attackingF2F7": 100,
+      "attraction": 154,
+      "backRankMate": 138,
+      "balestraMate": 3,
+      "bodenMate": 5,
+      "capturingDefender": 64,
+      "castling": 9,
+      "clearance": 73,
+      "collinearMove": 4,
+      "cornerMate": 14,
+      "crushing": 1155,
+      "defensiveMove": 164,
+      "deflection": 163,
+      "discoveredAttack": 466,
+      "discoveredCheck": 107,
+      "doubleBishopMate": 5,
+      "doubleCheck": 43,
+      "dovetailMate": 4,
+      "enPassant": 10,
+      "endgame": 112,
+      "epauletteMate": 8,
+      "exposedKing": 64,
+      "fork": 654,
+      "hangingPiece": 249,
+      "hookMate": 1,
+      "interference": 18,
+      "intermezzo": 62,
+      "kingsideAttack": 769,
+      "long": 1171,
+      "master": 230,
+      "masterVsMaster": 7,
+      "mate": 1945,
+      "mateIn1": 1299,
+      "mateIn2": 497,
+      "mateIn3": 135,
+      "mateIn4": 10,
+      "mateIn5": 4,
+      "middlegame": 3908,
+      "morphysMate": 6,
+      "oneMove": 1301,
+      "opening": 1095,
+      "operaMate": 45,
+      "pillsburysMate": 49,
+      "pin": 362,
+      "promotion": 53,
+      "queenRookEndgame": 2,
+      "queensideAttack": 297,
+      "quietMove": 81,
+      "rookEndgame": 1,
+      "sacrifice": 356,
+      "short": 2372,
+      "skewer": 45,
+      "smotheredMate": 61,
+      "swallowstailMate": 6,
+      "trappedPiece": 153,
+      "triangleMate": 3,
+      "veryLong": 237,
+      "vukovicMate": 1,
+      "xRayAttack": 6
+    },
+    "variation": {
+      "Englund Gambit: Complex Declined Diemer Counterattack": 7,
+      "Englund Gambit: Complex Declined Other variations": 385,
+      "Englund Gambit: Complex Englund Gambit": 1000,
+      "Englund Gambit: Complex Felbecker Gambit": 74,
+      "Englund Gambit: Complex Hartlaub-Charlick Gambit": 188,
+      "Englund Gambit: Complex Soller Gambit": 94,
+      "Englund Gambit: Complex Soller Gambit Deferred": 33,
+      "Englund Gambit: Complex Stockholm Variation": 46,
+      "Englund Gambit: Complex Zilbermints Gambit": 37,
+      "Englund Gambit: Declined Diemer Counterattack": 2,
+      "Englund Gambit: Declined Other variations": 187,
+      "Englund Gambit: Declined Reversed Alekhine": 91,
+      "Englund Gambit: Declined Reversed Brooklyn": 5,
+      "Englund Gambit: Declined Reversed French": 585,
+      "Englund Gambit: Declined Reversed Krebs": 61,
+      "Englund Gambit: Declined Reversed Mokele Mbembe": 32,
+      "Englund Gambit: Felbecker Gambit": 70,
+      "Englund Gambit: Hartlaub-Charlick Gambit": 469,
+      "Englund Gambit: Main Line": 585,
+      "Englund Gambit: Mosquito Gambit": 1,
+      "Englund Gambit: Other variations": 1000,
+      "Englund Gambit: Soller Gambit": 80,
+      "Englund Gambit: Soller Gambit Deferred": 28,
+      "Englund Gambit: Stockholm Variation": 30,
+      "Englund Gambit: Zilbermints Gambit": 25
+    }
+  },
+  "chunks": [
+    {
+      "count": 1000,
+      "path": "chunks/chunk-0001.json"
+    },
+    {
+      "count": 1000,
+      "path": "chunks/chunk-0002.json"
+    },
+    {
+      "count": 1000,
+      "path": "chunks/chunk-0003.json"
+    },
+    {
+      "count": 1000,
+      "path": "chunks/chunk-0004.json"
+    },
+    {
+      "count": 1000,
+      "path": "chunks/chunk-0005.json"
+    },
+    {
+      "count": 115,
+      "path": "chunks/chunk-0006.json"
+    }
+  ],
+  "counts": {
+    "allExported": 6186,
+    "balancedExported": 5115,
+    "invalidRows": 6094774,
+    "openingMatchedRows": 17323,
+    "perspectiveMatchedRows": 6186,
+    "rowsScanned": 6100960,
+    "validRows": 6186,
+    "whiteToSolveRows": 6186
+  },
+  "dataset": "Englund Gambit puzzles for White",
+  "datasetName": "Englund Gambit puzzles for White",
+  "deckId": "englund-white",
+  "difficultyBuckets": {
+    "advanced": {
+      "max": 2399,
+      "min": 2000
+    },
+    "beginner": {
+      "max": 1199,
+      "min": null
+    },
+    "developing": {
+      "max": 1599,
+      "min": 1200
+    },
+    "expert": {
+      "max": null,
+      "min": 2400
+    },
+    "intermediate": {
+      "max": 1999,
+      "min": 1600
+    }
+  },
+  "difficultyCounts": {
+    "advanced": 580,
+    "beginner": 2927,
+    "developing": 1399,
+    "expert": 213,
+    "intermediate": 1067
+  },
+  "displayName": "Englund Gambit — White",
+  "generatedAt": "2026-08-03T21:00:28.582762Z",
+  "generatedAtUtc": "2026-08-03T21:00:28.582762Z",
+  "inputByteSize": 304384407,
+  "inputFile": "lichess_db_puzzle.csv.zst",
+  "inputFilename": "lichess_db_puzzle.csv.zst",
+  "inputKind": "file",
+  "inputSha256": "a0ea9129c6b6434dfb34a9ac4ec660c9cfff22b2de465e01854f018fc847f073",
+  "inputSha256Scope": "complete-file-bytes",
+  "license": "CC0",
+  "matchedRootCounts": {
+    "Englund_Gambit": 6186
+  },
+  "openingFamily": "Englund Gambit",
+  "openingPrefix": "Englund_Gambit",
+  "openingTagRoots": [
+    "Englund_Gambit"
+  ],
+  "orientation": "white",
+  "provenanceCounts": {
+    "master": 227,
+    "masterVsMaster": 7,
+    "standard": 5952
+  },
+  "qualityFilter": {
+    "maxRatingDeviation": 150,
+    "minPlays": 20,
+    "minPopularity": 0
+  },
+  "qualityFilters": {
+    "maxRatingDeviation": 150,
+    "minPlays": 20,
+    "minPopularity": 0,
+    "qualityEligible": 6068
+  },
+  "sampling": {
+    "algorithm": "sha256-cell-round-robin-v1",
+    "balancedLimit": 10000,
+    "dimensions": [
+      "primaryVariation",
+      "difficulty",
+      "provenance",
+      "primaryTacticalTheme"
+    ],
+    "maxPerVariation": 1000,
+    "seed": 20260803
+  },
+  "scanComplete": true,
+  "scanLimit": null,
+  "schemaVersion": 2,
+  "solverColor": "white",
+  "source": {
+    "exportUrl": "https://database.lichess.org/lichess_db_puzzle.csv.zst",
+    "name": "Lichess Open Database: Puzzles",
+    "url": "https://database.lichess.org/#puzzles"
+  },
+  "themeCounts": {
+    "advancedPawn": 135,
+    "advantage": 2251,
+    "anastasiaMate": 7,
+    "arabianMate": 1,
+    "attackingF2F7": 130,
+    "attraction": 164,
+    "backRankMate": 178,
+    "balestraMate": 3,
+    "bodenMate": 5,
+    "capturingDefender": 68,
+    "castling": 9,
+    "clearance": 81,
+    "collinearMove": 4,
+    "cornerMate": 20,
+    "crushing": 1213,
+    "defensiveMove": 167,
+    "deflection": 175,
+    "discoveredAttack": 490,
+    "discoveredCheck": 119,
+    "doubleBishopMate": 8,
+    "doubleCheck": 48,
+    "dovetailMate": 5,
+    "enPassant": 10,
+    "endgame": 138,
+    "epauletteMate": 10,
+    "exposedKing": 72,
+    "fork": 771,
+    "hangingPiece": 301,
+    "hookMate": 4,
+    "interference": 18,
+    "intermezzo": 75,
+    "kingsideAttack": 1000,
+    "long": 1276,
+    "master": 234,
+    "masterVsMaster": 7,
+    "mate": 2678,
+    "mateIn1": 1897,
+    "mateIn2": 632,
+    "mateIn3": 135,
+    "mateIn4": 10,
+    "mateIn5": 4,
+    "middlegame": 4738,
+    "morphysMate": 9,
+    "oneMove": 1899,
+    "opening": 1310,
+    "operaMate": 63,
+    "pillsburysMate": 61,
+    "pin": 386,
+    "promotion": 98,
+    "queenEndgame": 1,
+    "queenRookEndgame": 2,
+    "queensideAttack": 353,
+    "quietMove": 81,
+    "rookEndgame": 1,
+    "sacrifice": 373,
+    "short": 2716,
+    "skewer": 45,
+    "smotheredMate": 84,
+    "swallowstailMate": 6,
+    "trappedPiece": 156,
+    "triangleMate": 3,
+    "veryLong": 251,
+    "vukovicMate": 1,
+    "xRayAttack": 6
+  },
+  "truncated": false,
+  "variationCounts": {
+    "Englund Gambit: Complex Declined Diemer Counterattack": 7,
+    "Englund Gambit: Complex Declined Other variations": 390,
+    "Englund Gambit: Complex Englund Gambit": 1059,
+    "Englund Gambit: Complex Felbecker Gambit": 74,
+    "Englund Gambit: Complex Hartlaub-Charlick Gambit": 189,
+    "Englund Gambit: Complex Soller Gambit": 96,
+    "Englund Gambit: Complex Soller Gambit Deferred": 34,
+    "Englund Gambit: Complex Stockholm Variation": 47,
+    "Englund Gambit: Complex Zilbermints Gambit": 37,
+    "Englund Gambit: Declined Diemer Counterattack": 2,
+    "Englund Gambit: Declined Other variations": 194,
+    "Englund Gambit: Declined Reversed Alekhine": 91,
+    "Englund Gambit: Declined Reversed Brooklyn": 5,
+    "Englund Gambit: Declined Reversed French": 592,
+    "Englund Gambit: Declined Reversed Krebs": 61,
+    "Englund Gambit: Declined Reversed Mokele Mbembe": 33,
+    "Englund Gambit: Felbecker Gambit": 70,
+    "Englund Gambit: Hartlaub-Charlick Gambit": 483,
+    "Englund Gambit: Main Line": 597,
+    "Englund Gambit: Mosquito Gambit": 1,
+    "Englund Gambit: Other variations": 1957,
+    "Englund Gambit: Soller Gambit": 81,
+    "Englund Gambit: Soller Gambit Deferred": 30,
+    "Englund Gambit: Stockholm Variation": 31,
+    "Englund Gambit: Zilbermints Gambit": 25
+  },
+  "variations": [
+    {
+      "balancedCount": 7,
+      "count": 7,
+      "matchedTagRoot": "Englund_Gambit",
+      "name": "Englund Gambit: Complex Declined Diemer Counterattack",
+      "slug": "englund-gambit-complex-declined-diemer-counterattack",
+      "tag": "Englund_Gambit_Complex_Declined_Diemer_Counterattack"
+    },
+    {
+      "balancedCount": 385,
+      "count": 390,
+      "matchedTagRoot": "Englund_Gambit",
+      "name": "Englund Gambit: Complex Declined Other variations",
+      "slug": "englund-gambit-complex-declined-other-variations",
+      "tag": "Englund_Gambit_Complex_Declined_Other_variations"
+    },
+    {
+      "balancedCount": 1000,
+      "count": 1059,
+      "matchedTagRoot": "Englund_Gambit",
+      "name": "Englund Gambit: Complex Englund Gambit",
+      "slug": "englund-gambit-complex-englund-gambit",
+      "tag": "Englund_Gambit_Complex_Englund_Gambit"
+    },
+    {
+      "balancedCount": 74,
+      "count": 74,
+      "matchedTagRoot": "Englund_Gambit",
+      "name": "Englund Gambit: Complex Felbecker Gambit",
+      "slug": "englund-gambit-complex-felbecker-gambit",
+      "tag": "Englund_Gambit_Complex_Felbecker_Gambit"
+    },
+    {
+      "balancedCount": 188,
+      "count": 189,
+      "matchedTagRoot": "Englund_Gambit",
+      "name": "Englund Gambit: Complex Hartlaub-Charlick Gambit",
+      "slug": "englund-gambit-complex-hartlaub-charlick-gambit",
+      "tag": "Englund_Gambit_Complex_Hartlaub-Charlick_Gambit"
+    },
+    {
+      "balancedCount": 94,
+      "count": 96,
+      "matchedTagRoot": "Englund_Gambit",
+      "name": "Englund Gambit: Complex Soller Gambit",
+      "slug": "englund-gambit-complex-soller-gambit",
+      "tag": "Englund_Gambit_Complex_Soller_Gambit"
+    },
+    {
+      "balancedCount": 33,
+      "count": 34,
+      "matchedTagRoot": "Englund_Gambit",
+      "name": "Englund Gambit: Complex Soller Gambit Deferred",
+      "slug": "englund-gambit-complex-soller-gambit-deferred",
+      "tag": "Englund_Gambit_Complex_Soller_Gambit_Deferred"
+    },
+    {
+      "balancedCount": 46,
+      "count": 47,
+      "matchedTagRoot": "Englund_Gambit",
+      "name": "Englund Gambit: Complex Stockholm Variation",
+      "slug": "englund-gambit-complex-stockholm-variation",
+      "tag": "Englund_Gambit_Complex_Stockholm_Variation"
+    },
+    {
+      "balancedCount": 37,
+      "count": 37,
+      "matchedTagRoot": "Englund_Gambit",
+      "name": "Englund Gambit: Complex Zilbermints Gambit",
+      "slug": "englund-gambit-complex-zilbermints-gambit",
+      "tag": "Englund_Gambit_Complex_Zilbermints_Gambit"
+    },
+    {
+      "balancedCount": 2,
+      "count": 2,
+      "matchedTagRoot": "Englund_Gambit",
+      "name": "Englund Gambit: Declined Diemer Counterattack",
+      "slug": "englund-gambit-declined-diemer-counterattack",
+      "tag": "Englund_Gambit_Declined_Diemer_Counterattack"
+    },
+    {
+      "balancedCount": 187,
+      "count": 194,
+      "matchedTagRoot": "Englund_Gambit",
+      "name": "Englund Gambit: Declined Other variations",
+      "slug": "englund-gambit-declined-other-variations",
+      "tag": "Englund_Gambit_Declined_Other_variations"
+    },
+    {
+      "balancedCount": 91,
+      "count": 91,
+      "matchedTagRoot": "Englund_Gambit",
+      "name": "Englund Gambit: Declined Reversed Alekhine",
+      "slug": "englund-gambit-declined-reversed-alekhine",
+      "tag": "Englund_Gambit_Declined_Reversed_Alekhine"
+    },
+    {
+      "balancedCount": 5,
+      "count": 5,
+      "matchedTagRoot": "Englund_Gambit",
+      "name": "Englund Gambit: Declined Reversed Brooklyn",
+      "slug": "englund-gambit-declined-reversed-brooklyn",
+      "tag": "Englund_Gambit_Declined_Reversed_Brooklyn"
+    },
+    {
+      "balancedCount": 585,
+      "count": 592,
+      "matchedTagRoot": "Englund_Gambit",
+      "name": "Englund Gambit: Declined Reversed French",
+      "slug": "englund-gambit-declined-reversed-french",
+      "tag": "Englund_Gambit_Declined_Reversed_French"
+    },
+    {
+      "balancedCount": 61,
+      "count": 61,
+      "matchedTagRoot": "Englund_Gambit",
+      "name": "Englund Gambit: Declined Reversed Krebs",
+      "slug": "englund-gambit-declined-reversed-krebs",
+      "tag": "Englund_Gambit_Declined_Reversed_Krebs"
+    },
+    {
+      "balancedCount": 32,
+      "count": 33,
+      "matchedTagRoot": "Englund_Gambit",
+      "name": "Englund Gambit: Declined Reversed Mokele Mbembe",
+      "slug": "englund-gambit-declined-reversed-mokele-mbembe",
+      "tag": "Englund_Gambit_Declined_Reversed_Mokele_Mbembe"
+    },
+    {
+      "balancedCount": 70,
+      "count": 70,
+      "matchedTagRoot": "Englund_Gambit",
+      "name": "Englund Gambit: Felbecker Gambit",
+      "slug": "englund-gambit-felbecker-gambit",
+      "tag": "Englund_Gambit_Felbecker_Gambit"
+    },
+    {
+      "balancedCount": 469,
+      "count": 483,
+      "matchedTagRoot": "Englund_Gambit",
+      "name": "Englund Gambit: Hartlaub-Charlick Gambit",
+      "slug": "englund-gambit-hartlaub-charlick-gambit",
+      "tag": "Englund_Gambit_Hartlaub-Charlick_Gambit"
+    },
+    {
+      "balancedCount": 585,
+      "count": 597,
+      "matchedTagRoot": "Englund_Gambit",
+      "name": "Englund Gambit: Main Line",
+      "slug": "englund-gambit-main-line",
+      "tag": "Englund_Gambit_Main_Line"
+    },
+    {
+      "balancedCount": 1,
+      "count": 1,
+      "matchedTagRoot": "Englund_Gambit",
+      "name": "Englund Gambit: Mosquito Gambit",
+      "slug": "englund-gambit-mosquito-gambit",
+      "tag": "Englund_Gambit_Mosquito_Gambit"
+    },
+    {
+      "balancedCount": 1000,
+      "count": 1957,
+      "matchedTagRoot": "Englund_Gambit",
+      "name": "Englund Gambit: Other variations",
+      "slug": "englund-gambit-other-variations",
+      "tag": "Englund_Gambit_Other_variations"
+    },
+    {
+      "balancedCount": 80,
+      "count": 81,
+      "matchedTagRoot": "Englund_Gambit",
+      "name": "Englund Gambit: Soller Gambit",
+      "slug": "englund-gambit-soller-gambit",
+      "tag": "Englund_Gambit_Soller_Gambit"
+    },
+    {
+      "balancedCount": 28,
+      "count": 30,
+      "matchedTagRoot": "Englund_Gambit",
+      "name": "Englund Gambit: Soller Gambit Deferred",
+      "slug": "englund-gambit-soller-gambit-deferred",
+      "tag": "Englund_Gambit_Soller_Gambit_Deferred"
+    },
+    {
+      "balancedCount": 30,
+      "count": 31,
+      "matchedTagRoot": "Englund_Gambit",
+      "name": "Englund Gambit: Stockholm Variation",
+      "slug": "englund-gambit-stockholm-variation",
+      "tag": "Englund_Gambit_Stockholm_Variation"
+    },
+    {
+      "balancedCount": 25,
+      "count": 25,
+      "matchedTagRoot": "Englund_Gambit",
+      "name": "Englund Gambit: Zilbermints Gambit",
+      "slug": "englund-gambit-zilbermints-gambit",
+      "tag": "Englund_Gambit_Zilbermints_Gambit"
+    }
+  ]
+}

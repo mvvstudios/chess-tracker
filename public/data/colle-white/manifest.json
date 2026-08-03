@@ -1,0 +1,306 @@
+{
+  "balancedCounts": {
+    "difficulty": {
+      "advanced": 184,
+      "beginner": 227,
+      "developing": 265,
+      "expert": 98,
+      "intermediate": 280
+    },
+    "primaryTacticalTheme": {
+      "advancedPawn": 4,
+      "advantage": 162,
+      "attackingF2F7": 1,
+      "attraction": 5,
+      "capturingDefender": 4,
+      "clearance": 13,
+      "crushing": 128,
+      "defensiveMove": 40,
+      "deflection": 18,
+      "discoveredAttack": 83,
+      "doubleCheck": 1,
+      "fork": 113,
+      "interference": 3,
+      "mateIn1": 88,
+      "mateIn2": 77,
+      "mateIn3": 40,
+      "mateIn4": 7,
+      "mateIn5": 11,
+      "middlegame": 7,
+      "pin": 72,
+      "quietMove": 32,
+      "sacrifice": 76,
+      "skewer": 14,
+      "trappedPiece": 46,
+      "unclassified": 4,
+      "xRayAttack": 5
+    },
+    "provenance": {
+      "master": 160,
+      "masterVsMaster": 7,
+      "standard": 886,
+      "superGM": 1
+    },
+    "theme": {
+      "advancedPawn": 11,
+      "advantage": 458,
+      "attackingF2F7": 14,
+      "attraction": 77,
+      "backRankMate": 7,
+      "balestraMate": 1,
+      "bodenMate": 3,
+      "capturingDefender": 13,
+      "castling": 1,
+      "clearance": 37,
+      "collinearMove": 1,
+      "crushing": 362,
+      "defensiveMove": 50,
+      "deflection": 46,
+      "discoveredAttack": 125,
+      "discoveredCheck": 39,
+      "doubleCheck": 9,
+      "enPassant": 3,
+      "endgame": 9,
+      "epauletteMate": 9,
+      "exposedKing": 20,
+      "fork": 116,
+      "hangingPiece": 38,
+      "interference": 4,
+      "intermezzo": 17,
+      "kingsideAttack": 246,
+      "long": 314,
+      "master": 168,
+      "masterVsMaster": 8,
+      "mate": 223,
+      "mateIn1": 88,
+      "mateIn2": 77,
+      "mateIn3": 40,
+      "mateIn4": 7,
+      "mateIn5": 11,
+      "middlegame": 822,
+      "morphysMate": 1,
+      "oneMove": 88,
+      "opening": 223,
+      "operaMate": 5,
+      "pillsburysMate": 2,
+      "pin": 81,
+      "queensideAttack": 6,
+      "quietMove": 45,
+      "sacrifice": 147,
+      "short": 545,
+      "skewer": 16,
+      "smotheredMate": 4,
+      "superGM": 1,
+      "trappedPiece": 55,
+      "veryLong": 96,
+      "xRayAttack": 5
+    },
+    "variation": {
+      "Colle System": 1053,
+      "Colle System: Rhamphorhynchus Variation": 1
+    }
+  },
+  "chunks": [
+    {
+      "count": 1000,
+      "path": "chunks/chunk-0001.json"
+    },
+    {
+      "count": 54,
+      "path": "chunks/chunk-0002.json"
+    }
+  ],
+  "counts": {
+    "allExported": 3010,
+    "balancedExported": 1054,
+    "invalidRows": 6097950,
+    "openingMatchedRows": 5664,
+    "perspectiveMatchedRows": 3010,
+    "rowsScanned": 6100960,
+    "validRows": 3010,
+    "whiteToSolveRows": 3010
+  },
+  "dataset": "Colle System puzzles for White",
+  "datasetName": "Colle System puzzles for White",
+  "deckId": "colle-white",
+  "difficultyBuckets": {
+    "advanced": {
+      "max": 2399,
+      "min": 2000
+    },
+    "beginner": {
+      "max": 1199,
+      "min": null
+    },
+    "developing": {
+      "max": 1599,
+      "min": 1200
+    },
+    "expert": {
+      "max": null,
+      "min": 2400
+    },
+    "intermediate": {
+      "max": 1999,
+      "min": 1600
+    }
+  },
+  "difficultyCounts": {
+    "advanced": 272,
+    "beginner": 1567,
+    "developing": 613,
+    "expert": 98,
+    "intermediate": 460
+  },
+  "displayName": "Colle System — White",
+  "generatedAt": "2026-08-03T21:00:28.582762Z",
+  "generatedAtUtc": "2026-08-03T21:00:28.582762Z",
+  "inputByteSize": 304384407,
+  "inputFile": "lichess_db_puzzle.csv.zst",
+  "inputFilename": "lichess_db_puzzle.csv.zst",
+  "inputKind": "file",
+  "inputSha256": "a0ea9129c6b6434dfb34a9ac4ec660c9cfff22b2de465e01854f018fc847f073",
+  "inputSha256Scope": "complete-file-bytes",
+  "license": "CC0",
+  "matchedRootCounts": {
+    "Colle_System": 1,
+    "Indian_Defense_Colle_System": 53,
+    "Queens_Pawn_Game_Colle_System": 2956
+  },
+  "openingFamily": "Colle System",
+  "openingPrefix": "Queens_Pawn_Game_Colle_System",
+  "openingTagRoots": [
+    "Queens_Pawn_Game_Colle_System",
+    "Indian_Defense_Colle_System",
+    "Colle_System"
+  ],
+  "orientation": "white",
+  "provenanceCounts": {
+    "master": 164,
+    "masterVsMaster": 7,
+    "standard": 2838,
+    "superGM": 1
+  },
+  "qualityFilter": {
+    "maxRatingDeviation": 150,
+    "minPlays": 20,
+    "minPopularity": 0
+  },
+  "qualityFilters": {
+    "maxRatingDeviation": 150,
+    "minPlays": 20,
+    "minPopularity": 0,
+    "qualityEligible": 2965
+  },
+  "sampling": {
+    "algorithm": "sha256-cell-round-robin-v1",
+    "balancedLimit": 10000,
+    "dimensions": [
+      "primaryVariation",
+      "difficulty",
+      "provenance",
+      "primaryTacticalTheme"
+    ],
+    "maxPerVariation": 1000,
+    "seed": 20260803
+  },
+  "scanComplete": true,
+  "scanLimit": null,
+  "schemaVersion": 2,
+  "solverColor": "white",
+  "source": {
+    "exportUrl": "https://database.lichess.org/lichess_db_puzzle.csv.zst",
+    "name": "Lichess Open Database: Puzzles",
+    "url": "https://database.lichess.org/#puzzles"
+  },
+  "themeCounts": {
+    "advancedPawn": 14,
+    "advantage": 906,
+    "attackingF2F7": 46,
+    "attraction": 98,
+    "backRankMate": 23,
+    "balestraMate": 1,
+    "bodenMate": 11,
+    "capturingDefender": 17,
+    "castling": 1,
+    "clearance": 56,
+    "collinearMove": 1,
+    "cornerMate": 7,
+    "crushing": 600,
+    "defensiveMove": 58,
+    "deflection": 62,
+    "discoveredAttack": 203,
+    "discoveredCheck": 53,
+    "doubleBishopMate": 2,
+    "doubleCheck": 12,
+    "enPassant": 5,
+    "endgame": 23,
+    "epauletteMate": 34,
+    "exposedKing": 24,
+    "fork": 274,
+    "hangingPiece": 111,
+    "interference": 5,
+    "intermezzo": 37,
+    "killBoxMate": 1,
+    "kingsideAttack": 1087,
+    "long": 507,
+    "master": 172,
+    "masterVsMaster": 8,
+    "mate": 1485,
+    "mateIn1": 1187,
+    "mateIn2": 240,
+    "mateIn3": 40,
+    "mateIn4": 7,
+    "mateIn5": 11,
+    "middlegame": 2202,
+    "morphysMate": 2,
+    "oneMove": 1187,
+    "opening": 785,
+    "operaMate": 10,
+    "pillsburysMate": 15,
+    "pin": 90,
+    "queensideAttack": 16,
+    "quietMove": 47,
+    "sacrifice": 193,
+    "short": 1170,
+    "skewer": 16,
+    "smotheredMate": 17,
+    "superGM": 1,
+    "swallowstailMate": 2,
+    "trappedPiece": 56,
+    "triangleMate": 2,
+    "veryLong": 127,
+    "xRayAttack": 5
+  },
+  "truncated": false,
+  "variationCounts": {
+    "Colle System": 3009,
+    "Colle System: Rhamphorhynchus Variation": 1
+  },
+  "variations": [
+    {
+      "balancedCount": 1053,
+      "count": 53,
+      "matchedTagRoot": "Indian_Defense_Colle_System",
+      "name": "Colle System",
+      "slug": "indian-defense-colle-system",
+      "tag": "Indian_Defense_Colle_System"
+    },
+    {
+      "balancedCount": 1053,
+      "count": 2956,
+      "matchedTagRoot": "Queens_Pawn_Game_Colle_System",
+      "name": "Colle System",
+      "slug": "queens-pawn-game-colle-system",
+      "tag": "Queens_Pawn_Game_Colle_System"
+    },
+    {
+      "balancedCount": 1,
+      "count": 1,
+      "matchedTagRoot": "Colle_System",
+      "name": "Colle System: Rhamphorhynchus Variation",
+      "slug": "colle-system-rhamphorhynchus-variation",
+      "tag": "Colle_System_Rhamphorhynchus_Variation"
+    }
+  ]
+}

@@ -200,10 +200,14 @@
     "blackToSolveRows": 26920,
     "caroKannRows": 69848,
     "invalidRows": 6074040,
+    "openingMatchedRows": 69848,
+    "perspectiveMatchedRows": 26920,
     "rowsScanned": 6100960,
     "validRows": 26920
   },
+  "dataset": "Caro-Kann Puzzles for Black",
   "datasetName": "Caro-Kann Puzzles for Black",
+  "deckId": "caro-kann-black",
   "difficultyBuckets": {
     "advanced": {
       "max": 2399,
@@ -233,20 +237,35 @@
     "expert": 665,
     "intermediate": 4933
   },
-  "generatedAtUtc": "2026-08-03T05:48:48.577381Z",
+  "displayName": "Caro-Kann Defense — Black",
+  "generatedAt": "2026-08-03T21:00:28.582762Z",
+  "generatedAtUtc": "2026-08-03T21:00:28.582762Z",
   "inputByteSize": 304384407,
+  "inputFile": "lichess_db_puzzle.csv.zst",
   "inputFilename": "lichess_db_puzzle.csv.zst",
   "inputKind": "file",
   "inputSha256": "a0ea9129c6b6434dfb34a9ac4ec660c9cfff22b2de465e01854f018fc847f073",
   "inputSha256Scope": "complete-file-bytes",
   "license": "CC0",
+  "matchedRootCounts": {
+    "Caro-Kann_Defense": 26920
+  },
+  "openingFamily": "Caro-Kann Defense",
   "openingPrefix": "Caro-Kann_Defense",
+  "openingTagRoots": [
+    "Caro-Kann_Defense"
+  ],
   "orientation": "black",
   "provenanceCounts": {
     "master": 2140,
     "masterVsMaster": 208,
     "standard": 24569,
     "superGM": 3
+  },
+  "qualityFilter": {
+    "maxRatingDeviation": 150,
+    "minPlays": 20,
+    "minPopularity": 0
   },
   "qualityFilters": {
     "maxRatingDeviation": 150,
@@ -268,7 +287,7 @@
   },
   "scanComplete": true,
   "scanLimit": null,
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "solverColor": "black",
   "source": {
     "exportUrl": "https://database.lichess.org/lichess_db_puzzle.csv.zst",
@@ -387,6 +406,7 @@
     {
       "balancedCount": 527,
       "count": 924,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Accelerated Panov Attack",
       "slug": "caro-kann-defense-accelerated-panov-attack",
       "tag": "Caro-Kann_Defense_Accelerated_Panov_Attack"
@@ -394,6 +414,7 @@
     {
       "balancedCount": 2,
       "count": 2,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Advance",
       "slug": "caro-kann-defense-advance",
       "tag": "Caro-Kann_Defense_Advance"
@@ -401,6 +422,7 @@
     {
       "balancedCount": 1000,
       "count": 4435,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Advance Variation",
       "slug": "caro-kann-defense-advance-variation",
       "tag": "Caro-Kann_Defense_Advance_Variation"
@@ -408,6 +430,7 @@
     {
       "balancedCount": 46,
       "count": 46,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Alekhine Gambit",
       "slug": "caro-kann-defense-alekhine-gambit",
       "tag": "Caro-Kann_Defense_Alekhine_Gambit"
@@ -415,6 +438,7 @@
     {
       "balancedCount": 22,
       "count": 23,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Alien Gambit",
       "slug": "caro-kann-defense-alien-gambit",
       "tag": "Caro-Kann_Defense_Alien_Gambit"
@@ -422,6 +446,7 @@
     {
       "balancedCount": 59,
       "count": 59,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Apocalypse Attack",
       "slug": "caro-kann-defense-apocalypse-attack",
       "tag": "Caro-Kann_Defense_Apocalypse_Attack"
@@ -429,6 +454,7 @@
     {
       "balancedCount": 357,
       "count": 497,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Breyer Variation",
       "slug": "caro-kann-defense-breyer-variation",
       "tag": "Caro-Kann_Defense_Breyer_Variation"
@@ -436,6 +462,7 @@
     {
       "balancedCount": 150,
       "count": 150,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Bronstein-Larsen Variation",
       "slug": "caro-kann-defense-bronstein-larsen-variation",
       "tag": "Caro-Kann_Defense_Bronstein-Larsen_Variation"
@@ -443,6 +470,7 @@
     {
       "balancedCount": 161,
       "count": 167,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Campomanes Attack",
       "slug": "caro-kann-defense-campomanes-attack",
       "tag": "Caro-Kann_Defense_Campomanes_Attack"
@@ -450,6 +478,7 @@
     {
       "balancedCount": 686,
       "count": 1487,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Classical Variation",
       "slug": "caro-kann-defense-classical-variation",
       "tag": "Caro-Kann_Defense_Classical_Variation"
@@ -457,6 +486,7 @@
     {
       "balancedCount": 17,
       "count": 17,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: De Bruycker Defense",
       "slug": "caro-kann-defense-de-bruycker-defense",
       "tag": "Caro-Kann_Defense_De_Bruycker_Defense"
@@ -464,6 +494,7 @@
     {
       "balancedCount": 1,
       "count": 1,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Edinburgh Variation",
       "slug": "caro-kann-defense-edinburgh-variation",
       "tag": "Caro-Kann_Defense_Edinburgh_Variation"
@@ -471,6 +502,7 @@
     {
       "balancedCount": 134,
       "count": 174,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Endgame Offer",
       "slug": "caro-kann-defense-endgame-offer",
       "tag": "Caro-Kann_Defense_Endgame_Offer"
@@ -478,6 +510,7 @@
     {
       "balancedCount": 11,
       "count": 11,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Endgame Variation",
       "slug": "caro-kann-defense-endgame-variation",
       "tag": "Caro-Kann_Defense_Endgame_Variation"
@@ -485,6 +518,7 @@
     {
       "balancedCount": 116,
       "count": 136,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Euwe Attack",
       "slug": "caro-kann-defense-euwe-attack",
       "tag": "Caro-Kann_Defense_Euwe_Attack"
@@ -492,6 +526,7 @@
     {
       "balancedCount": 1000,
       "count": 3216,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Exchange Variation",
       "slug": "caro-kann-defense-exchange-variation",
       "tag": "Caro-Kann_Defense_Exchange_Variation"
@@ -499,6 +534,7 @@
     {
       "balancedCount": 7,
       "count": 7,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Finnish Variation",
       "slug": "caro-kann-defense-finnish-variation",
       "tag": "Caro-Kann_Defense_Finnish_Variation"
@@ -506,6 +542,7 @@
     {
       "balancedCount": 144,
       "count": 149,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Forgacs Variation",
       "slug": "caro-kann-defense-forgacs-variation",
       "tag": "Caro-Kann_Defense_Forgacs_Variation"
@@ -513,6 +550,7 @@
     {
       "balancedCount": 107,
       "count": 113,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Goldman Variation",
       "slug": "caro-kann-defense-goldman-variation",
       "tag": "Caro-Kann_Defense_Goldman_Variation"
@@ -520,6 +558,7 @@
     {
       "balancedCount": 17,
       "count": 17,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Gurgenidze Counterattack",
       "slug": "caro-kann-defense-gurgenidze-counterattack",
       "tag": "Caro-Kann_Defense_Gurgenidze_Counterattack"
@@ -527,6 +566,7 @@
     {
       "balancedCount": 65,
       "count": 65,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Gurgenidze System",
       "slug": "caro-kann-defense-gurgenidze-system",
       "tag": "Caro-Kann_Defense_Gurgenidze_System"
@@ -534,6 +574,7 @@
     {
       "balancedCount": 9,
       "count": 9,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Hector Gambit",
       "slug": "caro-kann-defense-hector-gambit",
       "tag": "Caro-Kann_Defense_Hector_Gambit"
@@ -541,6 +582,7 @@
     {
       "balancedCount": 569,
       "count": 1264,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Hillbilly Attack",
       "slug": "caro-kann-defense-hillbilly-attack",
       "tag": "Caro-Kann_Defense_Hillbilly_Attack"
@@ -548,6 +590,7 @@
     {
       "balancedCount": 300,
       "count": 357,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Karpov Variation",
       "slug": "caro-kann-defense-karpov-variation",
       "tag": "Caro-Kann_Defense_Karpov_Variation"
@@ -555,6 +598,7 @@
     {
       "balancedCount": 2,
       "count": 4,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Labahn Attack",
       "slug": "caro-kann-defense-labahn-attack",
       "tag": "Caro-Kann_Defense_Labahn_Attack"
@@ -562,6 +606,7 @@
     {
       "balancedCount": 365,
       "count": 506,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Main Line",
       "slug": "caro-kann-defense-main-line",
       "tag": "Caro-Kann_Defense_Main_Line"
@@ -569,6 +614,7 @@
     {
       "balancedCount": 576,
       "count": 1009,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Maroczy Variation",
       "slug": "caro-kann-defense-maroczy-variation",
       "tag": "Caro-Kann_Defense_Maroczy_Variation"
@@ -576,6 +622,7 @@
     {
       "balancedCount": 1,
       "count": 1,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Martian Gambit",
       "slug": "caro-kann-defense-martian-gambit",
       "tag": "Caro-Kann_Defense_Martian_Gambit"
@@ -583,6 +630,7 @@
     {
       "balancedCount": 11,
       "count": 11,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Masi Variation",
       "slug": "caro-kann-defense-masi-variation",
       "tag": "Caro-Kann_Defense_Masi_Variation"
@@ -590,6 +638,7 @@
     {
       "balancedCount": 2,
       "count": 2,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Massachusetts Defense",
       "slug": "caro-kann-defense-massachusetts-defense",
       "tag": "Caro-Kann_Defense_Massachusetts_Defense"
@@ -597,6 +646,7 @@
     {
       "balancedCount": 8,
       "count": 9,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Mieses Gambit",
       "slug": "caro-kann-defense-mieses-gambit",
       "tag": "Caro-Kann_Defense_Mieses_Gambit"
@@ -604,6 +654,7 @@
     {
       "balancedCount": 73,
       "count": 74,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Modern Variation",
       "slug": "caro-kann-defense-modern-variation",
       "tag": "Caro-Kann_Defense_Modern_Variation"
@@ -611,6 +662,7 @@
     {
       "balancedCount": 1000,
       "count": 7220,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Other variations",
       "slug": "caro-kann-defense-other-variations",
       "tag": "Caro-Kann_Defense_Other_variations"
@@ -618,6 +670,7 @@
     {
       "balancedCount": 773,
       "count": 1474,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Panov Attack",
       "slug": "caro-kann-defense-panov-attack",
       "tag": "Caro-Kann_Defense_Panov_Attack"
@@ -625,6 +678,7 @@
     {
       "balancedCount": 53,
       "count": 54,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Rasa-Studier Gambit",
       "slug": "caro-kann-defense-rasa-studier-gambit",
       "tag": "Caro-Kann_Defense_Rasa-Studier_Gambit"
@@ -632,6 +686,7 @@
     {
       "balancedCount": 4,
       "count": 4,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Spike Variation",
       "slug": "caro-kann-defense-spike-variation",
       "tag": "Caro-Kann_Defense_Spike_Variation"
@@ -639,6 +694,7 @@
     {
       "balancedCount": 1,
       "count": 1,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: St Patricks Attack",
       "slug": "caro-kann-defense-st-patricks-attack",
       "tag": "Caro-Kann_Defense_St_Patricks_Attack"
@@ -646,6 +702,7 @@
     {
       "balancedCount": 629,
       "count": 1055,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Tartakower Variation",
       "slug": "caro-kann-defense-tartakower-variation",
       "tag": "Caro-Kann_Defense_Tartakower_Variation"
@@ -653,6 +710,7 @@
     {
       "balancedCount": 13,
       "count": 13,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Toikkanen Gambit",
       "slug": "caro-kann-defense-toikkanen-gambit",
       "tag": "Caro-Kann_Defense_Toikkanen_Gambit"
@@ -660,6 +718,7 @@
     {
       "balancedCount": 886,
       "count": 2061,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Two Knights Attack",
       "slug": "caro-kann-defense-two-knights-attack",
       "tag": "Caro-Kann_Defense_Two_Knights_Attack"
@@ -667,6 +726,7 @@
     {
       "balancedCount": 27,
       "count": 27,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: Ulysses Gambit",
       "slug": "caro-kann-defense-ulysses-gambit",
       "tag": "Caro-Kann_Defense_Ulysses_Gambit"
@@ -674,6 +734,7 @@
     {
       "balancedCount": 69,
       "count": 69,
+      "matchedTagRoot": "Caro-Kann_Defense",
       "name": "Caro-Kann Defense: von Hennig Gambit",
       "slug": "caro-kann-defense-von-hennig-gambit",
       "tag": "Caro-Kann_Defense_von_Hennig_Gambit"

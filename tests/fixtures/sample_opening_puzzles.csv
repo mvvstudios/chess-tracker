@@ -1,0 +1,7 @@
+PuzzleId,FEN,Moves,Rating,RatingDeviation,Popularity,NbPlays,Themes,GameUrl,OpeningTags,DailyDate
+caro-1,rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1,e2e4 c7c6 d2d4 d7d5,1350,60,90,250,opening fork short,https://lichess.org/caro1,Caro-Kann_Defense_Advance_Variation,2026-08-03
+colle-1,rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1,e7e5 g1f3 b8c6 d2d4,1500,70,85,220,opening pin short,https://lichess.org/colle1,Queens_Pawn_Game_Colle_System_Traditional_Colle,2026-08-03
+englund-1,rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1,d7d5 c2c4 e7e5 d2d4,1750,75,80,200,opening sacrifice short,https://lichess.org/englund1,Englund_Gambit_Declined,2026-08-03
+pirc-1,rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1,e2e4 d7d6 d2d4 g8f6,2050,80,75,180,opening defensiveMove master,https://lichess.org/pirc1,Pirc_Defense_Austrian_Attack,2026-08-03
+modern-1,rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1,e2e4 g7g6 d2d4 f8g7,2450,85,70,160,opening quietMove masterVsMaster,https://lichess.org/modern1,Queens_Pawn_Game_Modern_Defense,2026-08-03
+shared-black,rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1,d2d4 d7d5 c2c4 e7e6,1100,90,65,140,opening short,https://lichess.org/shared,Caro-Kann_Defense Pirc_Defense Modern_Defense,2026-08-03

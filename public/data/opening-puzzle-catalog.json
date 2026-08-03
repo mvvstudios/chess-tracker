@@ -1,0 +1,46 @@
+{
+  "decks": [
+    {
+      "id": "caro-kann-black",
+      "label": "Caro-Kann Defense — Black",
+      "manifestPath": "caro-kann-black/manifest.json",
+      "openingFamily": "Caro-Kann Defense",
+      "orientation": "black",
+      "solverColor": "black"
+    },
+    {
+      "id": "colle-white",
+      "label": "Colle System — White",
+      "manifestPath": "colle-white/manifest.json",
+      "openingFamily": "Colle System",
+      "orientation": "white",
+      "solverColor": "white"
+    },
+    {
+      "id": "englund-white",
+      "label": "Englund Gambit — White",
+      "manifestPath": "englund-white/manifest.json",
+      "openingFamily": "Englund Gambit",
+      "orientation": "white",
+      "solverColor": "white"
+    },
+    {
+      "id": "pirc-black",
+      "label": "Pirc Defense — Black",
+      "manifestPath": "pirc-black/manifest.json",
+      "openingFamily": "Pirc Defense",
+      "orientation": "black",
+      "solverColor": "black"
+    },
+    {
+      "id": "modern-black",
+      "label": "Modern Defense — Black",
+      "manifestPath": "modern-black/manifest.json",
+      "openingFamily": "Modern Defense",
+      "orientation": "black",
+      "solverColor": "black"
+    }
+  ],
+  "defaultDeckId": "caro-kann-black",
+  "schemaVersion": 1
+}

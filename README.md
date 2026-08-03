@@ -40,7 +40,7 @@ Engine analysis defaults to the full available game set. Use
 6. **Play signatures** — sortable; low-confidence rows (N<15) are dimmed; grouped by 8-ply FEN, not ECO label
 7. **Sessions** — chronological list with tilt flags
 8. **My Blunder Puzzles** — your engine-classified blunders as a persistent solve queue
-9. **Caro-Kann Puzzles** — a static, Black-oriented Lichess tactics curriculum
+9. **Opening Puzzles** — five static, color-aware Lichess tactics curricula
 
 ## My Blunder Puzzles
 
@@ -66,20 +66,30 @@ namespaced by the configured Chess.com username. Progress survives reloads and
 new dashboard builds on the same browser and origin, but it does not sync across
 devices and is lost if that site's browser storage is cleared.
 
-## Caro-Kann Puzzles
+## Opening Puzzles
 
 Open `dashboard/caro-kann-puzzles.html` through the local HTTP server. This
-separate trainer uses an official Lichess CC0 puzzle extract, always starts
-after White's stored setup move, keeps Black at the bottom of the board, and
-plays White's stored replies until the complete tactical continuation is
-finished. Its solved state has a separate `localStorage` namespace from your
-personal blunder puzzles.
+separate trainer uses an official Lichess CC0 puzzle extract and offers five
+narrow decks from one dataset selector: Caro-Kann for Black, Colle for White,
+Englund for White, Pirc for Black, and Modern for Black. Every puzzle starts
+after the opponent's stored setup move. Solver color and board orientation come
+from the selected deck, and stored opponent replies play automatically until
+the complete tactical continuation is finished.
 
-The large source download stays under ignored `data/`. A normal refresh copies
-only the canonical manifest and its balanced browser chunks from
-`public/data/caro-kann-black/` into the generated `dashboard/data/` tree used by
-GitHub Pages. Extraction commands, validation rules, schema, balancing, and
-deployment details are in [docs/CARO_KANN_PUZZLES.md](docs/CARO_KANN_PUZZLES.md).
+Progress is isolated by deck in `localStorage`, remains separate from personal
+blunder puzzles, and continues to read the original Caro-Kann namespace so
+existing solves are preserved.
+
+The large source download stays under ignored `data/`. One streaming extraction
+routes the source to all five canonical directories and writes
+`public/data/opening-puzzle-catalog.json`. A normal refresh copies only that
+catalog, each manifest, and its referenced balanced browser chunks into the
+generated `dashboard/data/` tree used by GitHub Pages. Extraction commands,
+exact tag roots, perspective validation, schema, balancing, and deployment
+details are in
+[docs/OPENING_PUZZLE_DECKS.md](docs/OPENING_PUZZLE_DECKS.md). The original
+Caro-Kann-only entry point remains documented in
+[docs/CARO_KANN_PUZZLES.md](docs/CARO_KANN_PUZZLES.md).
 
 ## Annotations
 
@@ -113,9 +123,12 @@ puzzle page controllers. Both suites run in the Pages workflow before deploy.
 - `chess_tracker/` — pipeline modules (api, pgn, metrics, annotations, render, play_signature)
 - `dashboard/` — HTML/JS/CSS frontend; `vendor/` has Tabulator and Chessground (offline-safe)
 - `chess_tracker/puzzle_queue.py` — validated candidate derivation and stable puzzle identity
+- `chess_tracker/opening_puzzle_decks.py` — authoritative five-deck registry
 - `dashboard/puzzle-domain.js` — answer checking, queue partitioning, and progress persistence
-- `scripts/extract_caro_kann_black.py` — streaming Lichess Caro-Kann dataset extractor
-- `public/data/caro-kann-black/` — canonical manifest, exports, shards, and balanced chunks
+- `scripts/extract_opening_puzzles.py` — one-pass, multi-deck Lichess extractor
+- `scripts/extract_caro_kann_black.py` — backward-compatible Caro-Kann entry point
+- `public/data/opening-puzzle-catalog.json` — deployed opening-deck registry
+- `public/data/<deck-id>/` — canonical manifests, exports, shards, and balanced chunks
 - `data/` — generated (cached archives, computed.json, annotations.json)
 - `docs/superpowers/` — spec + plan
 
