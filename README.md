@@ -40,7 +40,7 @@ Engine analysis defaults to the full available game set. Use
 6. **Play signatures** — sortable; low-confidence rows (N<15) are dimmed; grouped by 8-ply FEN, not ECO label
 7. **Sessions** — chronological list with tilt flags
 8. **My Blunder Puzzles** — your engine-classified blunders as a persistent solve queue
-9. **Opening Puzzles** — five static, color-aware Lichess tactics curricula
+9. **Chess Opening Puzzle Trainer** — five static, color-aware Lichess tactics curricula
 
 ## My Blunder Puzzles
 
@@ -66,7 +66,7 @@ namespaced by the configured Chess.com username. Progress survives reloads and
 new dashboard builds on the same browser and origin, but it does not sync across
 devices and is lost if that site's browser storage is cleared.
 
-## Opening Puzzles
+## Chess Opening Puzzle Trainer
 
 Open `dashboard/caro-kann-puzzles.html` through the local HTTP server. This
 separate trainer uses an official Lichess CC0 puzzle extract and offers five

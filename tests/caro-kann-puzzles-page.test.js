@@ -560,7 +560,10 @@ test("switching to a White deck clears the old queue and changes solver orientat
   assert.equal(harness.board.config.orientation, "white");
   assert.equal(harness.board.config.turnColor, "white");
   assert.equal(harness.board.config.movable.color, "white");
-  assert.match(harness.elements["puzzles-title"].textContent, /Colle System/);
+  assert.equal(
+    harness.elements["puzzles-title"].textContent,
+    "Chess Opening Puzzle Trainer"
+  );
   assert.match(harness.elements["puzzle-side-to-move"].textContent, /White to move.*You are White/);
   assert.equal(harness.fetches.includes("data/colle-white/chunks/chunk-0001.json"), true);
   assert.notEqual(harness.board.config.fen, caro.puzzleFen);

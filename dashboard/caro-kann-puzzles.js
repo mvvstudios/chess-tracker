@@ -15,6 +15,7 @@
   const CATALOG_URL = "data/opening-puzzle-catalog.json";
   const LEGACY_MANIFEST_URL = "data/caro-kann-black/manifest.json";
   const LEGACY_STORAGE_NAMESPACE = "caro-kann-black";
+  const PAGE_TITLE = "Chess Opening Puzzle Trainer";
   const fallbackEscape = value => String(value == null ? "" : value).replace(
     /[&"'<>]/g,
     character => ({
@@ -377,7 +378,7 @@
   function updateDeckChrome(loading) {
     if (!state.deck) return;
     const side = colorLabel(state.deck.solverColor);
-    if (elements.title) elements.title.textContent = `${state.deck.openingFamily} Puzzles`;
+    if (elements.title) elements.title.textContent = PAGE_TITLE;
     if (elements.intro) {
       elements.intro.textContent = `Play ${side} through complete tactical continuations from the Lichess puzzle database.`;
     }

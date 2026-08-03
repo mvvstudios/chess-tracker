@@ -16,6 +16,8 @@ def css_declarations(selector, *, start=0):
 
 
 def test_caro_page_keeps_filters_and_primary_phone_flow_in_visual_order():
+    assert "<title>Chess Opening Puzzle Trainer — {{USERNAME}}</title>" in TEMPLATE
+    assert '<h1 id="puzzles-title">Chess Opening Puzzle Trainer</h1>' in TEMPLATE
     assert "width=device-width" in TEMPLATE
     assert "maximum-scale=1" in TEMPLATE
     assert "user-scalable=no" in TEMPLATE
@@ -73,6 +75,7 @@ def test_opening_controller_uses_selected_orientation_and_preserves_phone_intera
     assert "orientation: boardOrientation()" in review_controller
     assert "viewOnly: true" in review_controller
     assert 'const CATALOG_URL = "data/opening-puzzle-catalog.json"' in CONTROLLER
+    assert 'const PAGE_TITLE = "Chess Opening Puzzle Trainer"' in CONTROLLER
     assert "state.loadGeneration += 1" in CONTROLLER
 
 
