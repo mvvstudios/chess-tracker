@@ -162,6 +162,7 @@
   },
   "dataset": "Modern Defense puzzles for Black",
   "datasetName": "Modern Defense puzzles for Black",
+  "datasetVersion": "61fb410b676b61240da70294843f90a026605a144d5440f54cab55058b1c6ebd",
   "deckId": "modern-black",
   "difficultyBuckets": {
     "advanced": {
@@ -245,6 +246,7 @@
   "scanComplete": true,
   "scanLimit": null,
   "schemaVersion": 2,
+  "selectionIndex": "selection-index.json",
   "solverColor": "black",
   "source": {
     "exportUrl": "https://database.lichess.org/lichess_db_puzzle.csv.zst",

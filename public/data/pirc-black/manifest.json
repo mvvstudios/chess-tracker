@@ -142,6 +142,7 @@
   },
   "dataset": "Pirc Defense puzzles for Black",
   "datasetName": "Pirc Defense puzzles for Black",
+  "datasetVersion": "37f7dd7541dc15952475ada0d7e5b30ff2712ecfad8e8458e6623413b9b96893",
   "deckId": "pirc-black",
   "difficultyBuckets": {
     "advanced": {
@@ -223,6 +224,7 @@
   "scanComplete": true,
   "scanLimit": null,
   "schemaVersion": 2,
+  "selectionIndex": "selection-index.json",
   "solverColor": "black",
   "source": {
     "exportUrl": "https://database.lichess.org/lichess_db_puzzle.csv.zst",

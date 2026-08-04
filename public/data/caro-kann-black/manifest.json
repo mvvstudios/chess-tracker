@@ -207,6 +207,7 @@
   },
   "dataset": "Caro-Kann Puzzles for Black",
   "datasetName": "Caro-Kann Puzzles for Black",
+  "datasetVersion": "944d344dd9dbeb8c79af90837849802382617566f10435cdef6287179cc007a0",
   "deckId": "caro-kann-black",
   "difficultyBuckets": {
     "advanced": {
@@ -288,6 +289,7 @@
   "scanComplete": true,
   "scanLimit": null,
   "schemaVersion": 2,
+  "selectionIndex": "selection-index.json",
   "solverColor": "black",
   "source": {
     "exportUrl": "https://database.lichess.org/lichess_db_puzzle.csv.zst",

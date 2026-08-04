@@ -122,6 +122,7 @@
   },
   "dataset": "Colle System puzzles for White",
   "datasetName": "Colle System puzzles for White",
+  "datasetVersion": "45e869c50c5611197438be13afa1fdab2e9ec304a4ad4a63aff838918638fc8e",
   "deckId": "colle-white",
   "difficultyBuckets": {
     "advanced": {
@@ -207,6 +208,7 @@
   "scanComplete": true,
   "scanLimit": null,
   "schemaVersion": 2,
+  "selectionIndex": "selection-index.json",
   "solverColor": "white",
   "source": {
     "exportUrl": "https://database.lichess.org/lichess_db_puzzle.csv.zst",

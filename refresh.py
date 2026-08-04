@@ -1,5 +1,6 @@
 """CLI: pull Chess.com archives → compute metrics → render dashboard."""
 import argparse
+import hashlib
 import json
 import re
 import shutil
@@ -34,6 +35,8 @@ DEFAULT_CARO_KANN_DATA_DIR = Path("public/data") / CARO_KANN_DATASET_NAME
 OPENING_PUZZLE_CATALOG_NAME = "opening-puzzle-catalog.json"
 DEFAULT_OPENING_PUZZLE_DATA_DIR = Path("public/data")
 _SAFE_DECK_ID = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+SELECTION_INDEX_SCHEMA_VERSION = 1
+SELECTION_INDEX_FILENAME = "selection-index.json"
 
 
 def _validate_caro_kann_deployment_path(
@@ -85,7 +88,210 @@ def _manifest_balanced_count(manifest: dict) -> int:
     return value
 
 
-def _validated_caro_kann_chunks(source_dir: Path, manifest: dict) -> list[tuple[Path, int]]:
+def _selection_dataset_version(
+    deck_id: str,
+    chunks: list[tuple[Path, int]],
+    entries: list[dict],
+) -> str:
+    """Mirror the extractor's canonical selection-index version hash."""
+    payload = {
+        "schemaVersion": SELECTION_INDEX_SCHEMA_VERSION,
+        "deckId": deck_id,
+        "count": len(entries),
+        "chunks": [
+            {
+                "index": index,
+                "path": path.as_posix(),
+                "count": count,
+            }
+            for index, (path, count) in enumerate(chunks)
+        ],
+        "entries": entries,
+    }
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def _validated_opening_puzzle_selection_index(
+    source_dir: Path,
+    manifest: dict,
+    chunks: list[tuple[Path, int]],
+    *,
+    deck_id: str,
+    chunk_records: list[list[dict]] | None = None,
+) -> Path | None:
+    """Validate an optional bounded traversal index and return its safe path."""
+    raw_path = manifest.get("selectionIndex")
+    dataset_version = manifest.get("datasetVersion")
+    if raw_path is None and dataset_version is None:
+        return None
+    if raw_path is None or dataset_version is None:
+        raise ValueError(
+            f"manifest selectionIndex and datasetVersion must appear together for {deck_id!r}"
+        )
+    if not isinstance(raw_path, str) or "\\" in raw_path:
+        raise ValueError(f"manifest selectionIndex has an unsafe path for {deck_id!r}")
+    relative = PurePosixPath(raw_path)
+    if (
+        relative.is_absolute()
+        or relative.as_posix() != raw_path
+        or relative.parts != (SELECTION_INDEX_FILENAME,)
+    ):
+        raise ValueError(
+            "manifest selectionIndex must be the safe deck-relative "
+            f"{SELECTION_INDEX_FILENAME!r} path: {raw_path!r}"
+        )
+    if (
+        not isinstance(dataset_version, str)
+        or not re.fullmatch(r"[0-9a-f]{64}", dataset_version)
+    ):
+        raise ValueError(f"manifest datasetVersion is invalid for {deck_id!r}")
+
+    source_root = source_dir.resolve()
+    relative_path = Path(SELECTION_INDEX_FILENAME)
+    index_path = (source_dir / relative_path).resolve()
+    if index_path.parent != source_root:
+        raise ValueError(f"manifest selectionIndex escapes the dataset directory for {deck_id!r}")
+    index = _read_json_object(index_path, "opening-puzzle selection index")
+    if index.get("schemaVersion") != SELECTION_INDEX_SCHEMA_VERSION:
+        raise ValueError(f"selection index schemaVersion must be 1 for {deck_id!r}")
+    if index.get("deckId") != deck_id:
+        raise ValueError(f"selection index deckId must be {deck_id!r}")
+    if index.get("datasetVersion") != dataset_version:
+        raise ValueError(f"selection index datasetVersion mismatch for {deck_id!r}")
+
+    count = index.get("count")
+    entries = index.get("entries")
+    balanced_count = _manifest_balanced_count(manifest)
+    if (
+        isinstance(count, bool)
+        or not isinstance(count, int)
+        or count < 0
+        or not isinstance(entries, list)
+        or len(entries) != count
+        or count != balanced_count
+    ):
+        raise ValueError(f"selection index count mismatch for {deck_id!r}")
+
+    expected_version = _selection_dataset_version(deck_id, chunks, entries)
+    if expected_version != dataset_version:
+        raise ValueError(f"selection index metadata hash mismatch for {deck_id!r}")
+    selection_entry_projector = None
+    if chunk_records is not None:
+        from scripts.extract_opening_puzzles import _selection_index_entry
+
+        selection_entry_projector = _selection_index_entry
+
+    seen_ids: set[str] = set()
+    seen_locations: set[tuple[int, int]] = set()
+    for position, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            raise ValueError(f"selection index entry {position} must be an object")
+        puzzle_id = entry.get("id")
+        chunk_index = entry.get("chunkIndex")
+        chunk_offset = entry.get("chunkOffset")
+        if (
+            not isinstance(puzzle_id, str)
+            or not puzzle_id
+            or puzzle_id != puzzle_id.strip()
+            or puzzle_id in seen_ids
+        ):
+            raise ValueError(f"selection index IDs must be unique for {deck_id!r}")
+        if (
+            isinstance(chunk_index, bool)
+            or not isinstance(chunk_index, int)
+            or chunk_index < 0
+            or chunk_index >= len(chunks)
+            or isinstance(chunk_offset, bool)
+            or not isinstance(chunk_offset, int)
+            or chunk_offset < 0
+            or chunk_offset >= chunks[chunk_index][1]
+        ):
+            raise ValueError(
+                f"selection index entry {puzzle_id!r} has an invalid chunk location"
+            )
+        location = (chunk_index, chunk_offset)
+        if location in seen_locations:
+            raise ValueError(f"selection index chunk locations must be unique for {deck_id!r}")
+        if chunk_records is not None and (
+            chunk_records[chunk_index][chunk_offset].get("id") != puzzle_id
+        ):
+            raise ValueError(
+                f"selection index entry {puzzle_id!r} does not match its chunk location"
+            )
+
+        themes = entry.get("themes")
+        primary_theme = entry.get("primaryTheme")
+        solution_length = entry.get("solutionLength")
+        solver_decisions = entry.get("solverDecisionCount")
+        signature = entry.get("tacticalSignature")
+        if (
+            not isinstance(entry.get("variation"), str)
+            or not entry["variation"]
+            or entry["variation"] != entry["variation"].strip()
+            or entry.get("difficulty")
+            not in {"beginner", "developing", "intermediate", "advanced", "expert"}
+            or isinstance(entry.get("rating"), bool)
+            or not isinstance(entry.get("rating"), int)
+            or not isinstance(entry.get("provenance"), str)
+            or not entry["provenance"]
+            or entry["provenance"] != entry["provenance"].strip()
+            or not isinstance(themes, list)
+            or any(
+                not isinstance(theme, str) or not theme or theme != theme.strip()
+                for theme in themes
+            )
+            or not isinstance(primary_theme, str)
+            or not primary_theme
+            or "|" in primary_theme
+            or not isinstance(entry.get("isOpeningPuzzle"), bool)
+            or isinstance(solution_length, bool)
+            or not isinstance(solution_length, int)
+            or solution_length < 1
+            or isinstance(solver_decisions, bool)
+            or not isinstance(solver_decisions, int)
+            or solver_decisions < 1
+            or not isinstance(signature, str)
+            or not re.fullmatch(
+                re.escape(primary_theme)
+                + r"\|"
+                + str(solution_length)
+                + r"\|[KQRBNP]\|[a-h][1-8]",
+                signature,
+            )
+        ):
+            raise ValueError(f"selection index entry {puzzle_id!r} has invalid metadata")
+        if selection_entry_projector is not None:
+            try:
+                expected_entry = selection_entry_projector(
+                    chunk_records[chunk_index][chunk_offset],
+                    chunk_index=chunk_index,
+                    chunk_offset=chunk_offset,
+                )
+            except (KeyError, RuntimeError, TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"selection index source metadata is invalid for {puzzle_id!r}"
+                ) from exc
+            if entry != expected_entry:
+                raise ValueError(
+                    f"selection index entry {puzzle_id!r} does not match its chunk metadata"
+                )
+        seen_ids.add(puzzle_id)
+        seen_locations.add(location)
+    return relative_path
+
+
+def _validated_caro_kann_chunks(
+    source_dir: Path,
+    manifest: dict,
+    *,
+    chunk_records: list[list[dict]] | None = None,
+) -> list[tuple[Path, int]]:
     """Validate manifest chunk paths and their exact JSON-array record counts."""
     if manifest.get("solverColor") != "black":
         raise ValueError("Caro-Kann manifest solverColor must be black")
@@ -142,6 +348,10 @@ def _validated_caro_kann_chunks(source_dir: Path, manifest: dict) -> list[tuple[
                 f"manifest chunk count mismatch for {raw_path!r}: "
                 f"expected {count}, found {len(records)}"
             )
+        if chunk_records is not None:
+            if any(not isinstance(record, dict) for record in records):
+                raise ValueError(f"manifest chunk contains a non-object record: {raw_path!r}")
+            chunk_records.append(records)
         validated.append((Path(*relative.parts), count))
         total += count
 
@@ -158,7 +368,7 @@ def sync_caro_kann_web_data(
     source_dir: Path = DEFAULT_CARO_KANN_DATA_DIR,
     dashboard_dir: Path = Path("dashboard"),
 ) -> dict:
-    """Copy only the static trainer manifest and its balanced chunks.
+    """Copy the static trainer manifest, optional index, and balanced chunks.
 
     Full JSONL exports and analytical shards remain under ``public/``. The
     dashboard copy is generated afresh so removed chunks cannot linger in a
@@ -180,7 +390,19 @@ def sync_caro_kann_web_data(
         raise ValueError("Caro-Kann manifest is not valid JSON") from exc
     if not isinstance(manifest, dict):
         raise ValueError("Caro-Kann manifest must be a JSON object")
-    chunks = _validated_caro_kann_chunks(source_dir, manifest)
+    chunk_records: list[list[dict]] = []
+    chunks = _validated_caro_kann_chunks(
+        source_dir,
+        manifest,
+        chunk_records=chunk_records,
+    )
+    selection_index = _validated_opening_puzzle_selection_index(
+        source_dir,
+        manifest,
+        chunks,
+        deck_id=manifest.get("deckId", CARO_KANN_DATASET_NAME),
+        chunk_records=chunk_records,
+    )
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     _validate_caro_kann_deployment_path(destination, dashboard_dir)
@@ -190,6 +412,8 @@ def sync_caro_kann_web_data(
     ))
     try:
         shutil.copyfile(manifest_path, staging / "manifest.json")
+        if selection_index is not None:
+            shutil.copyfile(source_dir / selection_index, staging / selection_index)
         for relative_path, _count in chunks:
             target = staging / relative_path
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -266,6 +490,7 @@ def _validated_opening_puzzle_chunks(
     manifest: dict,
     *,
     deck: dict,
+    chunk_records: list[list[dict]] | None = None,
 ) -> list[tuple[Path, int]]:
     """Validate one catalog deck's identity, perspective, and browser chunks."""
     deck_id = deck["id"]
@@ -351,6 +576,10 @@ def _validated_opening_puzzle_chunks(
                 f"manifest chunk count mismatch for {raw_path!r}: "
                 f"expected {count}, found {len(records)}"
             )
+        if chunk_records is not None:
+            if any(not isinstance(record, dict) for record in records):
+                raise ValueError(f"manifest chunk contains a non-object record: {raw_path!r}")
+            chunk_records.append(records)
         validated.append((relative_path, count))
         total += count
 
@@ -424,10 +653,19 @@ def _validate_opening_puzzle_catalog(
             )
         manifest = _read_json_object(manifest_path, "opening-puzzle manifest")
         source_dir = manifest_path.parent
+        chunk_records: list[list[dict]] = []
         chunks = _validated_opening_puzzle_chunks(
             source_dir,
             manifest,
             deck=deck,
+            chunk_records=chunk_records,
+        )
+        selection_index = _validated_opening_puzzle_selection_index(
+            source_dir,
+            manifest,
+            chunks,
+            deck_id=deck_id,
+            chunk_records=chunk_records,
         )
         plans.append({
             "deck": deck,
@@ -435,6 +673,7 @@ def _validate_opening_puzzle_catalog(
             "manifestPath": manifest_path,
             "sourceDir": source_dir,
             "chunks": chunks,
+            "selectionIndex": selection_index,
         })
 
     default_deck_id = catalog.get("defaultDeckId")
@@ -478,7 +717,7 @@ def sync_opening_puzzle_web_data(
     source_root: Path = DEFAULT_OPENING_PUZZLE_DATA_DIR,
     dashboard_dir: Path = Path("dashboard"),
 ) -> dict:
-    """Deploy the catalog plus only each deck's manifest and balanced chunks.
+    """Deploy each manifest, optional selection index, and balanced chunks.
 
     The complete JSONL exports and analytical shards remain canonical local
     artifacts under ``public/data``. Every path and count is validated before
@@ -523,6 +762,11 @@ def sync_opening_puzzle_web_data(
             staged_deck = staging / deck_id
             staged_deck.mkdir()
             shutil.copyfile(plan["manifestPath"], staged_deck / "manifest.json")
+            if plan["selectionIndex"] is not None:
+                shutil.copyfile(
+                    plan["sourceDir"] / plan["selectionIndex"],
+                    staged_deck / plan["selectionIndex"],
+                )
             for relative_path, _count in plan["chunks"]:
                 target = staged_deck / relative_path
                 target.parent.mkdir(parents=True, exist_ok=True)

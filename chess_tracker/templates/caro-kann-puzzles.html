@@ -75,6 +75,16 @@
           </select>
         </label>
         <p id="study-mode-help" class="visually-hidden">Guided curriculum moves from accessible puzzles toward more demanding positions within each available opening group.</p>
+        <div class="trainer-study-control variation-control">
+          <label for="caro-filter-variation">Variation</label>
+          <select id="caro-filter-variation" name="variation" form="caro-puzzle-filters" aria-describedby="variation-control-help">
+            <option value="all" selected>All variations</option>
+          </select>
+          <button id="variation-picker" class="variation-picker" type="button"
+                  aria-haspopup="dialog" aria-controls="customize-panel"
+                  aria-label="Choose a variation. Current: All variations" hidden>All variations</button>
+        </div>
+        <p id="variation-control-help" class="visually-hidden">All variations trains the complete opening. Choose one variation to constrain the puzzle cohort.</p>
         <label class="trainer-study-control training-length-control">
           <span>Training length</span>
           <select id="training-length" name="trainingLength" aria-describedby="training-length-help">
@@ -86,6 +96,7 @@
         </label>
         <p id="training-length-help" class="visually-hidden">Endless keeps serving puzzles until you stop. Choose a number to finish with a session summary.</p>
         <button id="session-restart" class="trainer-secondary-action" type="button" hidden>Restart session</button>
+        <button id="session-start-fresh" class="trainer-secondary-action" type="button" hidden>Start fresh</button>
       </div>
 
       <section id="curriculum-journey" class="curriculum-journey" aria-labelledby="curriculum-title" hidden>
@@ -239,7 +250,6 @@
 
             <fieldset class="customize-group">
               <legend>Variation <small>Choose a branch of this opening.</small></legend>
-              <select id="caro-filter-variation" name="variation" hidden><option value="all">All variations</option></select>
               <div id="variation-choice-list" class="choice-list" role="radiogroup" aria-label="Variation"></div>
             </fieldset>
 

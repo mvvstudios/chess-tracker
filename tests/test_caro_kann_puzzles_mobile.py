@@ -58,6 +58,11 @@ def test_primary_phone_flow_is_task_board_feedback_actions_then_customize():
     assert 'role="group" aria-label="Puzzle controls"' in TEMPLATE
     assert 'id="opening-puzzle-deck"' in TEMPLATE
     assert 'id="caro-filter-mode"' in TEMPLATE
+    assert '<label for="caro-filter-variation">Variation</label>' in TEMPLATE
+    assert 'id="caro-filter-variation" name="variation" form="caro-puzzle-filters"' in TEMPLATE
+    assert '<option value="all" selected>All variations</option>' in TEMPLATE
+    assert 'id="variation-picker" class="variation-picker"' in TEMPLATE
+    assert 'aria-haspopup="dialog" aria-controls="customize-panel"' in TEMPLATE
     assert 'id="training-length"' in TEMPLATE
 
 
@@ -79,10 +84,13 @@ def test_training_length_defaults_to_endless_and_keeps_finite_sessions_optional(
     assert 'id="puzzle-progress-track"' in TEMPLATE
     assert 'aria-hidden="true" hidden' in TEMPLATE
     assert 'id="session-restart" class="trainer-secondary-action" type="button" hidden>Restart session</button>' in TEMPLATE
+    assert 'id="session-start-fresh" class="trainer-secondary-action" type="button" hidden>Start fresh</button>' in TEMPLATE
 
     mobile_study_bar = css_declarations(".trainer-study-bar", start=TRAINER_MOBILE)
-    assert "minmax(0, 1.25fr) minmax(0, 1fr) auto" in mobile_study_bar
+    assert "repeat(3, minmax(0, 1fr))" in mobile_study_bar
+    assert ".trainer-study-bar .opening-deck-filter { grid-column: 1 / -1; }" in STYLES[TRAINER_MOBILE:]
     assert ".training-length-control { grid-column: auto; }" in STYLES[TRAINER_MOBILE:]
+    assert ".trainer-study-bar > .trainer-secondary-action { grid-column: 1 / -1; }" in STYLES[TRAINER_MOBILE:]
     assert ".session-size-options" not in STYLES[TRAINER_STYLES:]
 
 
@@ -162,7 +170,8 @@ def test_customize_is_an_accessible_desktop_drawer_and_phone_bottom_sheet():
     assert "border-radius: 14px 14px 0 0" in bottom_sheet
 
     assert "state.lastFocus = document.activeElement" in CONTROLLER
-    assert "elements.customizeClose && elements.customizeClose.focus()" in CONTROLLER
+    assert "const target = focusSearch ? elements.customizeSearch : elements.customizeClose" in CONTROLLER
+    assert "if (target && target.focus) target.focus()" in CONTROLLER
     assert "state.lastFocus.focus" in CONTROLLER
     assert 'event.key !== "Escape"' in CONTROLLER
 

@@ -5,7 +5,8 @@ from the [official Lichess puzzle database](https://database.lichess.org/#puzzle
 which Lichess releases under
 [CC0](https://creativecommons.org/publicdomain/zero/1.0/). The original
 `lichess_db_puzzle.csv.zst` download is ignored under `data/`; only the catalog,
-manifests, and balanced browser chunks are versioned for GitHub Pages.
+manifests, compact selection indexes, and balanced browser chunks are versioned
+for GitHub Pages.
 
 The five canonical decks are:
 
@@ -280,13 +281,16 @@ public/data/
 └── modern-black/
 ```
 
-Each deck contains `manifest.json`, `rejections-summary.json`, `all.jsonl`,
-`balanced.jsonl`, `chunks/*.json`, and analytical shards under
-`by-difficulty/`, `by-variation/`, and `by-source/`. Manifests use schema 2 and
-record deck identity, roots, perspective, source provenance, exact scan and
-export counts, quality settings, breakdowns, and exact balanced chunk paths and
-counts. Temporary legacy Caro-Kann count aliases remain available where older
-consumers need them.
+Each deck contains `manifest.json`, `selection-index.json`,
+`rejections-summary.json`, `all.jsonl`, `balanced.jsonl`, `chunks/*.json`, and
+analytical shards under `by-difficulty/`, `by-variation/`, and `by-source/`.
+Manifests use schema 2 and record deck identity, roots, perspective, source
+provenance, exact scan and export counts, quality settings, breakdowns, exact
+balanced chunk paths and counts, and the selection index's dataset-version
+hash. The schema-1 index maps every balanced puzzle ID to a zero-based chunk
+and offset and carries only filtering and diversity metadata; it never embeds
+FENs or solution lines. Temporary legacy Caro-Kann count aliases remain
+available where older consumers need them.
 
 GitHub Pages uploads `dashboard/`, not `public/`. During a normal refresh,
 `refresh.py` validates every catalog `manifestPath`, deck identity,
@@ -296,6 +300,7 @@ It then copies only:
 ```text
 dashboard/data/opening-puzzle-catalog.json
 dashboard/data/<deck-id>/manifest.json
+dashboard/data/<deck-id>/selection-index.json
 dashboard/data/<deck-id>/chunks/*.json
 ```
 

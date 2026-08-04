@@ -172,6 +172,7 @@
   },
   "dataset": "Englund Gambit puzzles for White",
   "datasetName": "Englund Gambit puzzles for White",
+  "datasetVersion": "b7c344f338a866c306d880334b98e6e14334015fec2eb4a990a1549374553787",
   "deckId": "englund-white",
   "difficultyBuckets": {
     "advanced": {
@@ -252,6 +253,7 @@
   "scanComplete": true,
   "scanLimit": null,
   "schemaVersion": 2,
+  "selectionIndex": "selection-index.json",
   "solverColor": "white",
   "source": {
     "exportUrl": "https://database.lichess.org/lichess_db_puzzle.csv.zst",

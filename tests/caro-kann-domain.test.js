@@ -43,6 +43,7 @@ function record(overrides = {}) {
 }
 
 test("manifest normalization reads nested export counts and chunk metadata", () => {
+  const datasetVersion = "a".repeat(64);
   const manifest = Caro.normalizeManifest({
     schemaVersion: "1.0",
     counts: { balancedExported: 12 },
@@ -55,6 +56,8 @@ test("manifest normalization reads nested export counts and chunk metadata", () 
       theme: { fork: 4 },
     },
     chunks: [{ path: "chunks/chunk-0001.json", count: 12 }],
+    selectionIndex: "selection-index.json",
+    datasetVersion,
   });
   assert.equal(manifest.balancedExported, 12);
   assert.deepEqual(manifest.chunks.map(chunk => [chunk.path, chunk.count]), [
@@ -63,6 +66,130 @@ test("manifest normalization reads nested export counts and chunk metadata", () 
   assert.equal(manifest.variationCounts["Caro-Kann Defense: Advance Variation"], 7);
   assert.equal(manifest.variationCounts["Caro-Kann Defense: Unavailable Full-export Variation"], undefined);
   assert.deepEqual(manifest.themeCounts, { fork: 4 });
+  assert.deepEqual(manifest.selectionIndex, {
+    path: "selection-index.json",
+    count: 12,
+    datasetVersion,
+    schemaVersion: 1,
+  });
+  assert.equal(manifest.datasetVersion, datasetVersion);
+});
+
+test("selection index normalization validates identity and locations and adds curriculum fields", () => {
+  const datasetVersion = "b".repeat(64);
+  const manifest = Caro.normalizeManifest({
+    schemaVersion: 2,
+    deckId: "colle-white",
+    openingFamily: "Colle System",
+    solverColor: "white",
+    orientation: "white",
+    openingTagRoots: ["Queens_Pawn_Game_Colle_System"],
+    counts: { balancedExported: 2 },
+    chunks: [
+      { path: "chunks/chunk-0001.json", count: 1 },
+      { path: "chunks/chunk-0002.json", count: 1 },
+    ],
+    selectionIndex: "selection-index.json",
+    datasetVersion,
+  });
+  const rawIndex = {
+    schemaVersion: 1,
+    deckId: "colle-white",
+    datasetVersion,
+    count: 2,
+    entries: [{
+      id: "main-1",
+      chunkIndex: 0,
+      chunkOffset: 0,
+      variation: "Colle System",
+      difficulty: "beginner",
+      rating: 900,
+      provenance: "standard",
+      themes: ["fork", "opening"],
+      primaryTheme: "fork",
+      isOpeningPuzzle: true,
+      solutionLength: 3,
+      solverDecisionCount: 2,
+      tacticalSignature: "fork|3|N|f3",
+    }, {
+      id: "side-1",
+      chunkIndex: 1,
+      chunkOffset: 0,
+      variation: "Colle System: Rhamphorhynchus Variation",
+      difficulty: "developing",
+      rating: 1300,
+      provenance: "master",
+      themes: ["mate", "mateIn1"],
+      primaryTheme: "mateIn1",
+      isOpeningPuzzle: false,
+      solutionLength: 1,
+      solverDecisionCount: 1,
+      tacticalSignature: "mateIn1|1|Q|h7",
+    }],
+  };
+
+  const normalized = Caro.normalizeSelectionIndex(rawIndex, manifest);
+  assert.equal(normalized.count, 2);
+  assert.deepEqual(normalized.entries.map(entry => ({
+    id: entry.id,
+    curriculumGroup: entry.curriculumGroup,
+    mainLine: entry.mainLine,
+  })), [{
+    id: "main-1",
+    curriculumGroup: "Main lines",
+    mainLine: true,
+  }, {
+    id: "side-1",
+    curriculumGroup: "Rhamphorhynchus Variation",
+    mainLine: false,
+  }]);
+  assert.notEqual(normalized.entries[0].themes, rawIndex.entries[0].themes);
+
+  const invalidMutations = [
+    index => { index.deckId = "caro-kann-black"; },
+    index => { index.datasetVersion = "c".repeat(64); },
+    index => { index.count = 1; },
+    index => { index.entries[1].id = index.entries[0].id; },
+    index => { index.entries[1].chunkIndex = 2; },
+    index => { index.entries[1].chunkOffset = 1; },
+    index => {
+      index.entries[1].chunkIndex = 0;
+      index.entries[1].chunkOffset = 0;
+    },
+  ];
+  invalidMutations.forEach(mutate => {
+    const invalid = JSON.parse(JSON.stringify(rawIndex));
+    mutate(invalid);
+    assert.equal(Caro.normalizeSelectionIndex(invalid, manifest), null);
+  });
+});
+
+test("legacy manifests omit selection metadata and unsafe index paths fail closed", () => {
+  const legacy = Caro.normalizeManifest({
+    chunks: [{ path: "chunks/chunk-0001.json", count: 1 }],
+    counts: { balancedExported: 1 },
+  });
+  assert.equal(legacy.selectionIndex, null);
+  assert.equal(legacy.datasetVersion, "");
+  assert.equal(Caro.normalizeSelectionIndex({}, legacy), null);
+
+  const unsafe = Caro.normalizeManifest({
+    chunks: [{ path: "chunks/chunk-0001.json", count: 1 }],
+    counts: { balancedExported: 1 },
+    selectionIndex: "../selection-index.json",
+    datasetVersion: "d".repeat(64),
+  });
+  assert.equal(unsafe.selectionIndex, null);
+  assert.equal(unsafe.datasetVersion, "");
+
+  const invalidVersion = Caro.normalizeManifest({
+    chunks: [{ path: "chunks/chunk-0001.json", count: 1 }],
+    counts: { balancedExported: 1 },
+    selectionIndex: "selection-index.json",
+    datasetVersion: "not-a-sha256",
+  });
+  assert.equal(invalidVersion.selectionIndex, null);
+  assert.equal(invalidVersion.datasetVersion, "");
 });
 
 test("record adaptation enforces exact Caro tags and Black solver invariants", () => {

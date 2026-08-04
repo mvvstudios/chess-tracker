@@ -10,6 +10,7 @@ TRAINER_TEMPLATE = DEFAULT_TEMPLATE_DIR / "caro-kann-puzzles.html"
 SERVICE_WORKER = ROOT / "dashboard" / "service-worker.js"
 WEB_MANIFEST = ROOT / "dashboard" / "manifest.webmanifest"
 TRAINER_CONTROLLER = ROOT / "dashboard" / "caro-kann-puzzles.js"
+PUBLIC_DATA = ROOT / "public" / "data"
 
 
 def test_public_trainer_shell_has_product_metadata_without_dashboard_chrome():
@@ -89,6 +90,8 @@ def test_web_app_manifest_targets_public_route_and_has_real_icons():
 
 def test_service_worker_precaches_only_shell_and_lazily_caches_requested_deck_data():
     source = SERVICE_WORKER.read_text()
+    assert 'SHELL_CACHE_VERSION = "v4"' in source
+    assert 'DATA_CACHE_VERSION = "v2"' in source
     match = re.search(r"const SHELL_ASSETS = (\[.*?\]);", source, re.DOTALL)
     assert match, "service worker must declare an explicit shell asset list"
     shell_assets = json.loads(match.group(1))
@@ -100,11 +103,12 @@ def test_service_worker_precaches_only_shell_and_lazily_caches_requested_deck_da
     assert all("data/" not in asset for asset in shell_assets)
     assert all("chunk-" not in asset for asset in shell_assets)
 
-    # Catalogs, manifests, and balanced chunks enter the data cache only after
+    # Catalogs, manifests, selection indexes, and balanced chunks enter the data cache only after
     # an actual trainer request. Full exports and analytical shards are never
     # part of the browser cache contract.
     assert 'path === "data/opening-puzzle-catalog.json"' in source
     assert "manifest\\.json" in source
+    assert "selection-index\\.json" in source
     assert "chunks\\/chunk-" in source
     assert "event.respondWith(networkFirstData(request))" in source
     assert "cache.put(request, response.clone())" in source
@@ -116,3 +120,23 @@ def test_service_worker_precaches_only_shell_and_lazily_caches_requested_deck_da
 
     controller = TRAINER_CONTROLLER.read_text()
     assert 'serviceWorker.register("service-worker.js")' in controller
+
+
+def test_every_public_deck_exposes_a_complete_compact_selection_index():
+    catalog = json.loads((PUBLIC_DATA / "opening-puzzle-catalog.json").read_text())
+
+    for deck in catalog["decks"]:
+        deck_root = PUBLIC_DATA / deck["id"]
+        manifest = json.loads((deck_root / "manifest.json").read_text())
+        assert manifest["selectionIndex"] == "selection-index.json"
+        assert re.fullmatch(r"[0-9a-f]{64}", manifest["datasetVersion"])
+
+        index = json.loads((deck_root / manifest["selectionIndex"]).read_text())
+        assert index["schemaVersion"] == 1
+        assert index["deckId"] == deck["id"]
+        assert index["datasetVersion"] == manifest["datasetVersion"]
+        assert index["count"] == manifest["counts"]["balancedExported"]
+        assert len(index["entries"]) == index["count"]
+        assert len({entry["id"] for entry in index["entries"]}) == index["count"]
+        assert all("puzzleFen" not in entry and "solutionSteps" not in entry
+                   for entry in index["entries"])

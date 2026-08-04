@@ -14,6 +14,7 @@ const ELEMENT_IDS = [
   "puzzles-page", "puzzles-title", "puzzle-intro", "puzzle-progress-summary", "puzzle-storage-warning",
   "opening-puzzle-deck",
   "caro-puzzle-filters", "caro-filter-mode", "caro-filter-variation",
+  "variation-picker",
   "caro-filter-difficulty", "caro-filter-provenance", "caro-filter-lines", "caro-filter-theme",
   "caro-filter-opening", "caro-filter-status", "caro-filter-reset",
   "puzzles-unsolved-tab", "puzzles-solved-tab", "puzzles-unsolved-count",
@@ -28,6 +29,7 @@ const ELEMENT_IDS = [
   "puzzle-solved-review-close", "puzzle-solved-board", "puzzle-solved-details",
   "trainer-header-deck", "trainer-header-progress", "trainer-onboarding",
   "trainer-onboarding-dismiss", "session-restart", "session-complete",
+  "session-start-fresh",
   "session-complete-title", "session-results", "session-weak-spots",
   "session-review-mistakes", "session-start-another", "reviews-due-button",
   "review-mistakes-button", "puzzle-review-state", "training-length",
@@ -112,7 +114,7 @@ class FakeElement {
     return this.queryResults[selector] || [];
   }
 
-  focus() {}
+  focus() { this.focused = true; }
 }
 
 function hydrateChoiceButtons(container) {
@@ -444,6 +446,69 @@ function deckManifest(deckId, chunkCount = 1) {
   };
 }
 
+function indexedDeckFixture(deckId, chunkPayloads, datasetVersion = "a".repeat(64)) {
+  const records = chunkPayloads.flat();
+  const fixtureManifest = deckManifest(deckId, chunkPayloads.length);
+  fixtureManifest.counts.balancedExported = records.length;
+  fixtureManifest.chunks = chunkPayloads.map((chunk, index) => ({
+    path: `chunks/chunk-${String(index + 1).padStart(4, "0")}.json`,
+    count: chunk.length,
+  }));
+  fixtureManifest.selectionIndex = "selection-index.json";
+  fixtureManifest.datasetVersion = datasetVersion;
+  fixtureManifest.variationCounts = Object.fromEntries(records.reduce((counts, record) => {
+    counts.set(record.variation, (counts.get(record.variation) || 0) + 1);
+    return counts;
+  }, new Map()));
+  fixtureManifest.difficultyCounts = Object.fromEntries(records.reduce((counts, record) => {
+    counts.set(record.difficulty, (counts.get(record.difficulty) || 0) + 1);
+    return counts;
+  }, new Map()));
+  fixtureManifest.provenanceCounts = Object.fromEntries(records.reduce((counts, record) => {
+    counts.set(record.provenance, (counts.get(record.provenance) || 0) + 1);
+    return counts;
+  }, new Map()));
+  fixtureManifest.themeCounts = Object.fromEntries(records.reduce((counts, record) => {
+    record.themes.forEach(theme => counts.set(theme, (counts.get(theme) || 0) + 1));
+    return counts;
+  }, new Map()));
+
+  const entries = [];
+  chunkPayloads.forEach((chunk, chunkIndex) => {
+    chunk.forEach((record, chunkOffset) => {
+      const primaryTheme = record.themes.find(theme => theme !== "opening")
+        || record.themes[0] || "opening";
+      const firstStep = record.solutionSteps[0];
+      const solutionLength = record.solutionLength || record.solutionUci.length;
+      entries.push({
+        id: record.id,
+        chunkIndex,
+        chunkOffset,
+        variation: record.variation,
+        difficulty: record.difficulty,
+        rating: record.rating,
+        provenance: record.provenance,
+        themes: record.themes.slice(),
+        primaryTheme,
+        isOpeningPuzzle: record.isOpeningPuzzle === true,
+        solutionLength,
+        solverDecisionCount: record.solverDecisionCount || record.solutionSteps.length,
+        tacticalSignature: `${primaryTheme}|${solutionLength}|K|${firstStep.bestMoveUci.slice(2, 4)}`,
+      });
+    });
+  });
+  return {
+    manifest: fixtureManifest,
+    index: {
+      schemaVersion: 1,
+      deckId,
+      datasetVersion,
+      count: entries.length,
+      entries,
+    },
+  };
+}
+
 async function createHarness(records, {
   chunkCount = 1,
   storage = new MemoryStorage(),
@@ -454,6 +519,7 @@ async function createHarness(records, {
   delayedChunkUrls = [],
   chunkPayloads = null,
   chunkPayloadsByDeck = null,
+  selectionIndexesByDeck = null,
   trainerEnabled = false,
 } = {}) {
   const elements = Object.fromEntries(ELEMENT_IDS.map(id => [id, new FakeElement(id)]));
@@ -532,6 +598,14 @@ async function createHarness(records, {
         })));
       }
       return { ok: true, async json() { return payload; } };
+    }
+    const indexMatch = String(url).match(/^data\/([^/]+)\/selection-index\.json$/);
+    if (indexMatch) {
+      const deckId = indexMatch[1];
+      const payload = selectionIndexesByDeck && selectionIndexesByDeck[deckId];
+      return payload
+        ? { ok: true, async json() { return payload; } }
+        : { ok: false, status: 404 };
     }
     const deckMatch = String(url).match(/^data\/([^/]+)\/chunks\/chunk-(\d+)\.json$/);
     const match = String(url).match(/chunk-(\d+)\.json$/);
@@ -627,6 +701,130 @@ test("loader fetches only the balanced chunks needed to fill the finite session"
     "data/caro-kann-black/chunks/chunk-0002.json",
   ]);
   assert.equal(CONTROLLER_SOURCE.includes("all.jsonl"), false);
+});
+
+test("indexed Focused sessions consume one shared no-repeat traversal across 5, 10, and 20", async () => {
+  const storage = new MemoryStorage();
+  seedTrainerState(storage, { sessionMode: "finite", sessionSize: 5 });
+  const chunks = Array.from({ length: 6 }, (_unused, chunkIndex) => Array.from(
+    { length: 10 },
+    (_entry, offset) => recordWithId(`indexed-${chunkIndex}-${offset}`),
+  ));
+  const fixture = indexedDeckFixture("caro-kann-black", chunks);
+  const harness = await createHarness(chunks.flat(), {
+    storage,
+    trainerEnabled: true,
+    manifestsByDeck: { "caro-kann-black": fixture.manifest },
+    selectionIndexesByDeck: { "caro-kann-black": fixture.index },
+    chunkPayloadsByDeck: { "caro-kann-black": chunks },
+  });
+
+  const first = harness.trainerState().selection.active.puzzleIds.slice();
+  assert.equal(first.length, 5);
+  assert.equal(harness.fetches.filter(url => /chunks\/chunk-/.test(url)).length, 1);
+
+  await harness.context.CaroKannTrainer.startSession(10);
+  const second = harness.trainerState().selection.active.puzzleIds.slice();
+  await harness.context.CaroKannTrainer.startSession(20);
+  const third = harness.trainerState().selection.active.puzzleIds.slice();
+
+  assert.equal(second.length, 10);
+  assert.equal(third.length, 20);
+  assert.equal(new Set(first.concat(second, third)).size, 35);
+});
+
+test("reload resumes indexed membership and Start fresh advances without overlap", async () => {
+  const storage = new MemoryStorage();
+  seedTrainerState(storage, { sessionMode: "finite", sessionSize: 5 });
+  const chunks = Array.from({ length: 3 }, (_unused, chunkIndex) => Array.from(
+    { length: 10 },
+    (_entry, offset) => recordWithId(`resume-${chunkIndex}-${offset}`),
+  ));
+  const fixture = indexedDeckFixture("caro-kann-black", chunks, "b".repeat(64));
+  const options = {
+    storage,
+    trainerEnabled: true,
+    manifestsByDeck: { "caro-kann-black": fixture.manifest },
+    selectionIndexesByDeck: { "caro-kann-black": fixture.index },
+    chunkPayloadsByDeck: { "caro-kann-black": chunks },
+  };
+  const firstHarness = await createHarness(chunks.flat(), options);
+  const original = firstHarness.trainerState().selection.active.puzzleIds.slice();
+  const originalToken = firstHarness.trainerState().selection.active.token;
+
+  const resumedHarness = await createHarness(chunks.flat(), options);
+  const resumed = resumedHarness.trainerState().selection.active;
+  assert.deepEqual(resumed.puzzleIds, original);
+  assert.equal(resumed.token, originalToken);
+  assert.equal(resumedHarness.elements["session-start-fresh"].hidden, false);
+
+  resumedHarness.elements["session-start-fresh"].dispatch("click");
+  await resumedHarness.settle();
+  const fresh = resumedHarness.trainerState().selection.active;
+  assert.notEqual(fresh.token, originalToken);
+  assert.equal(fresh.puzzleIds.length, 5);
+  assert.equal(new Set(original.concat(fresh.puzzleIds)).size, 10);
+  assert.equal(resumedHarness.elements["session-start-fresh"].hidden, true);
+});
+
+test("an expired indexed membership is discarded without rewinding traversal", async () => {
+  const storage = new MemoryStorage();
+  seedTrainerState(storage, { sessionMode: "finite", sessionSize: 5 });
+  const chunks = Array.from({ length: 2 }, (_unused, chunkIndex) => Array.from(
+    { length: 10 },
+    (_entry, offset) => recordWithId(`expired-${chunkIndex}-${offset}`),
+  ));
+  const fixture = indexedDeckFixture("caro-kann-black", chunks, "c".repeat(64));
+  const options = {
+    storage,
+    trainerEnabled: true,
+    manifestsByDeck: { "caro-kann-black": fixture.manifest },
+    selectionIndexesByDeck: { "caro-kann-black": fixture.index },
+    chunkPayloadsByDeck: { "caro-kann-black": chunks },
+  };
+  const firstHarness = await createHarness(chunks.flat(), options);
+  const original = firstHarness.trainerState().selection.active.puzzleIds.slice();
+  const envelope = firstHarness.trainerState();
+  envelope.selection.active.expiresAt = "2000-01-01T00:00:00.000Z";
+  storage.setItem("chess-tracker:opening-trainer:v2:me", JSON.stringify(envelope));
+
+  const reloadedHarness = await createHarness(chunks.flat(), options);
+  const replacement = reloadedHarness.trainerState().selection.active.puzzleIds;
+  assert.equal(new Set(original.concat(replacement)).size, 10);
+  assert.equal(reloadedHarness.elements["session-start-fresh"].hidden, true);
+});
+
+test("a partial indexed chunk failure preserves membership and blocks a compacted session", async () => {
+  const storage = new MemoryStorage();
+  const chunks = Array.from({ length: 2 }, (_unused, chunkIndex) => Array.from(
+    { length: 3 },
+    (_entry, offset) => recordWithId(`partial-${chunkIndex}-${offset}`),
+  ));
+  const dueIds = chunks.flat().slice(0, 5).map(record => record.id);
+  const dueAt = "2026-08-01T12:00:00.000Z";
+  seedTrainerState(storage, {
+    sessionMode: "finite",
+    sessionSize: 5,
+    reviews: Object.fromEntries(dueIds.map(id => [id, {
+      encounters: 1,
+      dueAt,
+      updatedAt: dueAt,
+    }])),
+  });
+  const fixture = indexedDeckFixture("caro-kann-black", chunks, "d".repeat(64));
+  const harness = await createHarness(chunks.flat(), {
+    storage,
+    trainerEnabled: true,
+    failedChunks: [2],
+    manifestsByDeck: { "caro-kann-black": fixture.manifest },
+    selectionIndexesByDeck: { "caro-kann-black": fixture.index },
+    chunkPayloadsByDeck: { "caro-kann-black": chunks },
+  });
+
+  assert.deepEqual(harness.trainerState().selection.active.puzzleIds, dueIds);
+  assert.match(harness.elements["puzzle-page-state"].innerHTML, /couldn’t be downloaded/i);
+  assert.equal(harness.fetches.some(url => /chunk-0002\.json$/.test(url)), true);
+  assert.equal(harness.elements["puzzle-workspace"].hidden, true);
 });
 
 test("catalog dropdown exposes all five opening decks", async () => {
@@ -758,6 +956,57 @@ test("aggregate tactical filters do not duplicate their raw Lichess themes", asy
   assert.match(options, /value="forks">Forks/);
   assert.doesNotMatch(options, /value="fork">Fork</);
   assert.doesNotMatch(options, /value="mate">Mate</);
+});
+
+test("short variation lists use the primary native select and apply immediately", async () => {
+  const advance = recordWithId("primary-variation-advance");
+  const exchange = exchangeRecord("primary-variation-exchange");
+  const harness = await createHarness([advance, exchange], {
+    chunkPayloads: [[advance, exchange]],
+  });
+
+  assert.equal(harness.elements["caro-filter-variation"].hidden, false);
+  assert.equal(harness.elements["variation-picker"].hidden, true);
+  assert.equal(harness.elements["caro-filter-variation"].value, "all");
+
+  harness.elements["caro-filter-variation"].value = exchange.variation;
+  harness.elements["caro-filter-variation"].dispatch("change");
+  await harness.settle();
+
+  assert.equal(harness.elements["caro-filter-variation"].value, exchange.variation);
+  assert.equal(harness.board.config.fen, exchange.puzzleFen);
+  assert.match(harness.elements["active-filter-chips"].innerHTML, /Exchange Variation/);
+});
+
+test("long variation lists reuse Customize search through the primary picker", async () => {
+  const puzzle = recordWithId("long-variation-current");
+  const longManifest = deckManifest("caro-kann-black", 1);
+  longManifest.variationCounts = Object.fromEntries(Array.from(
+    { length: 13 },
+    (_unused, index) => [`Caro-Kann Defense: Branch ${index + 1}`, 1],
+  ));
+  const harness = await createHarness([puzzle], {
+    manifestsByDeck: { "caro-kann-black": longManifest },
+  });
+
+  assert.equal(harness.elements["caro-filter-variation"].hidden, true);
+  assert.equal(harness.elements["variation-picker"].hidden, false);
+  assert.equal(harness.elements["variation-picker"].textContent, "All variations");
+
+  harness.elements["variation-picker"].dispatch("click");
+  assert.equal(harness.elements["caro-puzzle-filters"].hidden, false);
+  assert.equal(harness.elements["customize-search"].focused, true);
+
+  const choice = {
+    dataset: { choiceValue: "Caro-Kann Defense: Branch 7" },
+    closest(selector) { return selector === "button[data-choice-value]" ? this : null; },
+  };
+  harness.elements["variation-choice-list"].dispatch("click", { target: choice });
+  assert.equal(harness.elements["variation-picker"].textContent, "Caro-Kann Defense: Branch 7");
+  assert.match(
+    harness.elements["variation-picker"].getAttribute("aria-label"),
+    /Current: Caro-Kann Defense: Branch 7/,
+  );
 });
 
 test("opening an empty solved archive does not fetch more chunks", async () => {

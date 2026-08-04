@@ -49,6 +49,7 @@
     deck: document.getElementById("opening-puzzle-deck"),
     filterMode: document.getElementById("caro-filter-mode"),
     filterVariation: document.getElementById("caro-filter-variation"),
+    variationPicker: document.getElementById("variation-picker"),
     filterDifficulty: document.getElementById("caro-filter-difficulty"),
     filterProvenance: document.getElementById("caro-filter-provenance"),
     filterLines: document.getElementById("caro-filter-lines"),
@@ -106,6 +107,7 @@
     onboardingDismiss: document.getElementById("trainer-onboarding-dismiss"),
     trainingLength: document.getElementById("training-length"),
     sessionRestart: document.getElementById("session-restart"),
+    sessionStartFresh: document.getElementById("session-start-fresh"),
     sessionComplete: document.getElementById("session-complete"),
     sessionCompleteTitle: document.getElementById("session-complete-title"),
     sessionResults: document.getElementById("session-results"),
@@ -129,6 +131,8 @@
     catalog: null,
     deck: null,
     manifest: null,
+    selectionIndex: null,
+    selectionEntriesById: new Map(),
     datasetBase: "",
     loadGeneration: 0,
     abortController: null,
@@ -137,6 +141,7 @@
     invalidCount: 0,
     invalidCandidateIds: new Set(),
     chunkIndex: 0,
+    loadedChunkIndexes: new Set(),
     chunkLoading: null,
     chunkErrors: [],
     filtered: [],
@@ -183,6 +188,8 @@
     reviewRecords: Object.create(null),
     unavailableReviewIds: new Set(),
     customizeSnapshot: null,
+    resumedActive: false,
+    activeSelectionToken: null,
   };
 
   bindEvents();
@@ -270,6 +277,55 @@
       state.transientWarning = "Your trainer preference couldn’t be saved on this device.";
       console.error("Could not save trainer preference", error);
     }
+  }
+
+  function restorableActiveSelection() {
+    if (!state.selectionIndex || !state.reviewStore
+        || typeof state.reviewStore.getSelectionState !== "function") return null;
+    try {
+      const selection = state.reviewStore.getSelectionState() || {};
+      const active = selection.active;
+      if (!active || active.deckId !== state.deck.id
+          || active.datasetVersion !== state.selectionIndex.datasetVersion
+          || Date.parse(active.expiresAt || "") <= Date.now()
+          || !Array.isArray(active.puzzleIds) || !active.puzzleIds.length
+          || Number(active.nextIndex || 0) >= active.puzzleIds.length) return null;
+      return active;
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  function restoreActiveTrainingSetup(active) {
+    if (!active) return false;
+    const filters = active.filters || {};
+    const assignSelect = (select, value, fallback) => {
+      if (!select) return;
+      const requested = String(value == null ? fallback : value);
+      const values = selectOptions(select).map(option => option.value);
+      select.value = !values.length || values.includes(requested) ? requested : fallback;
+    };
+    assignSelect(elements.filterMode, filters.mode, "all");
+    assignSelect(elements.filterVariation, filters.variation, "all");
+    assignSelect(elements.filterDifficulty, filters.difficulty, "all");
+    assignSelect(elements.filterProvenance, filters.provenance, "all");
+    assignSelect(elements.filterLines, filters.lineCoverage, "all");
+    assignSelect(elements.filterTheme, filters.theme, "all");
+    if (elements.filterOpening) elements.filterOpening.checked = filters.openingOnly === true;
+    state.curriculumGroup = filters.curriculumGroup || "";
+    if (active.trainingLength === "endless") {
+      state.sessionMode = "endless";
+      if (elements.trainingLength) elements.trainingLength.value = "endless";
+    } else {
+      const size = Number(active.size || active.puzzleIds.length);
+      if (SESSION_SIZES.includes(size)) {
+        state.sessionMode = "finite";
+        state.sessionSize = size;
+        if (elements.trainingLength) elements.trainingLength.value = String(size);
+      }
+    }
+    renderChoiceLists();
+    return true;
   }
 
   function showOnboardingIfNeeded() {
@@ -384,7 +440,7 @@
   function cacheDownloadedDeckData(url, response) {
     if (!window.caches || typeof window.caches.open !== "function"
         || !response || typeof response.clone !== "function"
-        || !/^(?:data\/opening-puzzle-catalog\.json|data\/[^/]+\/(?:manifest\.json|chunks\/chunk-\d+\.json))$/.test(String(url))) {
+        || !/^(?:data\/opening-puzzle-catalog\.json|data\/[^/]+\/(?:manifest\.json|selection-index\.json|chunks\/chunk-\d+\.json))$/.test(String(url))) {
       return;
     }
     try {
@@ -440,12 +496,15 @@
     clearOpponentReplyTimer();
     closePromotionChooser(false);
     state.manifest = null;
+    state.selectionIndex = null;
+    state.selectionEntriesById = new Map();
     state.datasetBase = "";
     state.candidates = [];
     state.candidateIds = new Set();
     state.invalidCount = 0;
     state.invalidCandidateIds = new Set();
     state.chunkIndex = 0;
+    state.loadedChunkIndexes = new Set();
     state.chunkLoading = null;
     state.chunkErrors = [];
     state.filtered = [];
@@ -478,6 +537,8 @@
     state.teachingPly = null;
     state.solvedTeachingPly = null;
     state.firstMoveTracked = false;
+    state.resumedActive = false;
+    state.activeSelectionToken = null;
     if (elements.filterVariation) elements.filterVariation.value = "all";
   }
 
@@ -541,12 +602,20 @@
       updateDeckChrome(false);
       const username = window.DATA && window.DATA.username ? window.DATA.username : "local";
       state.store = Domain.createProgressStore(username, undefined, deck.id);
-      populateFilterOptions();
-      await loadNextChunk(false, generation);
+      await loadSelectionIndex(generation);
       if (generation !== state.loadGeneration) return false;
+      populateFilterOptions();
+      const resumable = restorableActiveSelection();
+      restoreActiveTrainingSetup(resumable);
+      if (!state.selectionIndex) {
+        await loadNextChunk(false, generation);
+        if (generation !== state.loadGeneration) return false;
+      }
       rebuildPartition(true);
-      if (!state.unsolved.length && hasMoreChunks()) await ensureUnsolvedCandidates(1, generation);
-      const started = await startPreferredSession({ preserveTab: true });
+      if (!state.selectionIndex && !state.unsolved.length && hasMoreChunks()) {
+        await ensureUnsolvedCandidates(1, generation);
+      }
+      const started = await startPreferredSession({ preserveTab: true, resume: true });
       if (!started && !state.candidates.length && (state.chunkErrors.length || state.invalidCount)) {
         trackEvent("load_failure", { stage: "positions", deckId: deck.id });
         showFatal(`No ${deck.openingFamily} positions could be prepared. Check your connection and retry.`, () => switchDeck(deck.id, false));
@@ -627,6 +696,38 @@
     return state.datasetBase + value;
   }
 
+  async function loadSelectionIndex(requestedGeneration) {
+    const generation = requestedGeneration || state.loadGeneration;
+    const descriptor = state.manifest && state.manifest.selectionIndex;
+    if (!descriptor || typeof Caro.normalizeSelectionIndex !== "function") return false;
+    const relative = Caro.safeRelativePath(descriptor.path);
+    if (!relative || relative !== "selection-index.json") return false;
+    try {
+      const payload = await fetchJson(
+        state.datasetBase + relative,
+        generation,
+        state.abortController && state.abortController.signal,
+      );
+      if (generation !== state.loadGeneration) return false;
+      const normalized = Caro.normalizeSelectionIndex(payload, state.manifest);
+      if (!normalized || !Array.isArray(normalized.entries)
+          || normalized.entries.length !== state.manifest.balancedExported) {
+        throw new Error("The selection index does not match the deck manifest.");
+      }
+      state.selectionIndex = normalized;
+      state.selectionEntriesById = new Map(normalized.entries.map(entry => [String(entry.id), entry]));
+      return true;
+    } catch (error) {
+      if (generation !== state.loadGeneration || error && error.name === "AbortError") return false;
+      state.selectionIndex = null;
+      state.selectionEntriesById = new Map();
+      state.transientWarning = "Full-deck traversal is temporarily unavailable; training will continue from downloaded positions.";
+      trackEvent("load_failure", { stage: "index", deckId: state.deck && state.deck.id });
+      console.error("Could not load the opening-puzzle selection index", error);
+      return false;
+    }
+  }
+
   function chunkRecords(payload) {
     if (Array.isArray(payload)) return payload;
     if (!payload || typeof payload !== "object") return [];
@@ -634,16 +735,25 @@
   }
 
   function hasMoreChunks() {
-    return Boolean(state.manifest && state.chunkIndex < state.manifest.chunks.length);
+    if (!state.manifest) return false;
+    let index = state.chunkIndex;
+    while (index < state.manifest.chunks.length && state.loadedChunkIndexes.has(index)) index += 1;
+    return index < state.manifest.chunks.length;
   }
 
-  async function loadNextChunk(renderAfter, requestedGeneration) {
+  async function loadChunkAt(rawIndex, renderAfter, requestedGeneration) {
     const generation = requestedGeneration || state.loadGeneration;
-    if (state.chunkLoading) return state.chunkLoading;
-    if (!hasMoreChunks()) return false;
+    const index = Number(rawIndex);
+    if (!state.manifest || !Number.isInteger(index) || index < 0
+        || index >= state.manifest.chunks.length) return false;
+    if (state.loadedChunkIndexes.has(index)) return true;
+    if (state.chunkLoading) {
+      await state.chunkLoading;
+      if (generation !== state.loadGeneration) return false;
+      if (state.loadedChunkIndexes.has(index)) return true;
+    }
 
-    const chunk = state.manifest.chunks[state.chunkIndex];
-    state.chunkIndex += 1;
+    const chunk = state.manifest.chunks[index];
     const path = resolveChunkPath(chunk.path);
     const loading = (async () => {
       if (!path) {
@@ -674,6 +784,7 @@
           state.candidateIds.add(id);
           state.candidates.push(candidate);
         });
+        state.loadedChunkIndexes.add(index);
         populateFilterOptions();
         if (renderAfter) {
           rebuildPartition(false);
@@ -699,6 +810,39 @@
     } finally {
       if (state.chunkLoading === loading) state.chunkLoading = null;
     }
+  }
+
+  async function loadNextChunk(renderAfter, requestedGeneration) {
+    if (!state.manifest) return false;
+    while (state.chunkIndex < state.manifest.chunks.length
+        && state.loadedChunkIndexes.has(state.chunkIndex)) state.chunkIndex += 1;
+    if (state.chunkIndex >= state.manifest.chunks.length) return false;
+    const index = state.chunkIndex;
+    state.chunkIndex += 1;
+    return loadChunkAt(index, renderAfter, requestedGeneration);
+  }
+
+  async function ensureIndexedCandidates(ids, requestedGeneration) {
+    if (!state.selectionIndex) return false;
+    const generation = requestedGeneration || state.loadGeneration;
+    const chunks = [];
+    const seen = new Set();
+    (ids || []).forEach(id => {
+      const entry = state.selectionEntriesById.get(String(id));
+      const index = Number(entry && (entry.chunkIndex !== undefined
+        ? entry.chunkIndex : entry.chunk));
+      if (Number.isInteger(index) && !seen.has(index)) {
+        seen.add(index);
+        chunks.push(index);
+      }
+    });
+    for (const index of chunks) {
+      await loadChunkAt(index, false, generation);
+      if (generation !== state.loadGeneration) return false;
+    }
+    rebuildPartition(false);
+    renderAll();
+    return (ids || []).every(id => state.candidateIds.has(String(id)));
   }
 
   async function ensureUnsolvedCandidates(minimum, requestedGeneration) {
@@ -982,6 +1126,28 @@
     return startSession(preferredSessionSettings(options));
   }
 
+  function clearActiveSelection() {
+    if (state.reviewStore && typeof state.reviewStore.clearActiveSelection === "function") {
+      try {
+        const at = new Date().toISOString();
+        if (state.activeSelectionToken) {
+          state.reviewStore.clearActiveSelection(state.activeSelectionToken, at);
+        } else {
+          state.reviewStore.clearActiveSelection(at);
+        }
+      } catch (error) {
+        console.error("Could not clear active training membership", error);
+      }
+    }
+    state.activeSelectionToken = null;
+    state.resumedActive = false;
+  }
+
+  async function startFreshSession() {
+    clearActiveSelection();
+    return startPreferredSession({ fresh: true });
+  }
+
   function isEndlessSession(session) {
     const active = session || state.session;
     return Boolean(active && active.endless === true);
@@ -996,6 +1162,80 @@
   function displayPuzzleNumber() {
     const current = sessionPuzzleNumber();
     return isEndlessSession() ? state.endlessCompleted + current : current;
+  }
+
+  function indexedSelectionExclusions(at) {
+    if (!state.selectionIndex) return [];
+    prepareReviewRecords();
+    const solved = storedSolvedIds();
+    return state.selectionIndex.entries.map(entry => String(entry.id)).filter(id => {
+      const record = state.reviewRecords[id];
+      const classification = Trainer && typeof Trainer.classifyReview === "function"
+        ? Trainer.classifyReview(record, at) : record ? reviewClass({ id }) : "New";
+      return classification === "Learning" || classification === "Mastered"
+        || classification === "New" && solved.has(id);
+    });
+  }
+
+  function indexedDueIds(at) {
+    if (!state.selectionIndex || !state.reviewStore
+        || typeof state.reviewStore.dueReviews !== "function") return [];
+    try {
+      return state.reviewStore.dueReviews(state.deck.id, at)
+        .map(review => String(review.id || review.puzzleId || review))
+        .filter(id => state.selectionEntriesById.has(id));
+    } catch (_error) {
+      return [];
+    }
+  }
+
+  async function reserveIndexedSession(desired, requestedMode, settings) {
+    if (!state.selectionIndex || !state.reviewStore
+        || typeof state.reviewStore.reserveSelectionSession !== "function") return null;
+    const at = new Date().toISOString();
+    const reserved = state.reviewStore.reserveSelectionSession({
+      index: state.selectionIndex,
+      filters: currentFilters(),
+      request: {
+        size: desired,
+        trainingLength: requestedMode,
+        resume: settings.resume === true,
+        fresh: settings.fresh === true || !settings.resume && !settings.rollover,
+        excludedIds: indexedSelectionExclusions(at),
+        priorityIds: indexedDueIds(at),
+      },
+      now: at,
+    });
+    if (!reserved || !Array.isArray(reserved.ids) || !reserved.ids.length) return reserved || null;
+    if (state.selectionIndex && reserved.active) {
+      state.activeSelectionToken = reserved.active.token || null;
+      state.resumedActive = reserved.resumed === true;
+    }
+    const generation = state.loadGeneration;
+    const loadComplete = await ensureIndexedCandidates(reserved.ids, generation);
+    return Object.assign({}, reserved, {
+      loadComplete,
+      aborted: generation !== state.loadGeneration,
+    });
+  }
+
+  function restoreReservedSession(active) {
+    if (!active || !state.session) return;
+    const results = Array.isArray(active.results) ? active.results.slice() : [];
+    state.session.id = active.token || state.session.id;
+    state.session.startedAt = active.createdAt || active.startedAt || state.session.startedAt;
+    if (Array.isArray(state.session.items)) {
+      const resultById = new Map(results.map(result => [String(result.puzzleId), result]));
+      state.session.items.forEach(item => {
+        if (item && resultById.has(String(item.puzzleId))) {
+          item.result = resultById.get(String(item.puzzleId));
+        }
+      });
+      state.session.results = state.session.items.map(item => item && item.result).filter(Boolean);
+      state.session.cursor = state.session.results.length;
+    } else {
+      state.session.results = results;
+    }
   }
 
   async function startSession(options) {
@@ -1045,7 +1285,6 @@
     }
     state.session = null;
     state.sessionCompletionTracked = false;
-    let ordered = orderedTrainingCandidates();
     // Finite goals wait for enough positions to honor the selected size.
     // Endless starts immediately with what is already downloaded; when that
     // rolling batch is exhausted, the next batch fetches only as needed.
@@ -1054,11 +1293,32 @@
     const desired = state.reviewModeIds
       ? Math.min(reviewLimit, state.reviewModeIds.length)
       : requestedMode === "endless" ? ENDLESS_BATCH_SIZE : state.sessionSize;
-    const minimumReady = requestedMode === "endless" && !state.reviewModeIds
-      ? 1 : desired;
-    if (ordered.length < minimumReady && hasMoreChunks()) {
-      await ensureTrainingCandidates(minimumReady);
+    let reserved = null;
+    let ordered;
+    if (!reviewSession && state.selectionIndex) {
+      reserved = await reserveIndexedSession(desired, requestedMode, settings);
+      if (reserved && reserved.aborted) return false;
+      if (reserved && reserved.loadComplete === false) {
+        state.sessionIds = reserved.ids.slice();
+        state.currentId = null;
+        showFatal(
+          "Some selected positions couldn’t be downloaded. Check your connection and retry.",
+          () => startPreferredSession({ preserveTab: true, resume: true }),
+        );
+        return false;
+      }
+      ordered = reserved && Array.isArray(reserved.ids)
+        ? reserved.ids.map(id => state.candidates.find(candidate => puzzleId(candidate) === String(id)))
+          .filter(Boolean)
+        : [];
+    } else {
       ordered = orderedTrainingCandidates();
+      const minimumReady = requestedMode === "endless" && !state.reviewModeIds
+        ? 1 : desired;
+      if (ordered.length < minimumReady && hasMoreChunks()) {
+        await ensureTrainingCandidates(minimumReady);
+        ordered = orderedTrainingCandidates();
+      }
     }
     const target = Math.min(desired, ordered.length);
     const puzzleIds = ordered.slice(0, target).map(puzzleId);
@@ -1093,6 +1353,7 @@
         finished: false,
       };
     }
+    if (reserved && reserved.active) restoreReservedSession(reserved.active);
     state.session.size = target;
     state.session.endless = !reviewSession && requestedMode === "endless";
     state.session.trainingLength = reviewSession
@@ -1101,7 +1362,7 @@
       ? state.session.puzzleIds : puzzleIds;
     state.session.results = Array.isArray(state.session.results) ? state.session.results : [];
     state.sessionIds = puzzleIds;
-    state.currentId = puzzleIds[0];
+    state.currentId = puzzleIds[sessionCompletedCount(state.session)] || null;
     state.completedCandidate = null;
     state.completedPostFen = null;
     state.completedMoveUci = null;
@@ -1114,7 +1375,7 @@
     state.lastReplyUci = null;
     if (!settings.preserveTab) activateTab("unsolved", false);
     renderAll();
-    if (!settings.rollover) {
+    if (!settings.rollover && !(reserved && reserved.resumed)) {
       trackEvent("session_started", {
         size: state.session.endless ? null : target,
         trainingLength: state.session.trainingLength,
@@ -1217,6 +1478,22 @@
     if (!recordedBySessionStore) {
       if (!Array.isArray(state.session.results)) state.session.results = [];
       state.session.results.push(result);
+    }
+    if (!state.reviewModeIds && state.activeSelectionToken && state.reviewStore
+        && typeof state.reviewStore.recordActiveSelectionResult === "function") {
+      try {
+        const recorded = state.reviewStore.recordActiveSelectionResult(
+          state.activeSelectionToken,
+          result,
+          result.completedAt,
+        );
+        if (recorded && recorded.accepted === false) {
+          state.transientWarning = "This run changed in another tab, so its resume position wasn’t overwritten.";
+        }
+      } catch (error) {
+        state.transientWarning = "Your place in this training run couldn’t be saved, but puzzle progress is intact.";
+        console.error("Could not save active training membership", error);
+      }
     }
     if (!firstTry || !unassisted || skipped) {
       state.lastMistakeIds = [...new Set(state.lastMistakeIds.concat(result.puzzleId))];
@@ -1447,7 +1724,10 @@
     }
     if (elements.sessionRestart) {
       elements.sessionRestart.hidden = isEndlessTraining()
-        || Boolean(state.reviewModeIds);
+        || Boolean(state.reviewModeIds) || state.resumedActive;
+    }
+    if (elements.sessionStartFresh) {
+      elements.sessionStartFresh.hidden = !state.resumedActive || Boolean(state.reviewModeIds);
     }
     if (elements.reviewsDue) {
       const due = reviewDueCount();
@@ -2173,6 +2453,7 @@
         if (started) focusPuzzleStart();
         return;
       }
+      if (!state.reviewModeIds) clearActiveSelection();
       state.session.showSummary = true;
       state.lastMistakeIds = sessionSummary(state.session).mistakeIds || [];
       renderAll();
@@ -2332,6 +2613,7 @@
     const themeValues = standardOptions.map(option => option[0]).concat(exactThemes);
     elements.filterTheme.value = themeValues.includes(selectedTheme) ? selectedTheme : "all";
     renderChoiceLists();
+    updateVariationControl();
   }
 
   function selectOptions(select) {
@@ -2341,6 +2623,21 @@
     }
     const matches = String(select.innerHTML || "").matchAll(/<option value="([^"]*)">([^<]*)<\/option>/g);
     return [...matches].map(match => ({ value: match[1], label: match[2] }));
+  }
+
+  function updateVariationControl() {
+    if (!elements.filterVariation || !elements.variationPicker) return;
+    const options = selectOptions(elements.filterVariation);
+    const useNativeSelect = options.length <= 12;
+    const selected = options.find(option => option.value === elements.filterVariation.value)
+      || options[0] || { value: "all", label: "All variations" };
+    elements.filterVariation.hidden = !useNativeSelect;
+    elements.variationPicker.hidden = useNativeSelect;
+    elements.variationPicker.textContent = selected.label;
+    elements.variationPicker.setAttribute(
+      "aria-label",
+      `Choose a variation. Current: ${selected.label}`,
+    );
   }
 
   function renderChoiceList(container, select) {
@@ -2353,6 +2650,7 @@
   function renderChoiceLists() {
     renderChoiceList(elements.variationChoices, elements.filterVariation);
     renderChoiceList(elements.themeChoices, elements.filterTheme);
+    updateVariationControl();
   }
 
   function chooseFromList(container, select, button) {
@@ -2362,6 +2660,7 @@
       option.setAttribute("aria-checked", String(option === button));
       option.tabIndex = option === button ? 0 : -1;
     });
+    if (select === elements.filterVariation) updateVariationControl();
   }
 
   function moveChoiceFocus(event, container, select) {
@@ -2553,14 +2852,17 @@
     searchCustomizeChoices("");
   }
 
-  function openCustomize() {
+  function openCustomize(focusSearch) {
     if (!elements.filters) return;
     state.lastFocus = document.activeElement;
     state.customizeSnapshot = customizeControlState();
     elements.filters.hidden = false;
     setModalOpen(true);
     renderChoiceLists();
-    queueMicrotask(() => elements.customizeClose && elements.customizeClose.focus());
+    queueMicrotask(() => {
+      const target = focusSearch ? elements.customizeSearch : elements.customizeClose;
+      if (target && target.focus) target.focus();
+    });
   }
 
   function closeCustomize(restoreFocus, applyChanges) {
@@ -2876,8 +3178,10 @@
       state.curriculumGroup = "";
     }
     rebuildPartition(true);
-    if (!state.unsolved.length && hasMoreChunks()) await ensureUnsolvedCandidates();
-    await startPreferredSession({ preserveTab: true });
+    if (!state.selectionIndex && !state.unsolved.length && hasMoreChunks()) {
+      await ensureUnsolvedCandidates();
+    }
+    await startPreferredSession({ preserveTab: true, fresh: true });
   }
 
   function bindEvents() {
@@ -2894,16 +3198,25 @@
       });
     });
 
-    // The visible study mode applies immediately. Advanced controls are staged
+    // Primary study controls apply immediately. Advanced controls are staged
     // inside Customize and applied together by its explicit action.
     if (elements.filterMode) {
       elements.filterMode.addEventListener("change", () => { void handleFilterChange(); });
+    }
+    if (elements.filterVariation) {
+      elements.filterVariation.addEventListener("change", () => {
+        updateVariationControl();
+        void handleFilterChange();
+      });
     }
     elements.filters.addEventListener("reset", () => queueMicrotask(() => {
       resetFilterControls();
     }));
 
-    if (elements.customizeOpen) elements.customizeOpen.addEventListener("click", openCustomize);
+    if (elements.customizeOpen) elements.customizeOpen.addEventListener("click", () => openCustomize(false));
+    if (elements.variationPicker) {
+      elements.variationPicker.addEventListener("click", () => openCustomize(true));
+    }
     if (elements.customizeClose) elements.customizeClose.addEventListener("click", () => closeCustomize(true));
     if (elements.customizeApply) elements.customizeApply.addEventListener("click", () => {
       closeCustomize(true, true);
@@ -2933,8 +3246,11 @@
     });
     if (elements.onboardingDismiss) elements.onboardingDismiss.addEventListener("click", dismissOnboarding);
     if (elements.sessionRestart) elements.sessionRestart.addEventListener("click", () => {
-      void startPreferredSession();
+      void startPreferredSession({ fresh: true });
     });
+    if (elements.sessionStartFresh) {
+      elements.sessionStartFresh.addEventListener("click", () => { void startFreshSession(); });
+    }
     if (elements.trainingLength) {
       elements.trainingLength.addEventListener("change", () => {
         const value = elements.trainingLength.value;
@@ -2950,7 +3266,7 @@
     if (elements.reviewMistakes) elements.reviewMistakes.addEventListener("click", () => { void startMistakeReview(); });
     if (elements.sessionReviewMistakes) elements.sessionReviewMistakes.addEventListener("click", () => { void startMistakeReview(); });
     if (elements.sessionStartAnother) elements.sessionStartAnother.addEventListener("click", () => {
-      void startPreferredSession();
+      void startPreferredSession(state.reviewModeIds ? { resume: true } : { fresh: true });
     });
     if (elements.curriculumGroups) elements.curriculumGroups.addEventListener("click", event => {
       const button = event.target.closest && event.target.closest("button[data-curriculum-group]");

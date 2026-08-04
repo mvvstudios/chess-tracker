@@ -71,6 +71,8 @@ from scripts.extract_caro_kann_black import (  # noqa: E402
 
 
 SCHEMA_VERSION = 2
+SELECTION_INDEX_SCHEMA_VERSION = 1
+SELECTION_INDEX_FILENAME = "selection-index.json"
 DEFAULT_OUTPUT_ROOT = Path("public/data")
 CATALOG_FILENAME = "opening-puzzle-catalog.json"
 REJECTION_CODES = (
@@ -946,13 +948,123 @@ def _write_jsonl(path: Path, rows: Iterator[tuple[str]]) -> int:
     return count
 
 
+def _tactical_signature(record: Mapping[str, Any]) -> str:
+    """Return a compact motif signature for the first solver decision."""
+
+    steps = record.get("solutionSteps")
+    if not isinstance(steps, list) or not steps or not isinstance(steps[0], dict):
+        raise RuntimeError("selected puzzle has no first solver step")
+    raw_uci = steps[0].get("bestMoveUci")
+    if not isinstance(raw_uci, str):
+        raise RuntimeError("selected puzzle has no first solver move")
+    try:
+        move = chess.Move.from_uci(raw_uci)
+        board = chess.Board(str(record["puzzleFen"]))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError("selected puzzle has invalid first-move metadata") from exc
+    piece = board.piece_at(move.from_square)
+    if piece is None or move not in board.legal_moves:
+        raise RuntimeError("selected puzzle first solver move is not legal")
+
+    primary_theme = record.get("primaryTacticalTheme")
+    solution_length = record.get("solutionLength")
+    if not isinstance(primary_theme, str) or not primary_theme or "|" in primary_theme:
+        raise RuntimeError("selected puzzle has no primary tactical theme")
+    if (
+        isinstance(solution_length, bool)
+        or not isinstance(solution_length, int)
+        or solution_length < 1
+    ):
+        raise RuntimeError("selected puzzle has an invalid solution length")
+    destination = chess.square_name(move.to_square)
+    return f"{primary_theme}|{solution_length}|{piece.symbol().upper()}|{destination}"
+
+
+def _selection_index_entry(
+    record: Mapping[str, Any], *, chunk_index: int, chunk_offset: int
+) -> dict[str, Any]:
+    """Project one deployable puzzle into the bounded traversal index."""
+
+    themes = record.get("themes")
+    if not isinstance(themes, list) or any(
+        not isinstance(theme, str) or not theme for theme in themes
+    ):
+        raise RuntimeError("selected puzzle has invalid themes")
+    entry = {
+        "id": record.get("id"),
+        "chunkIndex": chunk_index,
+        "chunkOffset": chunk_offset,
+        "variation": record.get("variation"),
+        "difficulty": record.get("difficulty"),
+        "rating": record.get("rating"),
+        "provenance": record.get("provenance"),
+        "themes": list(themes),
+        "primaryTheme": record.get("primaryTacticalTheme"),
+        "isOpeningPuzzle": record.get("isOpeningPuzzle"),
+        "solutionLength": record.get("solutionLength"),
+        "solverDecisionCount": record.get("solverDecisionCount"),
+        "tacticalSignature": _tactical_signature(record),
+    }
+    required_strings = (
+        "id",
+        "variation",
+        "difficulty",
+        "provenance",
+        "primaryTheme",
+    )
+    if any(not isinstance(entry[key], str) or not entry[key] for key in required_strings):
+        raise RuntimeError("selected puzzle has incomplete index metadata")
+    if isinstance(entry["rating"], bool) or not isinstance(entry["rating"], int):
+        raise RuntimeError("selected puzzle has an invalid rating")
+    if not isinstance(entry["isOpeningPuzzle"], bool):
+        raise RuntimeError("selected puzzle has an invalid opening flag")
+    if (
+        isinstance(entry["solverDecisionCount"], bool)
+        or not isinstance(entry["solverDecisionCount"], int)
+        or entry["solverDecisionCount"] < 1
+    ):
+        raise RuntimeError("selected puzzle has an invalid solver decision count")
+    return entry
+
+
+def _selection_dataset_version(
+    deck_id: str,
+    chunks: Sequence[Mapping[str, Any]],
+    entries: Sequence[Mapping[str, Any]],
+) -> str:
+    """Hash ordered selection metadata together with its chunk locators."""
+
+    payload = {
+        "schemaVersion": SELECTION_INDEX_SCHEMA_VERSION,
+        "deckId": deck_id,
+        "count": len(entries),
+        "chunks": [
+            {
+                "index": index,
+                "path": chunk["path"],
+                "count": chunk["count"],
+            }
+            for index, chunk in enumerate(chunks)
+        ],
+        "entries": list(entries),
+    }
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
 def _write_chunks(
     connection: sqlite3.Connection,
     deck_id: str,
     staging: Path,
     chunk_size: int,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     chunks: list[dict[str, Any]] = []
+    index_entries: list[dict[str, Any]] = []
     chunk_number = 0
     chunk_stream: TextIO | None = None
     chunk_count = 0
@@ -974,6 +1086,17 @@ def _write_chunks(
                 chunk_path.parent.mkdir(parents=True, exist_ok=True)
                 chunk_stream = chunk_path.open("w", encoding="utf-8")
                 chunk_stream.write("[\n")
+            try:
+                record = json.loads(raw_json)
+            except json.JSONDecodeError as exc:  # pragma: no cover - SQLite invariant
+                raise RuntimeError("selected puzzle JSON is invalid") from exc
+            if not isinstance(record, dict):  # pragma: no cover - extractor invariant
+                raise RuntimeError("selected puzzle JSON must be an object")
+            index_entries.append(_selection_index_entry(
+                record,
+                chunk_index=chunk_number - 1,
+                chunk_offset=chunk_count,
+            ))
             if chunk_count:
                 chunk_stream.write(",\n")
             chunk_stream.write(raw_json)
@@ -1001,7 +1124,7 @@ def _write_chunks(
     finally:
         if chunk_stream is not None:
             chunk_stream.close()
-    return chunks
+    return chunks, index_entries
 
 
 def _dataset_name(deck: OpeningPuzzleDeck) -> str:
@@ -1082,7 +1205,20 @@ def _write_deck_outputs(
                 ),
             )
 
-        chunks = _write_chunks(connection, deck.id, staging, config.chunk_size)
+        chunks, selection_entries = _write_chunks(
+            connection, deck.id, staging, config.chunk_size
+        )
+        dataset_version = _selection_dataset_version(
+            deck.id, chunks, selection_entries
+        )
+        selection_index = {
+            "schemaVersion": SELECTION_INDEX_SCHEMA_VERSION,
+            "deckId": deck.id,
+            "datasetVersion": dataset_version,
+            "count": len(selection_entries),
+            "entries": selection_entries,
+        }
+        _write_json(staging / SELECTION_INDEX_FILENAME, selection_index)
         counts = stats.count_dict(balanced_exported=balanced_count)
         quality_eligible = int(
             connection.execute(
@@ -1157,6 +1293,8 @@ def _write_deck_outputs(
             "qualityFilters": quality_filters,
             "variations": variations,
             "chunks": chunks,
+            "selectionIndex": SELECTION_INDEX_FILENAME,
+            "datasetVersion": dataset_version,
             "sampling": {
                 "algorithm": "sha256-cell-round-robin-v1",
                 "seed": config.seed,
@@ -1251,6 +1389,7 @@ def _existing_deck_output_is_catalog_ready(
     ):
         return False
     counted = 0
+    chunk_records: list[list[dict[str, Any]]] = []
     for chunk in chunks:
         if not isinstance(chunk, dict):
             return False
@@ -1287,8 +1426,55 @@ def _existing_deck_output_is_catalog_ready(
             return False
         if not isinstance(records, list) or len(records) != count:
             return False
+        if any(not isinstance(record, dict) for record in records):
+            return False
+        chunk_records.append(records)
         counted += count
-    return counted == balanced_count
+    if counted != balanced_count:
+        return False
+
+    selection_path = manifest.get("selectionIndex")
+    dataset_version = manifest.get("datasetVersion")
+    if selection_path is None and dataset_version is None:
+        return True
+    if (
+        selection_path != SELECTION_INDEX_FILENAME
+        or not isinstance(dataset_version, str)
+        or len(dataset_version) != 64
+        or any(character not in "0123456789abcdef" for character in dataset_version)
+    ):
+        return False
+    index_path = (manifest_path.parent / SELECTION_INDEX_FILENAME).resolve()
+    if index_path.parent != deck_root or not index_path.is_file():
+        return False
+    try:
+        selection_index = json.loads(index_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False
+    if not isinstance(selection_index, dict):
+        return False
+    expected_entries: list[dict[str, Any]] = []
+    try:
+        for chunk_index, records in enumerate(chunk_records):
+            for chunk_offset, record in enumerate(records):
+                expected_entries.append(_selection_index_entry(
+                    record,
+                    chunk_index=chunk_index,
+                    chunk_offset=chunk_offset,
+                ))
+    except RuntimeError:
+        return False
+    if (
+        selection_index.get("schemaVersion") != SELECTION_INDEX_SCHEMA_VERSION
+        or selection_index.get("deckId") != deck.id
+        or selection_index.get("datasetVersion") != dataset_version
+        or selection_index.get("count") != balanced_count
+        or selection_index.get("entries") != expected_entries
+        or _selection_dataset_version(deck.id, chunks, expected_entries)
+        != dataset_version
+    ):
+        return False
+    return True
 
 
 def _write_catalog(

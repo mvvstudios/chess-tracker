@@ -1,4 +1,5 @@
 # tests/test_refresh.py
+import hashlib
 import json
 from unittest.mock import patch, MagicMock
 import pytest
@@ -497,6 +498,82 @@ def _write_opening_deck(source_root, deck_id, family, color, chunks):
     return manifest
 
 
+def _selection_index_version(manifest, entries):
+    payload = {
+        "schemaVersion": 1,
+        "deckId": manifest["deckId"],
+        "count": len(entries),
+        "chunks": [
+            {
+                "index": index,
+                "path": chunk["path"],
+                "count": chunk["count"],
+            }
+            for index, chunk in enumerate(manifest["chunks"])
+        ],
+        "entries": entries,
+    }
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def _add_selection_index(source, manifest):
+    from scripts.extract_opening_puzzles import _selection_index_entry
+
+    entries = []
+    ordinal = 0
+    for chunk_index, chunk in enumerate(manifest["chunks"]):
+        chunk_path = source / chunk["path"]
+        records = json.loads(chunk_path.read_text())
+        for chunk_offset, record in enumerate(records):
+            ordinal += 1
+            record.update({
+                "variation": "Test main line",
+                "difficulty": "beginner",
+                "rating": 900 + ordinal,
+                "provenance": "standard",
+                "themes": ["fork", "opening"],
+                "primaryTacticalTheme": "fork",
+                "isOpeningPuzzle": True,
+                "solutionLength": 3,
+                "solverDecisionCount": 2,
+                "puzzleFen": "8/8/8/8/5K2/2Qp4/3k4/8 b - - 3 47",
+                "solutionSteps": [{"bestMoveUci": "d2c3"}],
+            })
+            entries.append(_selection_index_entry(
+                record,
+                chunk_index=chunk_index,
+                chunk_offset=chunk_offset,
+            ))
+        chunk_path.write_text(json.dumps(records))
+    dataset_version = _selection_index_version(manifest, entries)
+    manifest["selectionIndex"] = "selection-index.json"
+    manifest["datasetVersion"] = dataset_version
+    index = {
+        "schemaVersion": 1,
+        "deckId": manifest["deckId"],
+        "datasetVersion": dataset_version,
+        "count": len(entries),
+        "entries": entries,
+    }
+    (source / "selection-index.json").write_text(json.dumps(index))
+    (source / "manifest.json").write_text(json.dumps(manifest))
+    return index
+
+
+def _rehash_selection_index(source, manifest, index):
+    dataset_version = _selection_index_version(manifest, index["entries"])
+    manifest["datasetVersion"] = dataset_version
+    index["datasetVersion"] = dataset_version
+    (source / "selection-index.json").write_text(json.dumps(index))
+    (source / "manifest.json").write_text(json.dumps(manifest))
+
+
 def _write_opening_catalog(source_root, decks, default="caro-kann-black"):
     source_root.mkdir(parents=True, exist_ok=True)
     catalog = {
@@ -540,6 +617,8 @@ def test_opening_puzzle_sync_copies_catalog_manifests_and_chunks_only(tmp_path):
             },
         ),
     }
+    caro_source = source / "caro-kann-black"
+    caro_index = _add_selection_index(caro_source, manifests["caro-kann-black"])
     for deck_id in manifests:
         (source / deck_id / "all.jsonl").write_text('{"not":"deployed"}\n')
         (source / deck_id / "by-source").mkdir()
@@ -575,6 +654,100 @@ def test_opening_puzzle_sync_copies_catalog_manifests_and_chunks_only(tmp_path):
         assert json.loads((deployed / "manifest.json").read_text()) == manifest
         assert not (deployed / "all.jsonl").exists()
         assert not (deployed / "by-source").exists()
+    assert json.loads(
+        (data_dir / "caro-kann-black" / "selection-index.json").read_text()
+    ) == caro_index
+    assert not (data_dir / "colle-white" / "selection-index.json").exists()
+
+
+@pytest.mark.parametrize(
+    ("case", "message"),
+    [
+        ("deck", "deckId"),
+        ("count", "count mismatch"),
+        ("duplicate", "IDs must be unique"),
+        ("bounds", "invalid chunk location"),
+        ("locator-id", "does not match its chunk location"),
+        ("metadata", "does not match its chunk metadata"),
+        ("hash", "metadata hash mismatch"),
+    ],
+)
+def test_opening_puzzle_sync_rejects_invalid_selection_indexes(
+    tmp_path, case, message
+):
+    from refresh import sync_opening_puzzle_web_data
+
+    source = tmp_path / "public" / "data"
+    decks = [
+        ("colle-white", "Colle System — White", "Colle System", "white"),
+    ]
+    _write_opening_catalog(source, decks, default="colle-white")
+    manifest = _write_opening_deck(
+        source,
+        "colle-white",
+        "Colle System",
+        "white",
+        {"chunk-0001.json": [{"id": "one"}, {"id": "two"}]},
+    )
+    deck_source = source / "colle-white"
+    index = _add_selection_index(deck_source, manifest)
+    if case == "deck":
+        index["deckId"] = "pirc-black"
+    elif case == "count":
+        index["count"] = 1
+    elif case == "duplicate":
+        index["entries"][1]["id"] = index["entries"][0]["id"]
+        _rehash_selection_index(deck_source, manifest, index)
+    elif case == "bounds":
+        index["entries"][1]["chunkOffset"] = 2
+        _rehash_selection_index(deck_source, manifest, index)
+    elif case == "locator-id":
+        index["entries"][0]["id"], index["entries"][1]["id"] = (
+            index["entries"][1]["id"],
+            index["entries"][0]["id"],
+        )
+        _rehash_selection_index(deck_source, manifest, index)
+    elif case == "metadata":
+        index["entries"][0]["rating"] += 1
+        _rehash_selection_index(deck_source, manifest, index)
+    else:
+        index["entries"][0]["rating"] += 1
+    (deck_source / "selection-index.json").write_text(json.dumps(index))
+
+    with pytest.raises(ValueError, match=message):
+        sync_opening_puzzle_web_data(source, tmp_path / "dashboard")
+
+
+def test_opening_puzzle_sync_rejects_unsafe_selection_index_before_deployment(
+    tmp_path,
+):
+    from refresh import sync_opening_puzzle_web_data
+
+    source = tmp_path / "public" / "data"
+    decks = [
+        ("pirc-black", "Pirc Defense — Black", "Pirc Defense", "black"),
+    ]
+    _write_opening_catalog(source, decks, default="pirc-black")
+    manifest = _write_opening_deck(
+        source,
+        "pirc-black",
+        "Pirc Defense",
+        "black",
+        {"chunk-0001.json": [{"id": "one"}]},
+    )
+    deck_source = source / "pirc-black"
+    _add_selection_index(deck_source, manifest)
+    manifest["selectionIndex"] = "../selection-index.json"
+    (deck_source / "manifest.json").write_text(json.dumps(manifest))
+
+    dashboard = tmp_path / "dashboard"
+    sentinel = dashboard / "data" / "pirc-black" / "must-survive.txt"
+    sentinel.parent.mkdir(parents=True)
+    sentinel.write_text("old valid deployment")
+
+    with pytest.raises(ValueError, match="selectionIndex"):
+        sync_opening_puzzle_web_data(source, dashboard)
+    assert sentinel.read_text() == "old valid deployment"
 
 
 @pytest.mark.parametrize(

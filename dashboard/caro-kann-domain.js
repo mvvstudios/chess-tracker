@@ -225,6 +225,20 @@
                 : counts.balanced_exported,
       chunks.reduce((total, chunk) => total + (chunk.count || 0), 0),
     );
+    const rawSelectionIndex = safeRelativePath(
+      raw.selectionIndex || raw.selection_index,
+    );
+    const rawDatasetVersion = text(raw.datasetVersion || raw.dataset_version);
+    const datasetVersion = rawSelectionIndex === "selection-index.json"
+      && /^[0-9a-f]{64}$/.test(rawDatasetVersion) ? rawDatasetVersion : "";
+    const selectionIndex = rawSelectionIndex === "selection-index.json" && datasetVersion
+      ? {
+        path: rawSelectionIndex,
+        count: balancedExported,
+        datasetVersion,
+        schemaVersion: 1,
+      }
+      : null;
 
     return {
       raw,
@@ -240,6 +254,8 @@
       generatedAt: text(raw.generatedAtUtc || raw.generatedAt || raw.generated_at || ""),
       balancedExported,
       chunks,
+      selectionIndex,
+      datasetVersion,
       variationCounts: balancedCountMap(raw, "variation", ["variationCounts", "variation_counts"], ["variation", "variations"]),
       difficultyCounts: balancedCountMap(raw, "difficulty", ["difficultyCounts", "difficulty_counts"], ["difficulty", "difficulties"]),
       provenanceCounts: balancedCountMap(raw, "provenance", ["provenanceCounts", "provenance_counts"], ["provenance", "sources"]),
@@ -387,6 +403,109 @@
     return ["classical", "standard", "traditional", "main line"].some(term => words.includes(term));
   }
 
+  function normalizeSelectionIndex(rawIndex, rawManifest) {
+    const raw = object(rawIndex);
+    const suppliedManifest = object(rawManifest);
+    const manifest = suppliedManifest.raw === undefined
+      ? normalizeManifest(suppliedManifest) : suppliedManifest;
+    const descriptor = object(manifest.selectionIndex);
+    if (descriptor.path !== "selection-index.json"
+        || descriptor.schemaVersion !== 1
+        || descriptor.datasetVersion !== manifest.datasetVersion
+        || descriptor.count !== manifest.balancedExported
+        || !manifest.datasetVersion
+        || raw.schemaVersion !== 1
+        || typeof raw.deckId !== "string" || raw.deckId !== manifest.deckId
+        || typeof raw.datasetVersion !== "string"
+        || raw.datasetVersion !== manifest.datasetVersion) {
+      return null;
+    }
+    const count = raw.count;
+    const entries = raw.entries;
+    if (!Number.isInteger(count) || count < 0 || !Array.isArray(entries)
+        || entries.length !== count || count !== manifest.balancedExported) {
+      return null;
+    }
+
+    const ids = new Set();
+    const locations = new Set();
+    const normalized = [];
+    for (const rawEntry of entries) {
+      const entry = object(rawEntry);
+      const id = text(entry.id);
+      const chunkIndex = entry.chunkIndex;
+      const chunkOffset = entry.chunkOffset;
+      const chunk = manifest.chunks[chunkIndex];
+      const location = `${chunkIndex}:${chunkOffset}`;
+      if (typeof entry.id !== "string" || id !== entry.id || !id || ids.has(id)
+          || !Number.isInteger(chunkIndex) || chunkIndex < 0 || !chunk
+          || !Number.isInteger(chunkOffset) || chunkOffset < 0
+          || !Number.isInteger(chunk.count) || chunkOffset >= chunk.count
+          || locations.has(location)) {
+        return null;
+      }
+
+      const variation = text(entry.variation);
+      const difficulty = text(entry.difficulty).toLowerCase();
+      const provenance = text(entry.provenance);
+      const primaryTheme = text(entry.primaryTheme || entry.primary_theme);
+      const themes = entry.themes;
+      const solutionLength = entry.solutionLength;
+      const solverDecisionCount = entry.solverDecisionCount;
+      const tacticalSignature = text(
+        entry.tacticalSignature || entry.tactical_signature,
+      );
+      const signatureParts = tacticalSignature.split("|");
+      if (typeof entry.variation !== "string" || variation !== entry.variation
+          || !variation || !DIFFICULTY_ORDER.includes(difficulty)
+          || typeof entry.difficulty !== "string" || difficulty !== entry.difficulty
+          || !Number.isInteger(entry.rating)
+          || typeof entry.provenance !== "string" || provenance !== entry.provenance
+          || !provenance || !Array.isArray(themes)
+          || themes.some(theme => typeof theme !== "string" || !theme || theme !== theme.trim())
+          || typeof entry.primaryTheme !== "string" || primaryTheme !== entry.primaryTheme
+          || !primaryTheme || typeof entry.isOpeningPuzzle !== "boolean"
+          || !Number.isInteger(solutionLength) || solutionLength < 1
+          || !Number.isInteger(solverDecisionCount) || solverDecisionCount < 1
+          || signatureParts.length !== 4 || signatureParts[0] !== primaryTheme
+          || signatureParts[1] !== String(solutionLength)
+          || !/^[KQRBNP]$/.test(signatureParts[2])
+          || !/^[a-h][1-8]$/.test(signatureParts[3])) {
+        return null;
+      }
+
+      const classified = { variation, openingFamily: manifest.openingFamily };
+      ids.add(id);
+      locations.add(location);
+      normalized.push({
+        id,
+        chunkIndex,
+        chunkOffset,
+        variation,
+        difficulty,
+        rating: entry.rating,
+        provenance,
+        themes: themes.slice(),
+        primaryTheme,
+        isOpeningPuzzle: entry.isOpeningPuzzle,
+        solutionLength,
+        solverDecisionCount,
+        tacticalSignature,
+        curriculumGroup: curriculumGroup(classified),
+        mainLine: isMainLine(classified),
+      });
+    }
+
+    return {
+      raw,
+      schemaVersion: 1,
+      deckId: manifest.deckId,
+      datasetVersion: manifest.datasetVersion,
+      count,
+      entries: normalized,
+    };
+  }
+
   function themeMatches(themes, requested) {
     const wanted = text(requested).toLowerCase();
     if (!wanted || wanted === "all") return true;
@@ -492,6 +611,7 @@
     primaryVariationTag,
     readableVariation,
     normalizeManifest,
+    normalizeSelectionIndex,
     adaptRecord,
     curriculumGroup,
     isMainLine,

@@ -84,8 +84,10 @@ existing solves are preserved.
 The large source download stays under ignored `data/`. One streaming extraction
 routes the source to all five canonical directories and writes
 `public/data/opening-puzzle-catalog.json`. A normal refresh copies only that
-catalog, each manifest, and its referenced balanced browser chunks into the
-generated `dashboard/data/` tree used by GitHub Pages. Extraction commands,
+catalog, each manifest, its compact selection index, and referenced balanced
+browser chunks into the generated `dashboard/data/` tree used by GitHub Pages.
+The index provides full-cohort, no-repeat traversal while puzzle payloads remain
+lazy-loaded. Extraction commands,
 exact tag roots, perspective validation, schema, balancing, and deployment
 details are in
 [docs/OPENING_PUZZLE_DECKS.md](docs/OPENING_PUZZLE_DECKS.md). The original
@@ -133,7 +135,7 @@ puzzle page controllers. Both suites run in the Pages workflow before deploy.
 - `scripts/extract_opening_puzzles.py` — one-pass, multi-deck Lichess extractor
 - `scripts/extract_caro_kann_black.py` — backward-compatible Caro-Kann entry point
 - `public/data/opening-puzzle-catalog.json` — deployed opening-deck registry
-- `public/data/<deck-id>/` — canonical manifests, exports, shards, and balanced chunks
+- `public/data/<deck-id>/` — canonical manifests, selection indexes, exports, shards, and balanced chunks
 - `data/` — generated (cached archives, computed.json, annotations.json)
 - `docs/superpowers/` — spec + plan
 

@@ -1733,7 +1733,7 @@ span.severity-red     { background: var(--border-strong); color: var(--text); }
 
 .trainer-study-bar {
   display: grid;
-  grid-template-columns: minmax(215px, 1.35fr) minmax(180px, 1fr) auto auto;
+  grid-template-columns: minmax(210px, 1.35fr) repeat(3, minmax(145px, 1fr)) auto;
   gap: 0.65rem;
   align-items: end;
   min-width: 0;
@@ -1756,7 +1756,9 @@ span.severity-red     { background: var(--border-strong); color: var(--text); }
   font-size: 0.68rem;
   font-weight: 650;
 }
+.trainer-study-control > label { margin: 0; color: inherit; font: inherit; }
 .trainer-study-control select,
+.trainer-study-control .variation-picker,
 .customize-sheet select,
 .customize-search input {
   width: 100%;
@@ -1770,7 +1772,17 @@ span.severity-red     { background: var(--border-strong); color: var(--text); }
   font: inherit;
   font-size: 0.83rem;
 }
+.trainer-study-control .variation-picker {
+  appearance: none;
+  overflow: hidden;
+  padding-right: 0.75rem;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
 .trainer-study-control select:hover,
+.trainer-study-control .variation-picker:hover,
 .customize-sheet select:hover,
 .customize-search input:hover { border-color: var(--border-strong); }
 .trainer-study-bar > .trainer-secondary-action { min-height: 42px; }
@@ -2266,8 +2278,8 @@ button.filter-chip:hover { color: var(--text); }
   }
   .opening-trainer-body .puzzle-board-column,
   .opening-trainer-body .puzzle-queue-board { width: min(500px, 100%); }
-  .trainer-study-bar { grid-template-columns: minmax(190px, 1.2fr) minmax(170px, 1fr) auto; }
-  .trainer-study-bar > .trainer-secondary-action { display: none; }
+  .trainer-study-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .trainer-study-bar > .trainer-secondary-action { grid-column: span 1; }
   .session-results { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
@@ -2304,16 +2316,26 @@ button.filter-chip:hover { color: var(--text); }
   .trainer-onboarding p { font-size: 0.7rem; }
   .trainer-onboarding button { min-height: 40px; padding: 0.35rem 0.55rem; }
   .trainer-study-bar {
-    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) auto;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.45rem;
     margin-bottom: 0.2rem;
     padding: 0.5rem;
   }
-  .trainer-study-control select { min-height: 42px; padding-inline: 0.45rem 1.5rem; font-size: 0.76rem; }
+  .trainer-study-bar .opening-deck-filter { grid-column: 1 / -1; }
+  .trainer-study-control select,
+  .trainer-study-control .variation-picker { min-height: 42px; padding-inline: 0.45rem 1.5rem; font-size: 0.76rem; }
   .training-length-control { grid-column: auto; }
+  .trainer-study-bar > .trainer-secondary-action { grid-column: 1 / -1; }
   .trainer-session-summary { min-height: 34px; margin: 0; }
   .trainer-session-nav { display: contents; }
-  .trainer-review-actions { margin-left: auto; }
+  .trainer-review-actions {
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    min-width: 0;
+    max-width: 100%;
+    margin-left: auto;
+  }
   .active-filter-chips { flex-wrap: nowrap; overflow-x: auto; }
   .filter-chip { flex: 0 0 auto; }
   .opening-trainer-body .puzzle-tabs { margin-bottom: 0.5rem; }

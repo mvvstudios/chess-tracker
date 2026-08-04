@@ -21,6 +21,17 @@
   const CLEAN_INTERVAL_DAYS = Object.freeze([1, 3, 7, 14, 30, 60]);
   const MASTER_STREAK = 3;
   const MASTER_INTERVAL_DAYS = 7;
+  const SELECTION_SCHEMA_VERSION = 1;
+  const MAX_SELECTION_COHORTS = 8;
+  const SELECTION_RECENT_LIMIT = 64;
+  const ACTIVE_SELECTION_TTL_MS = DAY_MS;
+  const GUIDED_RATING_WINDOW_SIZE = 80;
+  const GUIDED_THEME_CAP = 5;
+  const GUIDED_SIGNATURE_CAP = 2;
+  const GUIDED_CAP_WINDOW = 20;
+  const DIFFICULTY_ORDER = Object.freeze([
+    "beginner", "developing", "intermediate", "advanced", "expert",
+  ]);
   const COUNTER_FIELDS = Object.freeze([
     "encounters",
     "cleanSolves",
@@ -159,6 +170,641 @@
 
   function uniqueStrings(values) {
     return [...new Set(array(values).map(text).filter(Boolean))];
+  }
+
+  function collection(value) {
+    if (Array.isArray(value)) return value;
+    if (value instanceof Set) return [...value];
+    return [];
+  }
+
+  function boundedIds(values, limit) {
+    const maximum = Math.max(0, nonnegativeInteger(limit, SELECTION_RECENT_LIMIT));
+    return [...new Set(collection(values).map(resolvedPuzzleId).filter(Boolean))].slice(0, maximum);
+  }
+
+  function normalizedWords(value) {
+    return text(value).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  }
+
+  function normalizedSelectionMode(value) {
+    return text(value).toLowerCase() === "curriculum" ? "curriculum" : "all";
+  }
+
+  function normalizeSelectionFilters(rawFilters) {
+    const raw = object(rawFilters);
+    const lineCoverage = text(raw.lineCoverage || raw.line_coverage || "all").toLowerCase();
+    return {
+      mode: normalizedSelectionMode(raw.mode),
+      variation: text(raw.variation || "all") || "all",
+      difficulty: text(raw.difficulty || "all").toLowerCase() || "all",
+      provenance: normalizedWords(raw.provenance || "all").replace(/\s/g, "") || "all",
+      lineCoverage: ["main-lines", "sidelines"].includes(lineCoverage) ? lineCoverage : "all",
+      theme: text(raw.theme || "all").toLowerCase() || "all",
+      openingOnly: raw.openingOnly === true || raw.opening_only === true,
+      curriculumGroup: text(raw.curriculumGroup || raw.curriculum_group),
+    };
+  }
+
+  function selectionFilterSignature(rawFilters) {
+    const filters = normalizeSelectionFilters(rawFilters);
+    return JSON.stringify([
+      filters.mode,
+      filters.variation,
+      filters.difficulty,
+      filters.provenance,
+      filters.lineCoverage,
+      filters.theme,
+      filters.openingOnly,
+      filters.curriculumGroup,
+    ]);
+  }
+
+  function normalizeSelectionIndexEntry(rawEntry, ordinal) {
+    const raw = object(rawEntry);
+    const id = resolvedPuzzleId(raw);
+    if (!id) return null;
+    const rawChunk = raw.chunkIndex !== undefined ? raw.chunkIndex
+      : raw.chunk_index !== undefined ? raw.chunk_index : raw.chunk;
+    const numericChunk = Number(rawChunk);
+    const chunkIndex = Number.isInteger(numericChunk) && numericChunk >= 0
+      ? numericChunk : text(rawChunk || "0");
+    const rawOffset = raw.offset !== undefined ? raw.offset
+      : raw.chunkOffset !== undefined ? raw.chunkOffset : raw.chunk_offset;
+    const offset = nonnegativeInteger(rawOffset, nonnegativeInteger(ordinal, 0));
+    const themes = uniqueStrings(raw.themes).map(theme => theme.toLowerCase());
+    const primaryTheme = text(
+      raw.primaryTacticalTheme || raw.primary_tactical_theme
+      || raw.primaryTheme || raw.primary_theme || themes[0] || "unclassified"
+    );
+    const solutionLength = nonnegativeInteger(
+      raw.solutionLength !== undefined ? raw.solutionLength : raw.solution_length,
+      0,
+    );
+    const movingPiece = text(raw.movingPiece || raw.moving_piece || raw.piece || "?").toUpperCase();
+    const destination = text(
+      raw.destination || raw.destinationSquare || raw.destination_square || raw.to || "?"
+    ).toLowerCase();
+    const tacticalSignature = text(
+      raw.tacticalSignature || raw.tactical_signature || raw.signature
+    ) || [primaryTheme || "unclassified", solutionLength, movingPiece, destination].join("|");
+    const rawRating = Number(raw.rating);
+    return {
+      id,
+      chunkIndex,
+      offset,
+      variation: text(raw.variation || "all") || "all",
+      difficulty: text(raw.difficulty).toLowerCase(),
+      provenance: normalizedWords(raw.provenance).replace(/\s/g, ""),
+      themes,
+      primaryTacticalTheme: primaryTheme || "unclassified",
+      tacticalSignature,
+      rating: Number.isFinite(rawRating) ? rawRating : Number.MAX_SAFE_INTEGER,
+      solutionLength,
+      movingPiece,
+      destination,
+      mainLine: raw.mainLine === true || raw.main_line === true,
+      openingOnly: raw.openingOnly === true || raw.opening_only === true
+        || raw.isOpeningPuzzle === true || raw.is_opening_puzzle === true,
+      curriculumGroup: text(raw.curriculumGroup || raw.curriculum_group),
+      ordinal: nonnegativeInteger(ordinal, 0),
+    };
+  }
+
+  function normalizeSelectionIndex(rawIndex) {
+    const raw = object(rawIndex);
+    const deckId = normalizedDeckId(raw.deckId || raw.deck_id);
+    const datasetVersion = text(raw.datasetVersion || raw.dataset_version || raw.versionId);
+    const rawEntries = raw.entries || raw.records || raw.items;
+    if (!deckId) throw new TypeError("A valid selection-index deck ID is required.");
+    if (!datasetVersion) throw new TypeError("A selection index requires a dataset version.");
+    if (!Array.isArray(rawEntries)) throw new TypeError("A selection index requires an entries array.");
+    const seen = new Set();
+    const entries = [];
+    rawEntries.forEach((entry, ordinal) => {
+      const normalized = normalizeSelectionIndexEntry(entry, ordinal);
+      if (!normalized || seen.has(normalized.id)) return;
+      seen.add(normalized.id);
+      entries.push(normalized);
+    });
+    return { deckId, datasetVersion, entries };
+  }
+
+  function selectionThemeMatches(entry, requested) {
+    const wanted = text(requested).toLowerCase();
+    if (!wanted || wanted === "all") return true;
+    const themes = entry.themes || [];
+    if (wanted === "mates") return themes.some(theme => /^mate(?:in\d+)?$/.test(theme));
+    if (wanted === "forks") return themes.includes("fork");
+    if (wanted === "pins") return themes.includes("pin");
+    if (wanted === "sacrifices") return themes.includes("sacrifice");
+    if (wanted === "defensive") return themes.includes("defensivemove");
+    if (wanted === "quiet") return themes.includes("quietmove");
+    return themes.includes(wanted);
+  }
+
+  function selectionEntryMatches(entry, rawFilters) {
+    const filters = normalizeSelectionFilters(rawFilters);
+    if (filters.variation !== "all" && entry.variation !== filters.variation) return false;
+    if (filters.difficulty !== "all" && entry.difficulty !== filters.difficulty) return false;
+    if (filters.provenance !== "all" && entry.provenance !== filters.provenance) return false;
+    if (filters.lineCoverage === "main-lines" && !entry.mainLine) return false;
+    if (filters.lineCoverage === "sidelines" && entry.mainLine) return false;
+    if (filters.openingOnly && !entry.openingOnly) return false;
+    if (!selectionThemeMatches(entry, filters.theme)) return false;
+    if (filters.curriculumGroup === "Master challenges") return entry.difficulty === "expert";
+    if (filters.curriculumGroup && entry.curriculumGroup !== filters.curriculumGroup) return false;
+    return true;
+  }
+
+  function emptySelectionState() {
+    return {
+      schemaVersion: SELECTION_SCHEMA_VERSION,
+      cohorts: [],
+      recentByDeck: Object.create(null),
+      active: null,
+      updatedAt: null,
+    };
+  }
+
+  function activeProgress(active) {
+    const total = array(active && active.puzzleIds).length;
+    const completed = Math.min(total, nonnegativeInteger(active && active.nextIndex, 0));
+    return {
+      completed,
+      total,
+      current: total ? Math.min(total, completed + 1) : 0,
+      complete: Boolean(total && completed >= total),
+    };
+  }
+
+  function sanitizeSelectionCohort(rawCohort) {
+    const raw = object(rawCohort);
+    const deckId = normalizedDeckId(raw.deckId || raw.deck_id);
+    const datasetVersion = text(raw.datasetVersion || raw.dataset_version);
+    const seed = text(raw.seed);
+    if (!deckId || !datasetVersion || !seed) return null;
+    const filters = normalizeSelectionFilters(raw.filters);
+    const orderVersion = text(raw.orderVersion || raw.order_version)
+      || selectionOrderVersion(filters);
+    if (!["focused-v1", "guided-v1"].includes(orderVersion)) return null;
+    const filterSignature = selectionFilterSignature(filters);
+    return {
+      key: [deckId, datasetVersion, orderVersion, filterSignature].join("|"),
+      deckId,
+      datasetVersion,
+      filterSignature,
+      filters,
+      orderVersion,
+      seed,
+      cursor: nonnegativeInteger(raw.cursor, 0),
+      epoch: nonnegativeInteger(raw.epoch, 0),
+      deferredIds: boundedIds(raw.deferredIds || raw.deferred_ids || raw.deferred, SELECTION_RECENT_LIMIT),
+      lastUsedAt: optionalTimestamp(raw.lastUsedAt || raw.last_used_at || raw.updatedAt),
+    };
+  }
+
+  function sanitizeActiveSelection(rawActive) {
+    const raw = object(rawActive);
+    const deckId = normalizedDeckId(raw.deckId || raw.deck_id);
+    const datasetVersion = text(raw.datasetVersion || raw.dataset_version);
+    const rawPuzzleIds = collection(raw.puzzleIds || raw.puzzle_ids || raw.ids)
+      .map(resolvedPuzzleId).filter(Boolean);
+    if (!rawPuzzleIds.length || rawPuzzleIds.length > 20
+        || new Set(rawPuzzleIds).size !== rawPuzzleIds.length) return null;
+    const puzzleIds = rawPuzzleIds;
+    const createdAt = optionalTimestamp(raw.createdAt || raw.created_at);
+    const expiresAt = optionalTimestamp(raw.expiresAt || raw.expires_at);
+    if (!deckId || !datasetVersion || !puzzleIds.length || !createdAt || !expiresAt) return null;
+    const lifetime = timestampMillis(expiresAt) - timestampMillis(createdAt);
+    if (lifetime <= 0 || lifetime > ACTIVE_SELECTION_TTL_MS) return null;
+    const filters = normalizeSelectionFilters(raw.filters);
+    const results = array(raw.results).slice(0, puzzleIds.length).map((result, index) => {
+      const normalized = clone(object(result));
+      return resolvedPuzzleId(normalized) === puzzleIds[index] ? normalized : null;
+    });
+    if (results.some(result => !result)) return null;
+    const declaredNext = raw.nextIndex !== undefined ? raw.nextIndex : raw.next_index;
+    const nextIndex = declaredNext === undefined
+      ? results.length : nonnegativeInteger(declaredNext, Number.MAX_SAFE_INTEGER);
+    if (nextIndex !== results.length || nextIndex > puzzleIds.length) return null;
+    const active = {
+      token: text(raw.token || raw.id) || `${deckId}:${createdAt}`,
+      deckId,
+      datasetVersion,
+      filterSignature: selectionFilterSignature(filters),
+      filters,
+      puzzleIds,
+      results,
+      nextIndex,
+      mode: normalizedSelectionMode(raw.mode || filters.mode),
+      trainingLength: text(raw.trainingLength || raw.training_length || "finite") || "finite",
+      requestedSize: normalizeSessionSize(
+        raw.requestedSize !== undefined ? raw.requestedSize : raw.requested_size,
+        puzzleIds.length,
+      ),
+      size: puzzleIds.length,
+      createdAt,
+      updatedAt: optionalTimestamp(raw.updatedAt || raw.updated_at) || createdAt,
+      expiresAt,
+      completedAt: optionalTimestamp(raw.completedAt || raw.completed_at),
+    };
+    active.progress = activeProgress(active);
+    return active;
+  }
+
+  function sanitizeSelectionState(rawSelection) {
+    const raw = object(rawSelection);
+    if (Number(raw.schemaVersion || raw.schema_version) !== SELECTION_SCHEMA_VERSION) {
+      return emptySelectionState();
+    }
+    const state = emptySelectionState();
+    state.cohorts = array(raw.cohorts).map(sanitizeSelectionCohort).filter(Boolean)
+      .sort((left, right) => (timestampMillis(left.lastUsedAt) || 0)
+        - (timestampMillis(right.lastUsedAt) || 0))
+      .slice(-MAX_SELECTION_COHORTS);
+    const recent = object(raw.recentByDeck || raw.recent_by_deck);
+    Object.keys(recent).forEach(rawDeckId => {
+      const deckId = normalizedDeckId(rawDeckId);
+      const value = object(recent[rawDeckId]);
+      const datasetVersion = text(value.datasetVersion || value.dataset_version);
+      const ids = boundedIds(Array.isArray(recent[rawDeckId]) ? recent[rawDeckId] : value.ids);
+      if (deckId && datasetVersion && ids.length) {
+        state.recentByDeck[deckId] = { datasetVersion, ids };
+      }
+    });
+    state.active = sanitizeActiveSelection(raw.active || raw.activeSession || raw.active_session);
+    state.updatedAt = optionalTimestamp(raw.updatedAt || raw.updated_at);
+    return state;
+  }
+
+  function seedState(seed) {
+    const value = text(seed);
+    let hash = 0x811c9dc5;
+    for (let index = 0; index < value.length; index += 1) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 0x01000193);
+    }
+    return (hash >>> 0) || 0x9e3779b9;
+  }
+
+  function nextSeedState(value) {
+    let next = value >>> 0;
+    next ^= next << 13;
+    next ^= next >>> 17;
+    next ^= next << 5;
+    return next >>> 0;
+  }
+
+  function deterministicShuffle(values, seed) {
+    const result = array(values).slice();
+    let state = seedState(seed);
+    for (let index = result.length - 1; index > 0; index -= 1) {
+      state = nextSeedState(state);
+      const target = state % (index + 1);
+      const value = result[index];
+      result[index] = result[target];
+      result[target] = value;
+    }
+    return result;
+  }
+
+  function generatedSelectionSeed(rng) {
+    let value;
+    try {
+      value = typeof rng === "function" ? rng() : Math.random();
+    } catch (_error) {
+      value = Math.random();
+    }
+    if (typeof value === "string" && value) return value;
+    const number = Number(value);
+    const normalized = Number.isFinite(number) ? Math.abs(number % 1) : Math.random();
+    return Math.floor(normalized * 0x100000000).toString(16).padStart(8, "0");
+  }
+
+  function focusedEpochOrder(entries, seed, epoch) {
+    const groups = new Map();
+    array(entries).forEach(entry => {
+      const key = String(entry.chunkIndex);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(entry);
+    });
+    const groupEntries = [...groups.entries()].sort((left, right) => {
+      const leftNumber = Number(left[0]);
+      const rightNumber = Number(right[0]);
+      if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber) && leftNumber !== rightNumber) {
+        return leftNumber - rightNumber;
+      }
+      return left[0].localeCompare(right[0]);
+    });
+    return deterministicShuffle(groupEntries, `${seed}:${epoch}:chunks`).flatMap(([key, values]) => {
+      const canonical = values.slice().sort((left, right) => left.offset - right.offset
+        || left.id.localeCompare(right.id));
+      return deterministicShuffle(canonical, `${seed}:${epoch}:chunk:${key}`);
+    });
+  }
+
+  function guidedDifficultyRank(entry) {
+    const rank = DIFFICULTY_ORDER.indexOf(entry.difficulty);
+    return rank < 0 ? DIFFICULTY_ORDER.length : rank;
+  }
+
+  function guidedEpochOrder(entries, seed, epoch, rawWindowSize) {
+    const windowSize = Math.max(20, nonnegativeInteger(rawWindowSize, GUIDED_RATING_WINDOW_SIZE));
+    const sorted = array(entries).slice().sort((left, right) => {
+      const tier = guidedDifficultyRank(left) - guidedDifficultyRank(right);
+      return tier || left.rating - right.rating || left.id.localeCompare(right.id);
+    });
+    const tiers = new Map();
+    sorted.forEach(entry => {
+      const rank = guidedDifficultyRank(entry);
+      if (!tiers.has(rank)) tiers.set(rank, []);
+      tiers.get(rank).push(entry);
+    });
+    const result = [];
+    [...tiers.keys()].sort((left, right) => left - right).forEach(rank => {
+      const tier = tiers.get(rank);
+      const pool = [];
+      for (let start = 0; start < tier.length; start += windowSize) {
+        pool.push(...deterministicShuffle(
+          tier.slice(start, start + windowSize),
+          `${seed}:${epoch}:tier:${rank}:window:${Math.floor(start / windowSize)}`,
+        ));
+      }
+      while (pool.length) {
+        const recent = result.slice(-Math.min(GUIDED_CAP_WINDOW - 1, result.length));
+        const themeCounts = Object.create(null);
+        const signatureCounts = Object.create(null);
+        recent.forEach(entry => {
+          const theme = entry.primaryTacticalTheme.toLowerCase();
+          const signature = entry.tacticalSignature.toLowerCase();
+          themeCounts[theme] = (themeCounts[theme] || 0) + 1;
+          signatureCounts[signature] = (signatureCounts[signature] || 0) + 1;
+        });
+        const allowed = entry => {
+          const theme = entry.primaryTacticalTheme.toLowerCase();
+          const signature = entry.tacticalSignature.toLowerCase();
+          return (themeCounts[theme] || 0) < GUIDED_THEME_CAP
+            && (signatureCounts[signature] || 0) < GUIDED_SIGNATURE_CAP;
+        };
+        let chosen = pool.slice(0, windowSize).findIndex(allowed);
+        // If the current rating band is saturated, borrow the nearest later
+        // same-difficulty motif before relaxing. Only a genuinely narrow
+        // remaining tier can therefore exceed a soft cap.
+        if (chosen < 0) chosen = pool.findIndex(allowed);
+        if (chosen < 0) chosen = 0;
+        result.push(pool.splice(chosen, 1)[0]);
+      }
+    });
+    return result;
+  }
+
+  function selectGuidedCandidates(rawEntries, rawOptions) {
+    const options = object(rawOptions);
+    const sources = new Map();
+    const entries = [];
+    array(rawEntries).forEach((entry, ordinal) => {
+      const normalized = normalizeSelectionIndexEntry(entry, ordinal);
+      if (!normalized || sources.has(normalized.id)) return;
+      sources.set(normalized.id, entry);
+      entries.push(normalized);
+    });
+    return guidedEpochOrder(
+      entries,
+      text(options.seed) || "guided",
+      nonnegativeInteger(options.epoch, 0),
+      options.ratingWindowSize,
+    ).map(entry => sources.get(entry.id));
+  }
+
+  function selectionOrderVersion(filters) {
+    return filters.mode === "curriculum" ? "guided-v1" : "focused-v1";
+  }
+
+  function isolateSelectionDataset(rawState, deckId, datasetVersion) {
+    const state = sanitizeSelectionState(rawState);
+    state.cohorts = state.cohorts.filter(cohort => cohort.deckId !== deckId
+      || cohort.datasetVersion === datasetVersion);
+    const recent = state.recentByDeck[deckId];
+    if (recent && recent.datasetVersion !== datasetVersion) delete state.recentByDeck[deckId];
+    if (state.active && state.active.deckId === deckId
+        && state.active.datasetVersion !== datasetVersion) state.active = null;
+    return state;
+  }
+
+  function selectionRequestSize(rawRequest) {
+    const request = object(rawRequest);
+    return normalizeSessionSize(
+      request.size !== undefined ? request.size : request.sessionSize,
+      DEFAULT_SESSION_SIZE,
+    );
+  }
+
+  function selectionActiveMatches(active, index, filters, request, nowMillis) {
+    if (!active || active.deckId !== index.deckId
+        || active.datasetVersion !== index.datasetVersion
+        || active.filterSignature !== selectionFilterSignature(filters)) return false;
+    if (active.completedAt || active.nextIndex >= active.puzzleIds.length) return false;
+    const expiry = timestampMillis(active.expiresAt);
+    if (expiry === null || nowMillis >= expiry) return false;
+    const requestedLength = text(request.trainingLength || request.training_length);
+    if (requestedLength && active.trainingLength !== requestedLength) return false;
+    if ((request.size !== undefined || request.sessionSize !== undefined)
+        && active.requestedSize !== selectionRequestSize(request)) return false;
+    const entries = new Map(index.entries.map(entry => [entry.id, entry]));
+    return active.puzzleIds.every(id => entries.has(id)
+      && selectionEntryMatches(entries.get(id), filters));
+  }
+
+  function cohortOrder(entries, cohort) {
+    return cohort.orderVersion === "guided-v1"
+      ? guidedEpochOrder(entries, cohort.seed, cohort.epoch, GUIDED_RATING_WINDOW_SIZE)
+      : focusedEpochOrder(entries, cohort.seed, cohort.epoch);
+  }
+
+  function appendDeferred(cohort, id) {
+    if (cohort.deferredIds.includes(id)) return true;
+    if (cohort.deferredIds.length >= SELECTION_RECENT_LIMIT) return false;
+    cohort.deferredIds.push(id);
+    return true;
+  }
+
+  function consumeCohort(cohort, entries, count, excludedIds, priorityIds, recentIds, selectedIds) {
+    const selected = [];
+    const selectedSet = new Set(selectedIds || []);
+    const excluded = new Set(excludedIds || []);
+    const priorities = new Set(priorityIds || []);
+    const recent = new Set(recentIds || []);
+    const eligible = new Map(entries.filter(entry => !excluded.has(entry.id)
+      && !priorities.has(entry.id)).map(entry => [entry.id, entry]));
+
+    cohort.deferredIds = cohort.deferredIds.filter(id => eligible.has(id));
+    const takeDeferred = relaxRecent => {
+      const remaining = [];
+      cohort.deferredIds.forEach(id => {
+        if (selected.length >= count || selectedSet.has(id)
+            || !relaxRecent && recent.has(id)) {
+          remaining.push(id);
+          return;
+        }
+        selected.push(id);
+        selectedSet.add(id);
+      });
+      cohort.deferredIds = remaining;
+    };
+
+    // A deferred cross-filter overlap gets first refusal once it has fallen out
+    // of the bounded recent ring.
+    takeDeferred(false);
+    let safety = Math.max(1, entries.length * 4 + count * 4);
+    while (selected.length < count && entries.length && safety > 0) {
+      safety -= 1;
+      const order = cohortOrder(entries, cohort);
+      cohort.cursor = Math.min(cohort.cursor, order.length);
+      while (selected.length < count && cohort.cursor < order.length) {
+        const id = order[cohort.cursor].id;
+        cohort.cursor += 1;
+        if (!eligible.has(id)) continue;
+        if (selectedSet.has(id)) {
+          appendDeferred(cohort, id);
+          continue;
+        }
+        if (recent.has(id) && appendDeferred(cohort, id)) continue;
+        selected.push(id);
+        selectedSet.add(id);
+      }
+
+      if (cohort.cursor < order.length) break;
+      // Every ordinal in this epoch has now either been selected, deliberately
+      // excluded, or retained in deferredIds. Relax the soft recent guard before
+      // beginning another epoch so a narrow cohort cannot deadlock.
+      takeDeferred(true);
+      if (cohort.deferredIds.length) break;
+      cohort.epoch += 1;
+      cohort.cursor = 0;
+    }
+    return selected;
+  }
+
+  function updateRecentSelection(state, deckId, datasetVersion, ids) {
+    const current = state.recentByDeck[deckId];
+    const previous = current && current.datasetVersion === datasetVersion ? current.ids : [];
+    const selected = boundedIds(ids, SELECTION_RECENT_LIMIT);
+    const selectedSet = new Set(selected);
+    state.recentByDeck[deckId] = {
+      datasetVersion,
+      ids: previous.filter(id => !selectedSet.has(id)).concat(selected).slice(-SELECTION_RECENT_LIMIT),
+    };
+  }
+
+  function selectSession(rawConfig) {
+    const config = object(rawConfig);
+    const index = normalizeSelectionIndex(config.index);
+    const filters = normalizeSelectionFilters(config.filters);
+    const request = object(config.request);
+    const now = optionalTimestamp(config.now) || new Date().toISOString();
+    const nowMillis = timestampMillis(now);
+    const signature = selectionFilterSignature(filters);
+    const orderVersion = selectionOrderVersion(filters);
+    const state = isolateSelectionDataset(config.state, index.deckId, index.datasetVersion);
+
+    const explicitFresh = request.fresh === true || request.resume === false;
+    if (!explicitFresh && selectionActiveMatches(state.active, index, filters, request, nowMillis)) {
+      return {
+        ids: state.active.puzzleIds.slice(),
+        nextState: clone(state),
+        resumed: true,
+        active: clone(state.active),
+      };
+    }
+    state.active = null;
+
+    const cohortEntries = index.entries.filter(entry => selectionEntryMatches(entry, filters));
+    const entryById = new Map(cohortEntries.map(entry => [entry.id, entry]));
+    const excludedIds = boundedIds(request.excludedIds || request.excluded_ids, Number.MAX_SAFE_INTEGER);
+    const excluded = new Set(excludedIds);
+    // Due priorities intentionally precede the no-repeat New lane, but are
+    // intersected with the static cohort and all of them are removed from the
+    // New bag even when the requested session cannot fit every Due item.
+    const priorityIds = boundedIds(request.priorityIds || request.priority_ids, Number.MAX_SAFE_INTEGER)
+      .filter(id => entryById.has(id) && !excluded.has(id));
+    const prioritySet = new Set(priorityIds);
+    const availableNew = cohortEntries.filter(entry => !excluded.has(entry.id)
+      && !prioritySet.has(entry.id)).length;
+    const requestedSize = selectionRequestSize(request);
+    const target = Math.min(requestedSize, priorityIds.length + availableNew);
+    const ids = priorityIds.slice(0, target);
+
+    const key = [index.deckId, index.datasetVersion, orderVersion, signature].join("|");
+    let cohort = state.cohorts.find(item => item.key === key);
+    if (!cohort) {
+      cohort = {
+        key,
+        deckId: index.deckId,
+        datasetVersion: index.datasetVersion,
+        filterSignature: signature,
+        filters,
+        orderVersion,
+        seed: generatedSelectionSeed(config.rng),
+        cursor: 0,
+        epoch: 0,
+        deferredIds: [],
+        lastUsedAt: now,
+      };
+    } else {
+      cohort = clone(cohort);
+      cohort.filters = filters;
+      cohort.orderVersion = orderVersion;
+    }
+    const recent = state.recentByDeck[index.deckId];
+    const recentIds = recent && recent.datasetVersion === index.datasetVersion ? recent.ids : [];
+    ids.push(...consumeCohort(
+      cohort,
+      cohortEntries,
+      Math.max(0, target - ids.length),
+      excludedIds,
+      priorityIds,
+      recentIds,
+      ids,
+    ));
+
+    cohort.lastUsedAt = now;
+    state.cohorts = state.cohorts.filter(item => item.key !== key).concat(cohort)
+      .slice(-MAX_SELECTION_COHORTS);
+    updateRecentSelection(state, index.deckId, index.datasetVersion, ids);
+    state.updatedAt = now;
+
+    if (!ids.length) {
+      return { ids: [], nextState: clone(state), resumed: false, active: null };
+    }
+    const trainingLength = text(request.trainingLength || request.training_length)
+      || (requestedSize === ids.length ? "finite" : "endless");
+    const active = {
+      token: [index.deckId, now, cohort.seed, cohort.epoch, cohort.cursor].join(":"),
+      deckId: index.deckId,
+      datasetVersion: index.datasetVersion,
+      filterSignature: signature,
+      filters,
+      puzzleIds: ids.slice(),
+      results: [],
+      nextIndex: 0,
+      mode: filters.mode,
+      trainingLength,
+      requestedSize,
+      size: ids.length,
+      createdAt: now,
+      updatedAt: now,
+      expiresAt: addMilliseconds(now, ACTIVE_SELECTION_TTL_MS),
+      completedAt: null,
+    };
+    active.progress = activeProgress(active);
+    state.active = active;
+    return {
+      ids: ids.slice(),
+      nextState: clone(state),
+      resumed: false,
+      active: clone(active),
+    };
   }
 
   function snapshotFrom(value) {
@@ -306,6 +952,7 @@
       username: normalizedUsername(username),
       preferences: emptyPreferences(),
       reviews: Object.create(null),
+      selection: emptySelectionState(),
       updatedAt: null,
     };
   }
@@ -351,6 +998,9 @@
     const raw = object(rawEnvelope);
     const state = emptyState(username);
     state.preferences = sanitizePreferences(raw.preferences, raw.updatedAt || raw.updated_at);
+    // Selection is an independently versioned, ephemeral add-on. Invalid or
+    // future selection payloads reset only traversal state; reviews survive.
+    state.selection = sanitizeSelectionState(raw.selection);
     const containers = reviewContainers(raw);
     Object.keys(containers).forEach(rawDeckId => {
       const deckId = normalizedDeckId(rawDeckId);
@@ -419,6 +1069,9 @@
     const right = rightState || emptyState(username);
     const merged = emptyState(username);
     merged.preferences = mergePreferences(left.preferences, right.preferences);
+    // Ordering/session membership is device-local and must not be resurrected
+    // from a legacy key or imported progress envelope.
+    merged.selection = sanitizeSelectionState(left.selection);
     const deckIds = new Set(Object.keys(object(left.reviews)).concat(Object.keys(object(right.reviews))));
     deckIds.forEach(deckId => {
       const normalized = normalizedDeckId(deckId);
@@ -816,11 +1469,13 @@
 
     function exportedData() {
       sync();
+      const exportedState = clone(state);
+      delete exportedState.selection;
       return JSON.stringify({
         schema: EXPORT_SCHEMA,
         version: CURRENT_VERSION,
         exportedAt: moment(undefined, clock),
-        data: clone(state),
+        data: exportedState,
       }, null, 2);
     }
 
@@ -869,6 +1524,90 @@
       };
     }
 
+    function getSelectionState() {
+      sync();
+      return clone(state.selection);
+    }
+
+    function reserveSelectionSession(rawConfig) {
+      sync();
+      const config = object(rawConfig);
+      const when = moment(config.now, clock);
+      const selected = selectSession({
+        index: config.index,
+        state: state.selection,
+        filters: config.filters,
+        request: config.request,
+        now: when,
+        rng: config.rng,
+      });
+      state.selection = sanitizeSelectionState(selected.nextState);
+      updateState(when);
+      return {
+        ids: selected.ids.slice(),
+        nextState: clone(state.selection),
+        resumed: selected.resumed,
+        active: clone(state.selection.active),
+      };
+    }
+
+    function recordActiveSelectionResult(tokenOrResult, resultOrAt, at) {
+      sync();
+      let token = null;
+      let result = tokenOrResult;
+      let explicitAt = resultOrAt;
+      if (typeof tokenOrResult === "string" && resultOrAt
+          && typeof resultOrAt === "object" && !Array.isArray(resultOrAt)) {
+        token = tokenOrResult;
+        result = resultOrAt;
+        explicitAt = at;
+      }
+      const active = sanitizeActiveSelection(state.selection && state.selection.active);
+      const when = moment(explicitAt, clock);
+      if (!active || token && token !== active.token
+          || timestampMillis(when) >= timestampMillis(active.expiresAt)) {
+        return { accepted: false, active: clone(active), selection: clone(state.selection) };
+      }
+      const expectedId = active.puzzleIds[active.nextIndex];
+      const resultId = resolvedPuzzleId(result);
+      if (!expectedId || resultId !== expectedId) {
+        return { accepted: false, active: clone(active), selection: clone(state.selection) };
+      }
+      active.results.push(clone(object(result)));
+      active.nextIndex += 1;
+      active.updatedAt = when;
+      if (active.nextIndex >= active.puzzleIds.length) active.completedAt = when;
+      active.progress = activeProgress(active);
+      state.selection.active = active;
+      state.selection.updatedAt = when;
+      updateState(when);
+      return { accepted: true, active: clone(active), selection: clone(state.selection) };
+    }
+
+    function clearActiveSelection(tokenOrAt, at) {
+      sync();
+      const active = sanitizeActiveSelection(state.selection && state.selection.active);
+      if (!active) return false;
+      let token = null;
+      let explicitAt = tokenOrAt;
+      if (at !== undefined) {
+        token = text(tokenOrAt);
+        explicitAt = at;
+      } else if (text(tokenOrAt) === active.token) {
+        token = active.token;
+        explicitAt = undefined;
+      } else if (tokenOrAt !== undefined && timestampMillis(tokenOrAt) === null) {
+        token = text(tokenOrAt);
+        explicitAt = undefined;
+      }
+      if (token && token !== active.token) return false;
+      const when = moment(explicitAt, clock);
+      state.selection.active = null;
+      state.selection.updatedAt = when;
+      updateState(when);
+      return true;
+    }
+
     function createStoredSession(config) {
       sync();
       const raw = { ...object(config) };
@@ -909,6 +1648,10 @@
       },
 
       setPreferences,
+      getSelectionState,
+      reserveSelectionSession,
+      recordActiveSelectionResult,
+      clearActiveSelection,
 
       setLastDeck(deckId, at) {
         return setPreferences({ lastDeckId: deckId }, at);
@@ -1171,11 +1914,20 @@
     STORAGE_PREFIX,
     LEGACY_STORAGE_PREFIX,
     EXPORT_SCHEMA,
+    SELECTION_SCHEMA_VERSION,
+    MAX_SELECTION_COHORTS,
+    SELECTION_RECENT_LIMIT,
+    ACTIVE_SELECTION_TTL_MS,
     normalizedUsername,
     storageKey,
     legacyStorageKey,
     normalizeSessionSize,
     normalizeSessionMode,
+    normalizeSelectionFilters,
+    selectionFilterSignature,
+    sanitizeSelectionState,
+    selectGuidedCandidates,
+    selectSession,
     classifyReview,
     normalizeOutcome,
     createTrainerStore,

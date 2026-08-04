@@ -256,6 +256,64 @@ def test_one_scan_routes_records_independently_to_all_five_decks(tmp_path: Path)
         assert manifest["openingTagRoots"] == list(deck.opening_tag_roots)
         assert manifest["inputByteSize"] == FIXTURE.stat().st_size
         assert manifest["inputSha256"] == hashlib.sha256(FIXTURE.read_bytes()).hexdigest()
+        assert manifest["selectionIndex"] == "selection-index.json"
+        assert len(manifest["datasetVersion"]) == 64
+        assert set(manifest["datasetVersion"]) <= set("0123456789abcdef")
+
+        selection_index = json.loads(
+            (root / deck_id / "selection-index.json").read_text()
+        )
+        assert selection_index["schemaVersion"] == 1
+        assert selection_index["deckId"] == deck_id
+        assert selection_index["datasetVersion"] == manifest["datasetVersion"]
+        assert selection_index["count"] == manifest["counts"]["balancedExported"]
+        assert len(selection_index["entries"]) == selection_index["count"]
+        chunk_records = [
+            json.loads((root / deck_id / chunk["path"]).read_text())
+            for chunk in manifest["chunks"]
+        ]
+        indexed_ids = []
+        for entry in selection_index["entries"]:
+            assert set(entry) == {
+                "id",
+                "chunkIndex",
+                "chunkOffset",
+                "variation",
+                "difficulty",
+                "rating",
+                "provenance",
+                "themes",
+                "primaryTheme",
+                "isOpeningPuzzle",
+                "solutionLength",
+                "solverDecisionCount",
+                "tacticalSignature",
+            }
+            indexed = chunk_records[entry["chunkIndex"]][entry["chunkOffset"]]
+            indexed_ids.append(indexed["id"])
+            assert entry["id"] == indexed["id"]
+            assert entry["variation"] == indexed["variation"]
+            assert entry["difficulty"] == indexed["difficulty"]
+            assert entry["rating"] == indexed["rating"]
+            assert entry["provenance"] == indexed["provenance"]
+            assert entry["themes"] == indexed["themes"]
+            assert entry["primaryTheme"] == indexed["primaryTacticalTheme"]
+            assert entry["isOpeningPuzzle"] == indexed["isOpeningPuzzle"]
+            assert entry["solutionLength"] == indexed["solutionLength"]
+            assert entry["solverDecisionCount"] == indexed["solverDecisionCount"]
+            first_move = chess.Move.from_uci(
+                indexed["solutionSteps"][0]["bestMoveUci"]
+            )
+            indexed_board = chess.Board(indexed["puzzleFen"])
+            moving_piece = indexed_board.piece_at(first_move.from_square)
+            assert moving_piece is not None
+            assert entry["tacticalSignature"] == "|".join((
+                indexed["primaryTacticalTheme"],
+                str(indexed["solutionLength"]),
+                moving_piece.symbol().upper(),
+                chess.square_name(first_move.to_square),
+            ))
+        assert indexed_ids == [record["id"] for chunk in chunk_records for record in chunk]
 
         records = [
             json.loads(line)
@@ -311,6 +369,20 @@ def test_subset_rebuild_preserves_other_complete_schema_v2_catalog_entries(
     assert catalog["defaultDeckId"] == "caro-kann-black"
 
 
+def test_subset_rebuild_does_not_catalog_an_existing_deck_with_a_missing_index(
+    tmp_path: Path,
+):
+    root = tmp_path / "data"
+    _run(root)
+    (root / "modern-black" / "selection-index.json").unlink()
+
+    result = _run(root, deck_ids=("colle-white",))
+
+    catalog_ids = [entry["id"] for entry in result["catalog"]["decks"]]
+    assert "colle-white" in catalog_ids
+    assert "modern-black" not in catalog_ids
+
+
 @pytest.mark.parametrize(
     "unsafe",
     [
@@ -337,6 +409,47 @@ def test_balancing_is_deterministic_per_deck(tmp_path: Path):
         assert (first / deck_id / "balanced.jsonl").read_bytes() == (
             second / deck_id / "balanced.jsonl"
         ).read_bytes()
+        assert (first / deck_id / "selection-index.json").read_bytes() == (
+            second / deck_id / "selection-index.json"
+        ).read_bytes()
+
+
+def test_dataset_version_includes_ordered_chunk_locators(tmp_path: Path):
+    one_per_chunk = tmp_path / "one-per-chunk"
+    two_per_chunk = tmp_path / "two-per-chunk"
+    first = _run(
+        one_per_chunk,
+        deck_ids=("caro-kann-black",),
+        chunk_size=1,
+    )
+    second = _run(
+        two_per_chunk,
+        deck_ids=("caro-kann-black",),
+        chunk_size=2,
+    )
+
+    first_manifest = first["manifests"]["caro-kann-black"]
+    second_manifest = second["manifests"]["caro-kann-black"]
+    assert first_manifest["counts"]["balancedExported"] == 2
+    assert second_manifest["counts"]["balancedExported"] == 2
+    assert first_manifest["datasetVersion"] != second_manifest["datasetVersion"]
+
+
+def test_generated_selection_index_passes_static_deployment_validation(
+    tmp_path: Path,
+):
+    from refresh import sync_opening_puzzle_web_data
+
+    root = tmp_path / "data"
+    _run(root, deck_ids=("colle-white",))
+    dashboard = tmp_path / "dashboard"
+
+    result = sync_opening_puzzle_web_data(root, dashboard)
+
+    assert result["decks"] == 1
+    assert (
+        dashboard / "data" / "colle-white" / "selection-index.json"
+    ).read_bytes() == (root / "colle-white" / "selection-index.json").read_bytes()
 
 
 def test_generic_caro_selection_order_matches_legacy_algorithm(tmp_path: Path):
