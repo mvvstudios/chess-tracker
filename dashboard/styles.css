@@ -1745,7 +1745,7 @@ span.severity-red     { background: var(--border-strong); color: var(--text); }
 }
 .trainer-study-bar .opening-deck-filter { grid-column: auto; }
 .trainer-study-control,
-.session-size-control {
+.training-length-control {
   display: grid;
   gap: 0.2rem;
   min-width: 0;
@@ -1773,31 +1773,6 @@ span.severity-red     { background: var(--border-strong); color: var(--text); }
 .trainer-study-control select:hover,
 .customize-sheet select:hover,
 .customize-search input:hover { border-color: var(--border-strong); }
-.session-size-options {
-  display: flex;
-  min-height: 42px;
-  padding: 3px;
-  background: var(--surface-raised);
-  border-radius: var(--trainer-radius-small);
-}
-.session-size-options label { display: grid; cursor: pointer; }
-.session-size-options input { position: absolute; opacity: 0; }
-.session-size-options span {
-  display: grid;
-  min-width: 38px;
-  min-height: 36px;
-  padding: 0 0.55rem;
-  place-items: center;
-  color: var(--muted);
-  border-radius: 6px;
-  font-size: 0.8rem;
-}
-.session-size-options input:checked + span {
-  color: var(--text);
-  background: #454038;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
-}
-.session-size-options input:focus-visible + span { outline: 2px solid var(--accent); }
 .trainer-study-bar > .trainer-secondary-action { min-height: 42px; }
 
 .trainer-session-summary {
@@ -2335,10 +2310,7 @@ button.filter-chip:hover { color: var(--text); }
     padding: 0.5rem;
   }
   .trainer-study-control select { min-height: 42px; padding-inline: 0.45rem 1.5rem; font-size: 0.76rem; }
-  .session-size-control { grid-column: auto; }
-  .session-size-control legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
-  .session-size-options { display: grid; grid-template-columns: repeat(3, 1fr); min-height: 38px; }
-  .session-size-options span { min-width: 28px; min-height: 32px; padding-inline: 0.25rem; }
+  .training-length-control { grid-column: auto; }
   .trainer-session-summary { min-height: 34px; margin: 0; }
   .trainer-session-nav { display: contents; }
   .trainer-review-actions { margin-left: auto; }

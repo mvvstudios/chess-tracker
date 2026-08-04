@@ -58,6 +58,32 @@ def test_primary_phone_flow_is_task_board_feedback_actions_then_customize():
     assert 'role="group" aria-label="Puzzle controls"' in TEMPLATE
     assert 'id="opening-puzzle-deck"' in TEMPLATE
     assert 'id="caro-filter-mode"' in TEMPLATE
+    assert 'id="training-length"' in TEMPLATE
+
+
+def test_training_length_defaults_to_endless_and_keeps_finite_sessions_optional():
+    length_start = TEMPLATE.index('id="training-length"')
+    length_end = TEMPLATE.index("</select>", length_start)
+    length_control = TEMPLATE[length_start:length_end]
+
+    assert 'name="trainingLength"' in length_control
+    assert 'aria-describedby="training-length-help"' in length_control
+    assert '<option value="endless" selected>Endless</option>' in length_control
+    assert '<option value="5">5 puzzles</option>' in length_control
+    assert '<option value="10">10 puzzles</option>' in length_control
+    assert '<option value="20">20 puzzles</option>' in length_control
+    assert 'name="sessionSize"' not in TEMPLATE
+    assert 'id="training-length-help" class="visually-hidden"' in TEMPLATE
+    assert 'id="trainer-header-progress">Endless</strong>' in TEMPLATE
+    assert 'id="puzzle-queue-position">Puzzle 1</span>' in TEMPLATE
+    assert 'id="puzzle-progress-track"' in TEMPLATE
+    assert 'aria-hidden="true" hidden' in TEMPLATE
+    assert 'id="session-restart" class="trainer-secondary-action" type="button" hidden>Restart session</button>' in TEMPLATE
+
+    mobile_study_bar = css_declarations(".trainer-study-bar", start=TRAINER_MOBILE)
+    assert "minmax(0, 1.25fr) minmax(0, 1fr) auto" in mobile_study_bar
+    assert ".training-length-control { grid-column: auto; }" in STYLES[TRAINER_MOBILE:]
+    assert ".session-size-options" not in STYLES[TRAINER_STYLES:]
 
 
 def test_desktop_board_is_primary_and_phone_board_is_square_full_width_overflow_free():

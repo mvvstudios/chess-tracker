@@ -30,7 +30,8 @@ const ELEMENT_IDS = [
   "trainer-onboarding-dismiss", "session-restart", "session-complete",
   "session-complete-title", "session-results", "session-weak-spots",
   "session-review-mistakes", "session-start-another", "reviews-due-button",
-  "review-mistakes-button", "puzzle-review-state", "puzzle-progress-fill",
+  "review-mistakes-button", "puzzle-review-state", "training-length",
+  "puzzle-progress-track", "puzzle-progress-fill",
   "customize-open", "customize-close", "customize-apply", "customize-search",
   "variation-choice-list", "theme-choice-list", "active-filter-chips",
   "progress-import", "progress-transfer-status",
@@ -340,6 +341,7 @@ function seedSolved(storage, ids) {
 }
 
 function seedTrainerState(storage, {
+  sessionMode = "finite",
   sessionSize = 10,
   reviews = {},
 } = {}) {
@@ -349,6 +351,7 @@ function seedTrainerState(storage, {
     username: "me",
     preferences: {
       lastDeckId: "caro-kann-black",
+      sessionMode,
       sessionSize,
       onboardingDismissed: true,
       updatedAt: at,
@@ -460,6 +463,8 @@ async function createHarness(records, {
   elements["caro-filter-provenance"].value = "all";
   elements["caro-filter-lines"].value = "all";
   elements["caro-filter-theme"].value = "all";
+  elements["training-length"].value = "endless";
+  elements["puzzle-progress-track"].hidden = true;
   elements["caro-puzzle-filters"].hidden = true;
   elements["puzzle-uci-form"].submitButton = new FakeElement("uci-submit");
   elements["puzzle-promotion-options"].firstPromotionButton = new FakeElement("first-promotion");
@@ -608,7 +613,13 @@ async function createHarness(records, {
 }
 
 test("loader fetches only the balanced chunks needed to fill the finite session", async () => {
-  const harness = await createHarness([continuationRecord(), continuationRecord()], { chunkCount: 2 });
+  const storage = new MemoryStorage();
+  seedTrainerState(storage, { sessionSize: 10 });
+  const harness = await createHarness([continuationRecord(), continuationRecord()], {
+    chunkCount: 2,
+    storage,
+    trainerEnabled: true,
+  });
   assert.deepEqual(harness.fetches, [
     "data/opening-puzzle-catalog.json",
     "data/caro-kann-black/manifest.json",
@@ -754,10 +765,10 @@ test("opening an empty solved archive does not fetch more chunks", async () => {
     recordWithId("archive-current"),
     recordWithId("archive-later"),
   ], { chunkCount: 2 });
-  assert.equal(harness.fetches.length, 4);
+  assert.equal(harness.fetches.length, 3, "Endless starts from the downloaded pool");
   harness.elements["puzzles-solved-tab"].dispatch("click");
   await harness.settle();
-  assert.equal(harness.fetches.length, 4);
+  assert.equal(harness.fetches.length, 3);
   assert.match(harness.elements["puzzles-solved-empty"].innerHTML, /No solved puzzles/i);
 });
 
@@ -862,7 +873,8 @@ test("advanced line coverage filters main lines and sidelines independently of s
   await harness.settle();
 
   assert.equal(harness.elements["caro-filter-mode"].value, "all");
-  assert.equal(harness.context.CaroKannTrainer.sessionSummary.total, 1);
+  assert.equal(harness.context.CaroKannTrainer.sessionSummary.mode, "endless");
+  assert.equal(harness.context.CaroKannTrainer.sessionSummary.total, null);
   assert.equal(harness.board.config.fen, mainLine.puzzleFen);
   assert.match(harness.elements["active-filter-chips"].innerHTML, /data-clear-filter="lineCoverage"/);
   assert.match(harness.elements["active-filter-chips"].innerHTML, /Main lines/);
@@ -873,7 +885,8 @@ test("advanced line coverage filters main lines and sidelines independently of s
   await harness.settle();
 
   assert.equal(harness.elements["caro-filter-mode"].value, "curriculum");
-  assert.equal(harness.context.CaroKannTrainer.sessionSummary.total, 1);
+  assert.equal(harness.context.CaroKannTrainer.sessionSummary.mode, "endless");
+  assert.equal(harness.context.CaroKannTrainer.sessionSummary.total, null);
   assert.equal(harness.board.config.fen, sideline.puzzleFen);
   assert.match(harness.elements["active-filter-chips"].innerHTML, /Sidelines/);
 });
@@ -919,9 +932,10 @@ test("the visible Clear filters empty-state action resets every filter and resta
   assert.equal(harness.elements["customize-search"].value, "");
   assert.equal(harness.elements["puzzle-page-state"].hidden, true);
   assert.equal(harness.elements["puzzle-workspace"].hidden, false);
-  assert.equal(harness.context.CaroKannTrainer.sessionSummary.total, 2);
+  assert.equal(harness.context.CaroKannTrainer.sessionSummary.total, null);
+  assert.equal(harness.context.CaroKannTrainer.sessionSummary.mode, "endless");
   assert.equal(harness.context.CaroKannTrainer.sessionSummary.completed, 0);
-  assert.equal(harness.elements["puzzle-queue-position"].textContent, "Puzzle 1 of 2");
+  assert.equal(harness.elements["puzzle-queue-position"].textContent, "Puzzle 1");
   assert.equal(harness.board.config.movable.color, "black");
 });
 
@@ -1028,8 +1042,8 @@ test("wrong, illegal, hinted, revealed, reset, and skipped actions preserve perm
   assert.equal(actionHarness.progress().status, "unsolved");
   assert.equal(actionHarness.progress().attempts, 0);
   assert.match(actionHarness.elements["puzzle-feedback"].innerHTML, /Solution revealed/);
-  assert.equal(actionHarness.elements["puzzle-queue-position"].textContent, "Puzzle 1 of 1");
-  assert.equal(actionHarness.elements["trainer-header-progress"].textContent, "1 / 1");
+  assert.equal(actionHarness.elements["puzzle-queue-position"].textContent, "Puzzle 1");
+  assert.equal(actionHarness.elements["trainer-header-progress"].textContent, "1 trained");
   assert.match(actionHarness.elements["puzzle-context-body"].innerHTML, /Qc3\+/);
   actionHarness.elements["puzzle-continue"].dispatch("click");
   await actionHarness.settle();
@@ -1055,13 +1069,111 @@ test("namespaced solved progress survives a controller reload", async () => {
   assert.match(reloaded.elements["puzzle-progress-summary"].textContent, /^1 solved/);
 });
 
+test("training defaults to Endless without a completion boundary", async () => {
+  const records = Array.from({ length: 6 }, (_unused, index) =>
+    recordWithId(`endless-default-${index + 1}`)
+  );
+  const harness = await createHarness(records, {
+    chunkPayloads: [records],
+    trainerEnabled: true,
+  });
+
+  assert.equal(harness.elements["training-length"].value, "endless");
+  assert.equal(harness.trainerState().preferences.sessionMode, "endless");
+  assert.equal(harness.trainerState().preferences.sessionSize, 10);
+  assert.equal(harness.elements["trainer-header-progress"].textContent, "0 trained");
+  assert.equal(harness.elements["puzzle-queue-position"].textContent, "Puzzle 1");
+  assert.equal(harness.elements["puzzle-progress-track"].hidden, true);
+  assert.equal(harness.elements["session-restart"].hidden, true);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(harness.context.CaroKannTrainer.sessionSummary)),
+    { completed: 0, total: null, complete: false, mode: "endless" },
+  );
+
+  harness.elements["puzzle-skip"].dispatch("click");
+  await harness.settle();
+  assert.equal(harness.context.CaroKannTrainer.sessionSummary.completed, 1);
+  assert.equal(harness.context.CaroKannTrainer.sessionSummary.complete, false);
+  assert.equal(harness.elements["trainer-header-progress"].textContent, "1 trained");
+  assert.equal(harness.elements["puzzle-queue-position"].textContent, "Puzzle 2");
+  assert.equal(harness.elements["session-complete"].hidden, true);
+  assert.equal(harness.elements["puzzle-workspace"].hidden, false);
+});
+
+test("Endless rolls past its internal batch without showing a summary or resetting its counter", async () => {
+  const records = Array.from({ length: 21 }, (_unused, index) =>
+    recordWithId(`endless-rollover-${index + 1}`)
+  );
+  const harness = await createHarness(records, {
+    chunkCount: 2,
+    chunkPayloads: [records.slice(0, 20), records.slice(20)],
+    trainerEnabled: true,
+  });
+
+  assert.equal(harness.fetches.some(url => /chunk-0002\.json$/.test(url)), false);
+
+  for (let index = 0; index < 20; index += 1) {
+    harness.elements["puzzle-skip"].dispatch("click");
+    await harness.settle();
+  }
+
+  assert.equal(harness.elements["session-complete"].hidden, true);
+  assert.equal(harness.elements["puzzle-workspace"].hidden, false);
+  assert.equal(harness.elements["puzzle-queue-position"].textContent, "Puzzle 21");
+  assert.equal(harness.elements["trainer-header-progress"].textContent, "20 trained");
+  assert.equal(harness.elements["puzzle-progress-track"].hidden, true);
+  assert.equal(harness.fetches.some(url => /chunk-0002\.json$/.test(url)), true);
+  assert.equal(harness.context.CaroKannTrainer.sessionSummary.completed, 20);
+  assert.equal(harness.context.CaroKannTrainer.sessionSummary.complete, false);
+});
+
+test("choosing a finite training length persists and restores the session goal", async () => {
+  const storage = new MemoryStorage();
+  const records = Array.from({ length: 10 }, (_unused, index) =>
+    recordWithId(`finite-choice-${index + 1}`)
+  );
+  const first = await createHarness(records, {
+    storage,
+    chunkPayloads: [records],
+    trainerEnabled: true,
+  });
+
+  first.elements["training-length"].value = "5";
+  first.elements["training-length"].dispatch("change");
+  await first.settle();
+
+  assert.equal(first.trainerState().preferences.sessionMode, "finite");
+  assert.equal(first.trainerState().preferences.sessionSize, 5);
+  assert.equal(first.elements["training-length"].value, "5");
+  assert.equal(first.elements["trainer-header-progress"].textContent, "1 / 5");
+  assert.equal(first.elements["puzzle-queue-position"].textContent, "Puzzle 1 of 5");
+  assert.equal(first.elements["puzzle-progress-track"].hidden, false);
+  assert.equal(first.elements["session-restart"].hidden, false);
+  assert.equal(first.context.CaroKannTrainer.sessionSummary.total, 5);
+
+  const reloaded = await createHarness(records, {
+    storage,
+    chunkPayloads: [records],
+    trainerEnabled: true,
+  });
+  assert.equal(reloaded.elements["training-length"].value, "5");
+  assert.equal(reloaded.trainerState().preferences.sessionMode, "finite");
+  assert.equal(reloaded.trainerState().preferences.sessionSize, 5);
+  assert.equal(reloaded.elements["trainer-header-progress"].textContent, "1 / 5");
+  assert.equal(reloaded.elements["puzzle-progress-track"].hidden, false);
+  assert.equal(reloaded.context.CaroKannTrainer.sessionSummary.total, 5);
+});
+
 test("five-puzzle sessions summarize hint, reveal, retry, skip, and clean outcomes", async () => {
   const records = Array.from({ length: 5 }, (_unused, index) =>
     recordWithId(`session-outcome-${index + 1}`)
   );
+  const storage = new MemoryStorage();
+  seedTrainerState(storage, { sessionSize: 5 });
   const harness = await createHarness(records, {
     chunkCount: 1,
     chunkPayloads: [records],
+    storage,
     trainerEnabled: true,
   });
 
@@ -1496,8 +1608,11 @@ test("pagehide finalizes engaged attempts except when the page enters the back-f
     const closingRecords = Array.from({ length: 5 }, (_unused, index) =>
       recordWithId(`pagehide-${scenario.name}-close-${index + 1}`)
     );
+    const closingStorage = new MemoryStorage();
+    seedTrainerState(closingStorage, { sessionSize: 5 });
     const closing = await createHarness(closingRecords, {
       chunkPayloads: [closingRecords],
+      storage: closingStorage,
       trainerEnabled: true,
     });
     scenario.engage(closing);
@@ -1520,8 +1635,11 @@ test("pagehide finalizes engaged attempts except when the page enters the back-f
     const cachedRecords = Array.from({ length: 5 }, (_unused, index) =>
       recordWithId(`pagehide-${scenario.name}-cached-${index + 1}`)
     );
+    const cachedStorage = new MemoryStorage();
+    seedTrainerState(cachedStorage, { sessionSize: 5 });
     const cached = await createHarness(cachedRecords, {
       chunkPayloads: [cachedRecords],
+      storage: cachedStorage,
       trainerEnabled: true,
     });
     scenario.engage(cached);

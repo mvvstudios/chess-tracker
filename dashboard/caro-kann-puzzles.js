@@ -19,7 +19,9 @@
   const PAGE_TITLE = "Chess Opening Puzzle Trainer";
   const DEFAULT_SESSION_SIZE = 10;
   const SESSION_SIZES = [5, 10, 20];
-  const DATA_CACHE = "chess-opening-trainer-data-v1";
+  const DEFAULT_SESSION_MODE = "endless";
+  const ENDLESS_BATCH_SIZE = 20;
+  const DATA_CACHE = "chess-opening-trainer-data-v2";
   const fallbackEscape = value => String(value == null ? "" : value).replace(
     /[&"'<>]/g,
     character => ({
@@ -102,6 +104,7 @@
     filterChips: document.getElementById("active-filter-chips"),
     onboarding: document.getElementById("trainer-onboarding"),
     onboardingDismiss: document.getElementById("trainer-onboarding-dismiss"),
+    trainingLength: document.getElementById("training-length"),
     sessionRestart: document.getElementById("session-restart"),
     sessionComplete: document.getElementById("session-complete"),
     sessionCompleteTitle: document.getElementById("session-complete-title"),
@@ -112,6 +115,7 @@
     reviewsDue: document.getElementById("reviews-due-button"),
     reviewMistakes: document.getElementById("review-mistakes-button"),
     reviewState: document.getElementById("puzzle-review-state"),
+    progressTrack: document.getElementById("puzzle-progress-track"),
     progressFill: document.getElementById("puzzle-progress-fill"),
     curriculum: document.getElementById("curriculum-journey"),
     curriculumGroups: document.getElementById("curriculum-groups"),
@@ -164,7 +168,9 @@
     reviewStore: null,
     session: null,
     presentation: null,
+    sessionMode: DEFAULT_SESSION_MODE,
     sessionSize: DEFAULT_SESSION_SIZE,
+    endlessCompleted: 0,
     reviewModeIds: null,
     sessionCompletionTracked: false,
     lastMistakeIds: [],
@@ -191,9 +197,26 @@
     storageNamespace: LEGACY_STORAGE_NAMESPACE,
     get selectedDeckId() { return state.deck ? state.deck.id : null; },
     selectDeck(deckId) { return switchDeck(deckId, false); },
-    startSession(size) { return startSession({ size }); },
+    startSession(length) {
+      if (length === "endless") return startSession({ mode: "endless" });
+      const size = Number(length);
+      return SESSION_SIZES.includes(size)
+        ? startSession({ mode: "finite", size })
+        : startPreferredSession();
+    },
     reviewMistakes() { return startMistakeReview(); },
-    get sessionSummary() { return state.session ? sessionSummary(state.session) : null; },
+    get sessionSummary() {
+      if (!state.session) return null;
+      if (isEndlessSession()) {
+        return {
+          completed: state.endlessCompleted + sessionCompletedCount(state.session),
+          total: null,
+          complete: false,
+          mode: "endless",
+        };
+      }
+      return sessionSummary(state.session);
+    },
   });
 
   function progressUsername() {
@@ -211,12 +234,14 @@
   }
 
   function restorePreferences() {
+    state.sessionMode = preference("sessionMode", DEFAULT_SESSION_MODE) === "finite"
+      ? "finite" : DEFAULT_SESSION_MODE;
     const size = Number(preference("sessionSize", DEFAULT_SESSION_SIZE));
     state.sessionSize = SESSION_SIZES.includes(size) ? size : DEFAULT_SESSION_SIZE;
-    const option = document.querySelector
-      ? document.querySelector(`input[name="sessionSize"][value="${state.sessionSize}"]`)
-      : null;
-    if (option) option.checked = true;
+    if (elements.trainingLength) {
+      elements.trainingLength.value = state.sessionMode === "endless"
+        ? "endless" : String(state.sessionSize);
+    }
   }
 
   function preference(name, fallback) {
@@ -236,6 +261,8 @@
         state.reviewStore.setLastDeck(value);
       } else if (name === "sessionSize" && typeof state.reviewStore.setSessionSize === "function") {
         state.reviewStore.setSessionSize(value);
+      } else if (name === "sessionMode" && typeof state.reviewStore.setSessionMode === "function") {
+        state.reviewStore.setSessionMode(value);
       } else if (typeof state.reviewStore.setPreferences === "function") {
         state.reviewStore.setPreferences({ [name]: value });
       }
@@ -442,6 +469,7 @@
     state.filterSignature = "";
     state.session = null;
     state.presentation = null;
+    state.endlessCompleted = 0;
     state.reviewModeIds = null;
     state.sessionCompletionTracked = false;
     state.unavailableReviewIds = new Set();
@@ -518,7 +546,7 @@
       if (generation !== state.loadGeneration) return false;
       rebuildPartition(true);
       if (!state.unsolved.length && hasMoreChunks()) await ensureUnsolvedCandidates(1, generation);
-      const started = await startSession({ size: state.sessionSize, preserveTab: true });
+      const started = await startPreferredSession({ preserveTab: true });
       if (!started && !state.candidates.length && (state.chunkErrors.length || state.invalidCount)) {
         trackEvent("load_failure", { stage: "positions", deckId: deck.id });
         showFatal(`No ${deck.openingFamily} positions could be prepared. Check your connection and retry.`, () => switchDeck(deck.id, false));
@@ -943,14 +971,56 @@
     return [...missing];
   }
 
+  function preferredSessionSettings(options) {
+    const preferenceSettings = state.sessionMode === "finite"
+      ? { mode: "finite", size: state.sessionSize }
+      : { mode: "endless" };
+    return Object.assign({}, options || {}, preferenceSettings);
+  }
+
+  function startPreferredSession(options) {
+    return startSession(preferredSessionSettings(options));
+  }
+
+  function isEndlessSession(session) {
+    const active = session || state.session;
+    return Boolean(active && active.endless === true);
+  }
+
+  function isEndlessTraining() {
+    return state.session
+      ? isEndlessSession(state.session)
+      : !state.reviewModeIds && state.sessionMode === "endless";
+  }
+
+  function displayPuzzleNumber() {
+    const current = sessionPuzzleNumber();
+    return isEndlessSession() ? state.endlessCompleted + current : current;
+  }
+
   async function startSession(options) {
     if (!state.manifest || !state.store) return false;
     const settings = options || {};
     const reviewSession = Array.isArray(settings.reviewIds);
-    const requestedSize = Number(settings.size || state.sessionSize || DEFAULT_SESSION_SIZE);
-    if (!reviewSession) {
-      state.sessionSize = SESSION_SIZES.includes(requestedSize) ? requestedSize : DEFAULT_SESSION_SIZE;
+    const hasExplicitSize = Object.prototype.hasOwnProperty.call(settings, "size");
+    const explicitMode = settings.mode === "finite" || settings.mode === "endless"
+      ? settings.mode : null;
+    const requestedMode = reviewSession
+      ? "finite" : explicitMode || (hasExplicitSize ? "finite" : state.sessionMode);
+    const rawRequestedSize = Number(settings.size);
+    const requestedSize = SESSION_SIZES.includes(rawRequestedSize)
+      ? rawRequestedSize : state.sessionSize;
+    if (!reviewSession && !settings.rollover) {
+      finalizeAbandonedPresentation("session_restarted");
+      state.sessionMode = requestedMode;
+      setPreference("sessionMode", state.sessionMode);
+      if (requestedMode === "finite") state.sessionSize = requestedSize;
       setPreference("sessionSize", state.sessionSize);
+      state.endlessCompleted = 0;
+      if (elements.trainingLength) {
+        elements.trainingLength.value = state.sessionMode === "endless"
+          ? "endless" : String(state.sessionSize);
+      }
     }
     if (reviewSession) {
       const previousReviewModeIds = state.reviewModeIds;
@@ -970,20 +1040,24 @@
     } else if (!settings.keepReviewMode) {
       state.reviewModeIds = null;
     }
-    finalizeAbandonedPresentation("session_restarted");
+    if (reviewSession && !settings.rollover) {
+      finalizeAbandonedPresentation("session_restarted");
+    }
     state.session = null;
     state.sessionCompletionTracked = false;
     let ordered = orderedTrainingCandidates();
-    // The first downloaded chunk normally contains far more than a complete
-    // session. If a narrow focus does not, fetch only enough already-balanced
-    // chunks to honor the selected session size.
-    const reviewLimit = Number.isInteger(requestedSize) && requestedSize > 0
-      ? Math.min(20, requestedSize) : Math.min(20, state.sessionSize);
+    // Finite goals wait for enough positions to honor the selected size.
+    // Endless starts immediately with what is already downloaded; when that
+    // rolling batch is exhausted, the next batch fetches only as needed.
+    const reviewLimit = Number.isInteger(rawRequestedSize) && rawRequestedSize > 0
+      ? Math.min(20, rawRequestedSize) : Math.min(20, state.sessionSize);
     const desired = state.reviewModeIds
       ? Math.min(reviewLimit, state.reviewModeIds.length)
-      : state.sessionSize;
-    if (ordered.length < desired && hasMoreChunks()) {
-      await ensureTrainingCandidates(desired);
+      : requestedMode === "endless" ? ENDLESS_BATCH_SIZE : state.sessionSize;
+    const minimumReady = requestedMode === "endless" && !state.reviewModeIds
+      ? 1 : desired;
+    if (ordered.length < minimumReady && hasMoreChunks()) {
+      await ensureTrainingCandidates(minimumReady);
       ordered = orderedTrainingCandidates();
     }
     const target = Math.min(desired, ordered.length);
@@ -1020,6 +1094,9 @@
       };
     }
     state.session.size = target;
+    state.session.endless = !reviewSession && requestedMode === "endless";
+    state.session.trainingLength = reviewSession
+      ? "review" : state.session.endless ? "endless" : "finite";
     state.session.puzzleIds = Array.isArray(state.session.puzzleIds)
       ? state.session.puzzleIds : puzzleIds;
     state.session.results = Array.isArray(state.session.results) ? state.session.results : [];
@@ -1037,7 +1114,13 @@
     state.lastReplyUci = null;
     if (!settings.preserveTab) activateTab("unsolved", false);
     renderAll();
-    trackEvent("session_started", { size: target, mode: state.reviewModeIds ? "review" : currentFilters().mode });
+    if (!settings.rollover) {
+      trackEvent("session_started", {
+        size: state.session.endless ? null : target,
+        trainingLength: state.session.trainingLength,
+        mode: state.reviewModeIds ? "review" : currentFilters().mode,
+      });
+    }
     return true;
   }
 
@@ -1146,7 +1229,7 @@
       hintUsed: result.hintUsed,
       revealed: result.revealed,
     });
-    if (!state.sessionCompletionTracked && state.session
+    if (!isEndlessSession() && !state.sessionCompletionTracked && state.session
         && sessionCompletedCount(state.session) >= state.session.size) {
       state.sessionCompletionTracked = true;
       trackEvent("session_completed", sessionEventSummary(state.session));
@@ -1161,7 +1244,7 @@
     const engaged = state.firstMoveTracked || state.presentation.hintUsed
       || Number(state.presentation.incorrectCount) > 0;
     if (!engaged) return false;
-    const puzzleNumber = sessionPuzzleNumber();
+    const puzzleNumber = displayPuzzleNumber();
     state.presentation.skipped = true;
     trackEvent("puzzle_skipped", { puzzleNumber, reason: reason || "study_changed" });
     return finalizePresentation(candidate, "skipped");
@@ -1353,9 +1436,18 @@
     const completed = sessionCompletedCount(state.session);
     const target = state.session ? state.session.size : state.sessionSize;
     if (elements.headerProgress) {
-      const position = state.completedCandidate || state.session && state.session.showSummary
-        ? completed : completed + 1;
-      elements.headerProgress.textContent = `${Math.min(position, target)} / ${target}`;
+      if (isEndlessTraining()) {
+        const trained = state.endlessCompleted + completed;
+        elements.headerProgress.textContent = `${trained.toLocaleString()} trained`;
+      } else {
+        const position = state.completedCandidate || state.session && state.session.showSummary
+          ? completed : completed + 1;
+        elements.headerProgress.textContent = `${Math.min(position, target)} / ${target}`;
+      }
+    }
+    if (elements.sessionRestart) {
+      elements.sessionRestart.hidden = isEndlessTraining()
+        || Boolean(state.reviewModeIds);
     }
     if (elements.reviewsDue) {
       const due = reviewDueCount();
@@ -1379,7 +1471,7 @@
   }
 
   function renderUnsolved() {
-    if (state.session && state.session.showSummary) {
+    if (state.session && !isEndlessSession() && state.session.showSummary) {
       elements.workspace.hidden = true;
       elements.pageState.hidden = true;
       renderSessionComplete();
@@ -1427,11 +1519,16 @@
     elements.sideToMove.textContent = completed
       ? state.feedbackMode === "revealed" ? "Review the stored continuation" : "Stored continuation complete"
       : `${side} to move${decisionLabel}`;
-    const sessionPosition = sessionPuzzleNumber();
-    elements.queuePosition.textContent = `Puzzle ${sessionPosition} of ${state.session ? state.session.size : state.sessionSize}`;
+    const sessionPosition = displayPuzzleNumber();
+    elements.queuePosition.textContent = isEndlessSession()
+      ? `Puzzle ${sessionPosition}`
+      : `Puzzle ${sessionPosition} of ${state.session ? state.session.size : state.sessionSize}`;
+    if (elements.progressTrack) elements.progressTrack.hidden = isEndlessTraining();
     if (elements.progressFill) {
       const completedCount = sessionCompletedCount(state.session);
-      elements.progressFill.style.width = `${Math.min(100, completedCount / Math.max(1, state.session ? state.session.size : state.sessionSize) * 100)}%`;
+      elements.progressFill.style.width = isEndlessSession()
+        ? "0%"
+        : `${Math.min(100, completedCount / Math.max(1, state.session ? state.session.size : state.sessionSize) * 100)}%`;
     }
     if (elements.reviewState) elements.reviewState.textContent = reviewLabel(candidate);
     elements.board.setAttribute("aria-label", completed
@@ -1643,7 +1740,8 @@
     const locked = completed || state.linePhase !== "awaiting_user";
     elements.continueButton.hidden = !completed;
     if (completed) {
-      elements.continueButton.textContent = state.session && sessionCompletedCount(state.session) >= state.session.size
+      elements.continueButton.textContent = !isEndlessSession() && state.session
+        && sessionCompletedCount(state.session) >= state.session.size
         ? "View session results" : "Next puzzle";
     }
     elements.skipButton.hidden = completed;
@@ -1809,7 +1907,7 @@
     const move = normalizeUci(rawMove);
     if (!state.firstMoveTracked) {
       state.firstMoveTracked = true;
-      trackEvent("first_move_attempted", { puzzleNumber: sessionPuzzleNumber() });
+      trackEvent("first_move_attempted", { puzzleNumber: displayPuzzleNumber() });
     }
     let result;
     try {
@@ -1913,7 +2011,10 @@
 
   function updateAttemptLabel(candidate) {
     const attempts = state.presentation ? state.presentation.incorrectCount : 0;
-    elements.queuePosition.textContent = `Puzzle ${sessionPuzzleNumber()} of ${state.session ? state.session.size : state.sessionSize}`
+    const position = displayPuzzleNumber();
+    elements.queuePosition.textContent = (isEndlessSession()
+      ? `Puzzle ${position}`
+      : `Puzzle ${position} of ${state.session ? state.session.size : state.sessionSize}`)
       + `${attempts ? ` · ${attempts} ${attempts === 1 ? "retry" : "retries"}` : ""}`;
   }
 
@@ -1999,7 +2100,7 @@
   function revealSolution() {
     const candidate = currentCandidate();
     if (!candidate || state.completedCandidate || state.linePhase !== "awaiting_user") return;
-    const puzzleNumber = sessionPuzzleNumber();
+    const puzzleNumber = displayPuzzleNumber();
     try {
       state.store.revealSolution(puzzleId(candidate), new Date().toISOString());
     } catch (error) {
@@ -2016,6 +2117,7 @@
     trackEvent("solution_revealed", { puzzleNumber });
     finalizePresentation(candidate, "revealed");
     renderWarnings();
+    renderCounts();
     renderUnsolved();
     queueMicrotask(() => elements.continueButton.focus());
   }
@@ -2035,13 +2137,13 @@
     elements.hintButton.disabled = true;
     elements.feedback.textContent = `Hint: start with the ${colorLabel(solverColor())} piece on ${best.slice(0, 2)}.`;
     elements.feedback.setAttribute("data-state", "revealed");
-    trackEvent("hint_used", { puzzleNumber: sessionPuzzleNumber() });
+    trackEvent("hint_used", { puzzleNumber: displayPuzzleNumber() });
   }
 
   async function skipCurrent() {
     const candidate = currentCandidate();
     if (!candidate || state.completedCandidate) return;
-    const puzzleNumber = sessionPuzzleNumber();
+    const puzzleNumber = displayPuzzleNumber();
     clearIncorrectTimer();
     clearOpponentReplyTimer();
     closePromotionChooser(false);
@@ -2061,6 +2163,16 @@
     clearOpponentReplyTimer();
     if (!state.session) return;
     if (sessionCompletedCount(state.session) >= state.session.size) {
+      if (isEndlessSession()) {
+        state.endlessCompleted += sessionCompletedCount(state.session);
+        const started = await startSession({
+          mode: "endless",
+          preserveTab: true,
+          rollover: true,
+        });
+        if (started) focusPuzzleStart();
+        return;
+      }
       state.session.showSummary = true;
       state.lastMistakeIds = sessionSummary(state.session).mistakeIds || [];
       renderAll();
@@ -2765,7 +2877,7 @@
     }
     rebuildPartition(true);
     if (!state.unsolved.length && hasMoreChunks()) await ensureUnsolvedCandidates();
-    await startSession({ size: state.sessionSize, preserveTab: true });
+    await startPreferredSession({ preserveTab: true });
   }
 
   function bindEvents() {
@@ -2821,23 +2933,24 @@
     });
     if (elements.onboardingDismiss) elements.onboardingDismiss.addEventListener("click", dismissOnboarding);
     if (elements.sessionRestart) elements.sessionRestart.addEventListener("click", () => {
-      void startSession({ size: state.sessionSize });
+      void startPreferredSession();
     });
-    if (document.querySelectorAll) {
-      document.querySelectorAll('input[name="sessionSize"]').forEach(input => {
-        input.addEventListener("change", () => {
-          const size = Number(input.value);
-          if (input.checked && SESSION_SIZES.includes(size)) {
-            void startSession({ size });
-          }
-        });
+    if (elements.trainingLength) {
+      elements.trainingLength.addEventListener("change", () => {
+        const value = elements.trainingLength.value;
+        if (value === "endless") {
+          void startSession({ mode: "endless" });
+          return;
+        }
+        const size = Number(value);
+        if (SESSION_SIZES.includes(size)) void startSession({ mode: "finite", size });
       });
     }
     if (elements.reviewsDue) elements.reviewsDue.addEventListener("click", () => { void startDueReview(); });
     if (elements.reviewMistakes) elements.reviewMistakes.addEventListener("click", () => { void startMistakeReview(); });
     if (elements.sessionReviewMistakes) elements.sessionReviewMistakes.addEventListener("click", () => { void startMistakeReview(); });
     if (elements.sessionStartAnother) elements.sessionStartAnother.addEventListener("click", () => {
-      void startSession({ size: state.sessionSize });
+      void startPreferredSession();
     });
     if (elements.curriculumGroups) elements.curriculumGroups.addEventListener("click", event => {
       const button = event.target.closest && event.target.closest("button[data-curriculum-group]");
@@ -2863,7 +2976,7 @@
         closeDeckLibrary(false);
         activateTab("unsolved", false);
         if (state.session && state.session.showSummary) {
-          void startSession({ size: state.sessionSize });
+          void startPreferredSession();
         } else {
           renderAll();
           focusPuzzleStart();
@@ -3002,7 +3115,7 @@
         prepareReviewRecords();
         // Another tab may update the archives while this one is showing a
         // completed line. Refresh the backing stores without destroying the
-        // active finite session or its teaching state.
+        // active training queue or its teaching state.
         rebuildPartition(false);
         renderAll();
       } catch (error) {

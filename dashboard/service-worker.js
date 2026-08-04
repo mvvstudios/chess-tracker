@@ -1,9 +1,10 @@
 "use strict";
 
 const CACHE_PREFIX = "chess-opening-trainer-";
-const CACHE_VERSION = "v2";
-const SHELL_CACHE = `${CACHE_PREFIX}shell-${CACHE_VERSION}`;
-const DATA_CACHE = `${CACHE_PREFIX}data-${CACHE_VERSION}`;
+const SHELL_CACHE_VERSION = "v3";
+const DATA_CACHE_VERSION = "v2";
+const SHELL_CACHE = `${CACHE_PREFIX}shell-${SHELL_CACHE_VERSION}`;
+const DATA_CACHE = `${CACHE_PREFIX}data-${DATA_CACHE_VERSION}`;
 
 // Keep this list limited to the application shell. Opening-puzzle manifests and
 // chunks are cached only after the trainer requests them.

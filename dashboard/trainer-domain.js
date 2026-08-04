@@ -11,6 +11,8 @@
   const SESSION_VERSION = 1;
   const SESSION_SIZES = Object.freeze([5, 10, 20]);
   const DEFAULT_SESSION_SIZE = 10;
+  const SESSION_MODES = Object.freeze(["endless", "finite"]);
+  const DEFAULT_SESSION_MODE = "endless";
   const STORAGE_PREFIX = "chess-tracker:opening-trainer:v2:";
   const LEGACY_STORAGE_PREFIX = "chess-tracker:opening-trainer:v1:";
   const EXPORT_SCHEMA = "chess-tracker-opening-trainer";
@@ -93,6 +95,15 @@
     return SESSION_SIZES.includes(normalizedFallback)
       ? normalizedFallback
       : DEFAULT_SESSION_SIZE;
+  }
+
+  function normalizeSessionMode(value, fallback) {
+    const normalized = text(value).toLowerCase();
+    if (SESSION_MODES.includes(normalized)) return normalized;
+    const normalizedFallback = text(fallback).toLowerCase();
+    return SESSION_MODES.includes(normalizedFallback)
+      ? normalizedFallback
+      : DEFAULT_SESSION_MODE;
   }
 
   function timestampMillis(value) {
@@ -179,6 +190,7 @@
   function emptyPreferences() {
     return {
       lastDeckId: null,
+      sessionMode: DEFAULT_SESSION_MODE,
       sessionSize: DEFAULT_SESSION_SIZE,
       onboardingDismissed: false,
       updatedAt: null,
@@ -192,6 +204,10 @@
     );
     return {
       lastDeckId: deckId || null,
+      sessionMode: normalizeSessionMode(
+        raw.sessionMode !== undefined ? raw.sessionMode : raw.session_mode,
+        DEFAULT_SESSION_MODE,
+      ),
       sessionSize: normalizeSessionSize(
         raw.sessionSize !== undefined ? raw.sessionSize
           : raw.session_size !== undefined ? raw.session_size
@@ -381,14 +397,17 @@
     const left = sanitizePreferences(leftPreferences);
     const right = sanitizePreferences(rightPreferences);
     const leftHasData = Boolean(left.updatedAt || left.lastDeckId
+      || left.sessionMode !== DEFAULT_SESSION_MODE
       || left.sessionSize !== DEFAULT_SESSION_SIZE || left.onboardingDismissed);
     const rightHasData = Boolean(right.updatedAt || right.lastDeckId
+      || right.sessionMode !== DEFAULT_SESSION_MODE
       || right.sessionSize !== DEFAULT_SESSION_SIZE || right.onboardingDismissed);
     const rightIsNewer = (!leftHasData && rightHasData)
       || (timestampMillis(right.updatedAt) || 0) > (timestampMillis(left.updatedAt) || 0);
     const preferred = rightIsNewer ? right : left;
     return {
       lastDeckId: preferred.lastDeckId || left.lastDeckId || right.lastDeckId || null,
+      sessionMode: normalizeSessionMode(preferred.sessionMode, DEFAULT_SESSION_MODE),
       sessionSize: normalizeSessionSize(preferred.sessionSize, DEFAULT_SESSION_SIZE),
       onboardingDismissed: Boolean(left.onboardingDismissed || right.onboardingDismissed),
       updatedAt: latestTimestamp(left.updatedAt, right.updatedAt),
@@ -783,6 +802,9 @@
       if (Object.prototype.hasOwnProperty.call(raw, "sessionSize")) {
         next.sessionSize = normalizeSessionSize(raw.sessionSize, next.sessionSize);
       }
+      if (Object.prototype.hasOwnProperty.call(raw, "sessionMode")) {
+        next.sessionMode = normalizeSessionMode(raw.sessionMode, next.sessionMode);
+      }
       if (Object.prototype.hasOwnProperty.call(raw, "onboardingDismissed")) {
         next.onboardingDismissed = raw.onboardingDismissed === true;
       }
@@ -894,6 +916,10 @@
 
       setSessionSize(size, at) {
         return setPreferences({ sessionSize: size }, at);
+      },
+
+      setSessionMode(mode, at) {
+        return setPreferences({ sessionMode: mode }, at);
       },
 
       dismissOnboarding(at) {
@@ -1140,6 +1166,8 @@
     CURRENT_VERSION,
     SESSION_SIZES,
     DEFAULT_SESSION_SIZE,
+    SESSION_MODES,
+    DEFAULT_SESSION_MODE,
     STORAGE_PREFIX,
     LEGACY_STORAGE_PREFIX,
     EXPORT_SCHEMA,
@@ -1147,6 +1175,7 @@
     storageKey,
     legacyStorageKey,
     normalizeSessionSize,
+    normalizeSessionMode,
     classifyReview,
     normalizeOutcome,
     createTrainerStore,

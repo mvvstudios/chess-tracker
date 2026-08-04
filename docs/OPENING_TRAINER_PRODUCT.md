@@ -40,7 +40,8 @@ mixes with the personal puzzle queue.
 
 The adaptive envelope stores:
 
-- the last selected deck, 5/10/20 session preference, and onboarding dismissal;
+- the last selected deck, Endless/finite training preference, last selected
+  finite length (5, 10, or 20), and onboarding dismissal;
 - review counters and scheduling per deck and puzzle ID;
 - a small snapshot of variation, curriculum group, tactical themes, and
   application difficulty.
@@ -60,11 +61,23 @@ validates the wrapper and known deck IDs, then merges with current device data;
 it does not blindly replace newer local progress. This is the supported
 cross-device path while the product remains account-free.
 
-## Finite sessions
+## Endless training and optional finite sessions
 
-Sessions contain 5, 10, or 20 puzzle IDs and default to 10. The active session
-is intentionally page-memory state; durable learning is recorded per puzzle as
-each result is finalized. A result is accepted once and records:
+Normal opening training defaults to **Endless**. It continues serving positions
+until the player stops or changes their study setup, with no artificial finish
+line or session-complete screen. Players who want a bounded goal can choose a
+5-, 10-, or 20-puzzle session from the visible Training length control; those
+finite sessions retain the completion summary and mistake-review loop.
+
+The stored `sessionMode` preference distinguishes Endless from finite training,
+while `sessionSize` remembers the last finite length. An existing v2 envelope
+without `sessionMode` safely defaults to Endless without discarding its saved
+5/10/20 value. Explicit Due and Review Mistakes runs remain finite and do not
+change the player's normal Training length preference.
+
+The active training queue is intentionally page-memory state; durable learning
+is recorded per puzzle as each result is finalized. A result is accepted once
+and records:
 
 - solved, skipped, or revealed outcome;
 - incorrect move count and hints used;
@@ -72,14 +85,14 @@ each result is finalized. A result is accepted once and records:
 - variation, curriculum group, and tactical themes.
 
 An unassisted solve requires a completed line on the first try with no hint,
-skip, or revealed solution. Session summaries derive completed puzzles,
+skip, or revealed solution. Finite-session summaries derive completed puzzles,
 first-try accuracy, unassisted solves, hints, reveals, skips, weak variations,
 weak themes, and the IDs eligible for “Review mistakes.” Starting another
-session creates a new finite set; it does not reset permanent solved progress.
-If a player changes deck, filters, mode, or session after engaging with a
-position, the unfinished encounter is recorded as a supportive review lapse
-before the in-memory session is replaced. An untouched position is not
-penalized.
+finite session creates a new bounded set; it does not reset permanent solved
+progress. If a player changes deck, filters, mode, or Training length after
+engaging with a position, the unfinished encounter is recorded as a supportive
+review lapse before the in-memory queue is replaced. An untouched position is
+not penalized.
 
 ## Adaptive review model
 
@@ -113,13 +126,13 @@ available. Current event-specific properties are:
 | --- | --- |
 | `trainer_opened` | none |
 | `deck_selected` | `solverColor` |
-| `session_started` | `size`, `mode` |
+| `session_started` | `size` (`null` for Endless), `mode`, `trainingLength` (`endless`, `finite`, or `review`) |
 | `first_move_attempted` | `puzzleNumber` |
 | `puzzle_completed` | `outcome`, `firstTry`, `unassisted`, `hintUsed`, `revealed` |
 | `hint_used` | `puzzleNumber` |
 | `solution_revealed` | `puzzleNumber` |
 | `puzzle_skipped` | `puzzleNumber`, optional `reason` for an interrupted study |
-| `session_completed` | `size`, `completed`, `firstTryAccuracy`, `unassisted`, `hints`, `reveals` |
+| `session_completed` | Finite and explicit review runs only: `size`, `completed`, `firstTryAccuracy`, `unassisted`, `hints`, `reveals` |
 | `review_mistakes_selected` | `count` |
 | `load_failure` | `stage` (`catalog`, `deck`, `chunk`, or `positions`) and `deckId` when known |
 
@@ -127,10 +140,13 @@ Do not attach moves, FENs, source-game URLs, usernames, or imported progress to
 events. If a future first-party collector needs a weekly user count, it should
 attach a random installation identifier generated on-device and disclose that
 collection. The initial north-star query is: distinct installations with at
-least two `session_completed` events in an ISO week. `session_started.mode`
-can be joined by `sessionId` when the metric should exclude review sessions.
-Without such a first-party sink and pseudonymous identifier, events remain
-local integration hooks and the repository does not claim a weekly-user count.
+least two non-review `session_completed` events in an ISO week. Because that
+event is finite-only, this is explicitly a measure of focused finite-session
+use, not of all Endless trainer activity. `session_started.trainingLength` can
+be joined by `sessionId` to exclude review runs. Endless internal queue
+rollovers do not emit `session_completed`. Without a first-party sink and
+pseudonymous identifier, events remain local integration hooks and the
+repository does not claim a weekly-user count.
 
 ## Offline boundary
 

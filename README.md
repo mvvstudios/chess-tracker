@@ -91,8 +91,9 @@ details are in
 [docs/OPENING_PUZZLE_DECKS.md](docs/OPENING_PUZZLE_DECKS.md). The original
 Caro-Kann-only entry point remains documented in
 [docs/CARO_KANN_PUZZLES.md](docs/CARO_KANN_PUZZLES.md). Public routes, local
-review storage, finite sessions, first-party events, export/import, and offline
-boundaries are documented in
+review storage, Endless-by-default training with optional 5/10/20-puzzle
+summaries, first-party events, export/import, and offline boundaries are
+documented in
 [docs/OPENING_TRAINER_PRODUCT.md](docs/OPENING_TRAINER_PRODUCT.md).
 
 ## Annotations

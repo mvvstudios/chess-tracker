@@ -83,23 +83,27 @@ test("storage keys normalize usernames and stay separate from puzzle progress", 
   assert.doesNotMatch(Trainer.storageKey("alice"), /puzzle-progress/);
 });
 
-test("preferences default safely and persist only supported session sizes", () => {
+test("preferences default to endless and persist only supported session settings", () => {
   const storage = new MemoryStorage();
   const time = fixedClock();
   const store = Trainer.createTrainerStore("Alice", { storage, clock: time.clock });
   assert.deepEqual(store.getPreferences(), {
     lastDeckId: null,
+    sessionMode: "endless",
     sessionSize: 10,
     onboardingDismissed: false,
     updatedAt: null,
   });
 
   store.setLastDeck("PIRC-BLACK");
+  store.setSessionMode("finite");
   store.setSessionSize(20);
+  store.setSessionMode("sprint");
   store.setSessionSize(7);
   store.dismissOnboarding();
   assert.deepEqual(store.getPreferences(), {
     lastDeckId: "pirc-black",
+    sessionMode: "finite",
     sessionSize: 20,
     onboardingDismissed: true,
     updatedAt: "2026-08-03T12:00:00.000Z",
@@ -141,6 +145,7 @@ test("v1 envelopes migrate into v2 without deleting or double-counting legacy da
   const time = fixedClock();
   const store = Trainer.createTrainerStore("ALICE", { storage, clock: time.clock });
   assert.equal(store.getPreferences().lastDeckId, "caro-kann-black");
+  assert.equal(store.getPreferences().sessionMode, "endless");
   assert.equal(store.getPreferences().sessionSize, 5);
   assert.equal(store.getPreferences().onboardingDismissed, true);
   assert.equal(store.getReview("caro-kann-black", "legacy").encounters, 4);
@@ -163,8 +168,52 @@ test("a v1 envelope found at the current key is rewritten in current format", ()
   }));
   const time = fixedClock();
   const store = Trainer.createTrainerStore("alice", { storage, clock: time.clock });
+  assert.equal(store.getPreferences().sessionMode, "endless");
   assert.equal(store.getPreferences().sessionSize, 20);
   assert.equal(JSON.parse(storage.getItem(key)).version, Trainer.CURRENT_VERSION);
+});
+
+test("v2 preferences without a mode become endless without losing the finite size", () => {
+  const storage = new MemoryStorage();
+  const key = Trainer.storageKey("alice");
+  storage.setItem(key, JSON.stringify({
+    version: Trainer.CURRENT_VERSION,
+    username: "alice",
+    preferences: {
+      lastDeckId: "modern-black",
+      sessionSize: 5,
+      onboardingDismissed: true,
+      updatedAt: "2026-08-02T12:00:00Z",
+    },
+    reviews: {},
+    updatedAt: "2026-08-02T12:00:00Z",
+  }));
+
+  const store = Trainer.createTrainerStore("alice", { storage, clock: fixedClock().clock });
+  assert.deepEqual(store.getPreferences(), {
+    lastDeckId: "modern-black",
+    sessionMode: "endless",
+    sessionSize: 5,
+    onboardingDismissed: true,
+    updatedAt: "2026-08-02T12:00:00.000Z",
+  });
+});
+
+test("changing session mode does not mutate adaptive review records", () => {
+  const storage = new MemoryStorage();
+  const time = fixedClock();
+  const store = Trainer.createTrainerStore("alice", { storage, clock: time.clock });
+  store.recordOutcome("caro-kann-black", candidate("mode-independent"), { skipped: true });
+  const reviewsBefore = store.getState().reviews;
+
+  store.setSessionMode("finite");
+  assert.deepEqual(store.getState().reviews, reviewsBefore);
+  assert.equal(store.getPreferences().sessionMode, "finite");
+  assert.equal(store.getPreferences().sessionSize, 10);
+
+  store.setSessionMode(" ENDLESS ");
+  assert.deepEqual(store.getState().reviews, reviewsBefore);
+  assert.equal(store.getPreferences().sessionMode, "endless");
 });
 
 test("clean first-try unassisted solves grow intervals and eventually master", () => {
@@ -436,11 +485,22 @@ test("validated export/import merges records idempotently without reducing local
     storage: sourceStorage,
     clock: sourceTime.clock,
   });
+  source.setSessionMode("finite");
   source.setSessionSize(5);
   source.dismissOnboarding();
   source.recordOutcome("caro-kann-black", candidate("shared"), { solved: true });
   source.recordOutcome("caro-kann-black", candidate("imported-only"), { skipped: true });
   const exported = source.exportData();
+  assert.equal(JSON.parse(exported).data.preferences.sessionMode, "finite");
+
+  const roundTrip = Trainer.createTrainerStore("round-trip", {
+    storage: new MemoryStorage(),
+    clock: fixedClock("2026-08-03T12:00:00Z").clock,
+  });
+  roundTrip.importData(exported);
+  assert.equal(roundTrip.getPreferences().sessionMode, "finite");
+  assert.equal(roundTrip.getPreferences().sessionSize, 5);
+  assert.ok(roundTrip.getReview("caro-kann-black", "imported-only"));
 
   const targetStorage = new MemoryStorage();
   const targetTime = fixedClock("2026-08-02T12:00:00Z");
@@ -448,6 +508,7 @@ test("validated export/import merges records idempotently without reducing local
     storage: targetStorage,
     clock: targetTime.clock,
   });
+  target.setSessionMode("endless");
   target.setSessionSize(20);
   target.recordOutcome("caro-kann-black", candidate("shared"), { solved: true });
   target.recordOutcome("caro-kann-black", candidate("shared"), { solved: true });
@@ -458,6 +519,7 @@ test("validated export/import merges records idempotently without reducing local
   assert.equal(target.getReview("caro-kann-black", "shared").encounters, 2);
   assert.ok(target.getReview("caro-kann-black", "imported-only"));
   assert.ok(target.getReview("pirc-black", "local-only"));
+  assert.equal(target.getPreferences().sessionMode, "endless", "newer local mode wins");
   assert.equal(target.getPreferences().sessionSize, 20, "newer local preference wins");
   assert.equal(target.getPreferences().onboardingDismissed, true, "dismissal merges monotonically");
 
