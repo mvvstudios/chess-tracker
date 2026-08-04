@@ -55,6 +55,42 @@ def test_render_all_pages_writes_one_file_per_template(tmp_path):
         assert "window.DATA" in html
         assert f"id='{name}-section'" in html
 
+    public_trainer = output_dir / "trainer.html"
+    assert public_trainer.exists()
+    public_html = public_trainer.read_text()
+    assert "alice" in public_html
+    assert "window.DATA" in public_html
+    assert "id='caro-kann-puzzles-section'" in public_html
+
+
+def test_opening_trainer_outputs_only_embed_compact_progress_identity(tmp_path):
+    template_dir = tmp_path / "templates"
+    template_dir.mkdir()
+    output_dir = tmp_path / "out"
+    for name in [
+        "index", "leaks", "losses", "process", "sessions", "opening",
+        "blunders", "puzzles", "caro-kann-puzzles",
+    ]:
+        (template_dir / f"{name}.html").write_text(
+            "<title>{{USERNAME}}</title>"
+            "<script>/* DATA_INJECTION_POINT */</script>"
+        )
+
+    from chess_tracker.render import render_all_pages
+    payload = {
+        "username": "alice",
+        "kpis": {"current_rating": 444},
+        "private_dashboard_value": "must-not-reach-trainer",
+    }
+    render_all_pages(template_dir, output_dir, payload)
+
+    assert "must-not-reach-trainer" in (output_dir / "index.html").read_text()
+    for name in ("caro-kann-puzzles", "trainer"):
+        html = (output_dir / f"{name}.html").read_text()
+        assert '"username": "alice"' in html
+        assert "current_rating" not in html
+        assert "must-not-reach-trainer" not in html
+
 
 def test_index_places_blunders_after_opening_tables():
     html = Path("chess_tracker/templates/index.html").read_text()
@@ -70,7 +106,8 @@ def test_shared_navigation_links_both_puzzle_trainers_with_active_states():
     app = Path("dashboard/app.js").read_text()
 
     assert 'pageName === "puzzles.html"' in app
+    assert 'pageName === "trainer.html"' in app
     assert 'pageName === "caro-kann-puzzles.html"' in app
     assert 'href="puzzles.html"' in app
-    assert 'href="caro-kann-puzzles.html"' in app
-    assert "caroKannActive ? 'aria-current=\"page\"'" in app
+    assert 'href="trainer.html"' in app
+    assert "trainerActive ? 'aria-current=\"page\"'" in app

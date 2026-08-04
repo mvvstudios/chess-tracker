@@ -95,7 +95,8 @@
     const hasDedicatedLichessStrip = document.getElementById("lichess-strip") != null;
     const pageName = window.location.pathname.split("/").pop();
     const puzzlesActive = pageName === "puzzles.html";
-    const caroKannActive = pageName === "caro-kann-puzzles.html";
+    const trainerActive = pageName === "trainer.html"
+      || pageName === "caro-kann-puzzles.html";
     const profileLinks = `
       <div class="strip-profile-links">
         <a class="strip-platform-label" href="https://www.chess.com/member/M_V-V" target="_blank" rel="noopener">Chess.com</a>
@@ -103,8 +104,8 @@
       </div>
       <a class="strip-nav-link${puzzlesActive ? " active" : ""}" href="puzzles.html"
          ${puzzlesActive ? 'aria-current="page"' : ""}>Puzzles</a>
-      <a class="strip-nav-link${caroKannActive ? " active" : ""}" href="caro-kann-puzzles.html"
-         ${caroKannActive ? 'aria-current="page"' : ""}>Chess Opening Puzzle Trainer</a>`;
+      <a class="strip-nav-link${trainerActive ? " active" : ""}" href="trainer.html"
+         ${trainerActive ? 'aria-current="page"' : ""}>Chess Opening Puzzle Trainer</a>`;
     const kpiHtml = `
       ${profileLinks}
       <div class="kpi kpi-sep"></div>
@@ -1007,7 +1008,7 @@
       card("Process", processHeadline, processSub, "process.html", processAlert),
       card("Sessions", `${sessionCount} total`, sessionsSub, "sessions.html", sessionsAlert),
       card("Puzzles", `${puzzleCount}`, puzzleSub, "puzzles.html", false),
-      card("Chess Opening Puzzle Trainer", "Five opening decks", "Lichess tactics · both colors", "caro-kann-puzzles.html", false),
+      card("Chess Opening Puzzle Trainer", "Five opening decks", "Lichess tactics · both colors", "trainer.html", false),
     ].join("");
   }
 

@@ -1,4 +1,4 @@
-"""Static contracts for the phone-first Caro-Kann trainer."""
+"""Static responsive and accessibility contracts for the public opening trainer."""
 
 from pathlib import Path
 
@@ -7,6 +7,8 @@ ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = (ROOT / "chess_tracker/templates/caro-kann-puzzles.html").read_text()
 STYLES = (ROOT / "dashboard/styles.css").read_text()
 CONTROLLER = (ROOT / "dashboard/caro-kann-puzzles.js").read_text()
+TRAINER_STYLES = STYLES.index(".trainer-header {")
+TRAINER_MOBILE = STYLES.index("@media (max-width: 760px) {", TRAINER_STYLES)
 
 
 def css_declarations(selector, *, start=0):
@@ -15,47 +17,154 @@ def css_declarations(selector, *, start=0):
     return STYLES[rule_start : STYLES.index("}", rule_start)]
 
 
-def test_caro_page_keeps_filters_and_primary_phone_flow_in_visual_order():
-    assert "<title>Chess Opening Puzzle Trainer — {{USERNAME}}</title>" in TEMPLATE
+def test_public_trainer_has_a_compact_dedicated_shell_without_personal_chrome():
+    assert "<title>Chess Opening Puzzle Trainer</title>" in TEMPLATE
+    assert "{{USERNAME}}" not in TEMPLATE
     assert '<h1 id="puzzles-title">Chess Opening Puzzle Trainer</h1>' in TEMPLATE
-    assert "width=device-width" in TEMPLATE
-    assert "maximum-scale=1" in TEMPLATE
-    assert "user-scalable=no" in TEMPLATE
-    assert "viewport-fit=cover" in TEMPLATE
-    assert "interactive-widget=resizes-content" in TEMPLATE
+    viewport_start = TEMPLATE.index('<meta name="viewport"')
+    viewport = TEMPLATE[viewport_start : TEMPLATE.index(">", viewport_start)]
+    assert "width=device-width" in viewport
+    assert "viewport-fit=cover" in viewport
+    assert "interactive-widget=resizes-content" in viewport
+    assert "maximum-scale" not in viewport
+    assert "user-scalable" not in viewport
+    assert 'id="kpi-strip"' not in TEMPLATE
 
-    filters = TEMPLATE.index('id="caro-puzzle-filters"')
+    header = TEMPLATE.index('class="trainer-header"')
+    main = TEMPLATE.index('class="trainer-main"')
+    assert header < main
+    assert 'aria-label="Chess Opening Puzzle Trainer"' in TEMPLATE
+    assert 'id="trainer-header-deck"' in TEMPLATE
+    assert 'id="trainer-header-progress"' in TEMPLATE
+    assert 'aria-label="Back to the main chess dashboard"' in TEMPLATE
+
+    desktop_header = css_declarations(".trainer-header", start=TRAINER_STYLES)
+    phone_header = css_declarations(".trainer-header", start=TRAINER_MOBILE)
+    assert "min-height: 56px" in desktop_header
+    assert "position: sticky" in desktop_header
+    assert "54px + env(safe-area-inset-top)" in phone_header
+
+
+def test_primary_phone_flow_is_task_board_feedback_actions_then_customize():
     task = TEMPLATE.index('class="puzzle-task"')
     board = TEMPLATE.index('id="puzzle-board"')
     feedback = TEMPLATE.index('id="puzzle-feedback"')
     controls = TEMPLATE.index('class="puzzle-controls puzzle-queue-controls"')
     keyboard = TEMPLATE.index('id="puzzle-uci-disclosure"')
-    assert filters < task < board < feedback < controls < keyboard
+    customize = TEMPLATE.index('id="caro-puzzle-filters" class="customize-panel"')
+    assert task < board < feedback < controls < keyboard < customize
+
     assert 'id="puzzle-board-help" class="visually-hidden"' in TEMPLATE
     assert 'role="group" aria-label="Puzzle controls"' in TEMPLATE
     assert 'id="opening-puzzle-deck"' in TEMPLATE
+    assert 'id="caro-filter-mode"' in TEMPLATE
 
 
-def test_caro_phone_layout_is_square_full_width_and_overflow_free():
+def test_desktop_board_is_primary_and_phone_board_is_square_full_width_overflow_free():
     page = css_declarations(".puzzles-body")
     assert "overflow-x: clip" in page
     assert "overscroll-behavior-x: none" in page
     assert "touch-action: pan-y" in css_declarations(".puzzles-body #puzzles-page")
 
-    mobile_start = STYLES.index(
-        "@media (max-width: 760px) {", STYLES.index("My Blunder Puzzles")
+    desktop_workspace = css_declarations(
+        ".opening-trainer-body .puzzle-workspace", start=TRAINER_STYLES
     )
-    mobile_end = STYLES.index("@media (max-width: 380px)", mobile_start)
-    board = css_declarations(".puzzles-body .puzzle-queue-board", start=mobile_start)
-    filters = css_declarations(".caro-filter-grid", start=mobile_start)
-    assert "width: 100%" in board
-    assert "max-width: 100%" in board
-    assert "height: auto" in board
-    assert "aspect-ratio: 1" in board
-    assert "100vw" not in board
-    assert "minmax(0, 1fr)" in filters
-    assert ".caro-filter-grid select:focus-visible" in STYLES
-    assert "outline: 2px solid var(--accent)" in STYLES
+    desktop_board = css_declarations(
+        ".opening-trainer-body .puzzle-queue-board", start=TRAINER_STYLES
+    )
+    assert "minmax(460px, 520px)" in desktop_workspace
+    assert "width: min(520px, 100%)" in desktop_board
+    assert "aspect-ratio: 1" in desktop_board
+
+    phone_workspace = css_declarations(
+        ".opening-trainer-body .puzzle-workspace", start=TRAINER_MOBILE
+    )
+    phone_board = css_declarations(
+        ".opening-trainer-body .puzzle-queue-board", start=TRAINER_MOBILE
+    )
+    assert '"task"' in phone_workspace
+    assert '"board"' in phone_workspace
+    assert '"feedback"' in phone_workspace
+    assert '"side"' in phone_workspace
+    assert phone_workspace.index('"task"') < phone_workspace.index('"board"')
+    assert phone_workspace.index('"board"') < phone_workspace.index('"feedback"')
+    assert phone_workspace.index('"feedback"') < phone_workspace.index('"side"')
+    assert "width: 100%" in phone_board
+    assert "max-width: 100%" in phone_board
+    assert "height: auto" in phone_board
+    assert "aspect-ratio: 1" in phone_board
+    assert "100vw" not in phone_board
+    assert ".opening-trainer-body [hidden] { display: none !important; }" in STYLES
+
+    mobile_order = STYLES.index(
+        ".opening-trainer-body #puzzles-page {", TRAINER_MOBILE
+    )
+    mobile_order_rules = STYLES[
+        mobile_order : STYLES.index("@media (max-width: 410px)", mobile_order)
+    ]
+    assert "#puzzles-unsolved-panel { order: 3; }" in mobile_order_rules
+    assert ".puzzle-tabs { order: 4; }" in mobile_order_rules
+    assert ".trainer-session-summary { order: 6; }" in mobile_order_rules
+
+    desktop_nav = css_declarations(".trainer-session-nav", start=TRAINER_STYLES)
+    assert "grid-template-columns: auto minmax(0, 1fr)" in desktop_nav
+    assert ".trainer-session-nav { display: contents; }" in STYLES[TRAINER_MOBILE:]
+
+
+def test_customize_is_an_accessible_desktop_drawer_and_phone_bottom_sheet():
+    assert 'id="customize-open"' in TEMPLATE
+    assert 'aria-haspopup="dialog" aria-controls="customize-panel"' in TEMPLATE
+    assert 'id="caro-puzzle-filters" class="customize-panel"' in TEMPLATE
+    assert 'id="customize-panel" class="customize-sheet" role="dialog"' in TEMPLATE
+    assert 'aria-modal="true" aria-labelledby="customize-title"' in TEMPLATE
+    assert 'id="customize-close"' in TEMPLATE
+    assert 'aria-label="Close Customize"' in TEMPLATE
+
+    drawer = css_declarations(".customize-sheet", start=TRAINER_STYLES)
+    assert "position: absolute" in drawer
+    assert "top: 0" in drawer
+    assert "right: 0" in drawer
+    assert "width: min(500px, 100%)" in drawer
+    assert "height: 100%" in drawer
+
+    bottom_sheet = css_declarations(".customize-sheet", start=TRAINER_MOBILE)
+    assert "top: auto" in bottom_sheet
+    assert "bottom: 0" in bottom_sheet
+    assert "width: 100%" in bottom_sheet
+    assert "height: auto" in bottom_sheet
+    assert "max-height: 88svh" in bottom_sheet
+    assert "border-radius: 14px 14px 0 0" in bottom_sheet
+
+    assert "state.lastFocus = document.activeElement" in CONTROLLER
+    assert "elements.customizeClose && elements.customizeClose.focus()" in CONTROLLER
+    assert "state.lastFocus.focus" in CONTROLLER
+    assert 'event.key !== "Escape"' in CONTROLLER
+
+
+def test_trainer_focus_live_regions_touch_targets_and_reduced_motion_are_preserved():
+    assert 'role="img" aria-label="Interactive opening puzzle board"' in TEMPLATE
+    assert 'role="application"' not in TEMPLATE
+    assert 'aria-describedby="puzzle-side-to-move puzzle-board-help"' in TEMPLATE
+    assert 'role="status"' in TEMPLATE
+    assert 'aria-live="polite" aria-atomic="true"' in TEMPLATE
+    assert 'summary>Enter a move with the keyboard</summary>' in TEMPLATE
+
+    focus = css_declarations(
+        ".opening-trainer-body :is(button, a, select, input, summary, [tabindex]):focus-visible",
+        start=TRAINER_STYLES,
+    )
+    assert "outline: 2px solid var(--accent)" in focus
+    assert "outline-offset: 2px" in focus
+    import_focus = css_declarations(".file-button:focus-within", start=TRAINER_STYLES)
+    assert "outline: 2px solid var(--accent)" in import_focus
+    phone_controls = css_declarations(
+        ".opening-trainer-body .puzzle-queue-controls button", start=TRAINER_MOBILE
+    )
+    assert "min-height: 46px" in phone_controls
+
+    reduced = STYLES.index("@media (prefers-reduced-motion: reduce)", TRAINER_MOBILE)
+    progress = css_declarations(".puzzle-progress-track span", start=reduced)
+    assert "transition: none" in progress
 
 
 def test_opening_controller_uses_selected_orientation_and_preserves_phone_interaction():

@@ -68,8 +68,9 @@ devices and is lost if that site's browser storage is cleared.
 
 ## Chess Opening Puzzle Trainer
 
-Open `dashboard/caro-kann-puzzles.html` through the local HTTP server. This
-separate trainer uses an official Lichess CC0 puzzle extract and offers five
+Open `dashboard/trainer.html` through the local HTTP server. The historical
+`dashboard/caro-kann-puzzles.html` URL remains compatible. This separate
+trainer uses an official Lichess CC0 puzzle extract and offers five
 narrow decks from one dataset selector: Caro-Kann for Black, Colle for White,
 Englund for White, Pirc for Black, and Modern for Black. Every puzzle starts
 after the opponent's stored setup move. Solver color and board orientation come
@@ -89,7 +90,10 @@ exact tag roots, perspective validation, schema, balancing, and deployment
 details are in
 [docs/OPENING_PUZZLE_DECKS.md](docs/OPENING_PUZZLE_DECKS.md). The original
 Caro-Kann-only entry point remains documented in
-[docs/CARO_KANN_PUZZLES.md](docs/CARO_KANN_PUZZLES.md).
+[docs/CARO_KANN_PUZZLES.md](docs/CARO_KANN_PUZZLES.md). Public routes, local
+review storage, finite sessions, first-party events, export/import, and offline
+boundaries are documented in
+[docs/OPENING_TRAINER_PRODUCT.md](docs/OPENING_TRAINER_PRODUCT.md).
 
 ## Annotations
 

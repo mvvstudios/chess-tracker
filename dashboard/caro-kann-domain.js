@@ -350,6 +350,8 @@
   function curriculumGroup(value) {
     const record = value && typeof value === "object" ? value : null;
     const variation = record ? record.variation : value;
+    const readableVariation = text(variation);
+    const readableFamily = record ? text(record.openingFamily) : "";
     const family = record ? normalizedWords(record.openingFamily) : "";
     const words = normalizedWords(variation);
     if (!family || family === "caro kann defense" || words.startsWith("caro kann defense")) {
@@ -365,8 +367,14 @@
       return "Rare sidelines and gambits";
     }
     if (words === family || words.endsWith(" main line")) return "Main lines";
-    const suffix = words.startsWith(family) ? words.slice(family.length).trim() : words;
-    return suffix ? suffix.replace(/\b\w/g, character => character.toUpperCase()) : "Main lines";
+    let suffix = readableVariation;
+    if (family && words.startsWith(family)) {
+      suffix = readableVariation.toLowerCase().startsWith(readableFamily.toLowerCase())
+        ? readableVariation.slice(readableFamily.length)
+        : readableVariation.slice(readableVariation.indexOf(":") + 1);
+      suffix = suffix.replace(/^[\s:–—-]+/, "").trim();
+    }
+    return suffix ? suffix.charAt(0).toUpperCase() + suffix.slice(1) : "Main lines";
   }
 
   function isMainLine(record) {
@@ -395,6 +403,10 @@
   function filterRecords(records, filters) {
     const selected = object(filters);
     const mode = text(selected.mode || "all").toLowerCase();
+    const lineCoverage = text(
+      selected.lineCoverage || selected.line_coverage
+      || (mode === "main-lines" || mode === "sidelines" ? mode : "all")
+    ).toLowerCase();
     const variation = text(selected.variation || "all");
     const difficulty = text(selected.difficulty || "all").toLowerCase();
     const provenance = normalizedWords(selected.provenance || "all").replace(/\s/g, "");
@@ -406,8 +418,8 @@
       if (provenance !== "all" && recordProvenance !== provenance) return false;
       if (selected.openingOnly && !record.isOpeningPuzzle) return false;
       if (!themeMatches(record.themes, selected.theme)) return false;
-      if (mode === "main-lines" && !isMainLine(record)) return false;
-      if (mode === "sidelines" && isMainLine(record)) return false;
+      if (lineCoverage === "main-lines" && !isMainLine(record)) return false;
+      if (lineCoverage === "sidelines" && isMainLine(record)) return false;
       return true;
     });
   }

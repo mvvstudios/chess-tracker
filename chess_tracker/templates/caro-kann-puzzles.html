@@ -2,124 +2,141 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
-  <title>Chess Opening Puzzle Trainer — {{USERNAME}}</title>
-  <link rel="stylesheet" href="vendor/tabulator.min.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <title>Chess Opening Puzzle Trainer</title>
+  <meta name="description" content="Train the tactics that actually arise from your openings with focused, color-aware chess puzzle sessions.">
+  <meta name="theme-color" content="#211f1c">
+  <meta name="color-scheme" content="dark">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Chess Opening Puzzle Trainer">
+  <meta property="og:description" content="Train the tactics that actually arise from your openings.">
+  <meta property="og:url" content="https://mvvstudios.github.io/chess-tracker/trainer.html">
+  <meta property="og:image" content="https://mvvstudios.github.io/chess-tracker/og-opening-trainer.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Chess Opening Puzzle Trainer">
+  <meta name="twitter:description" content="Train the tactics that actually arise from your openings.">
+  <meta name="twitter:image" content="https://mvvstudios.github.io/chess-tracker/og-opening-trainer.png">
+  <link rel="canonical" href="https://mvvstudios.github.io/chess-tracker/trainer.html">
+  <link rel="icon" href="vendor/pieces/cburnett/wN.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="vendor/chessground.base.css">
   <link rel="stylesheet" href="chessground-theme.css">
 </head>
-<body class="puzzles-body caro-kann-puzzles-body">
-  <header id="kpi-strip">
-    <a class="home-link" href="index.html">← repertoire</a>
+<body class="puzzles-body opening-trainer-body">
+  <header class="trainer-header" aria-label="Chess Opening Puzzle Trainer">
+    <a class="trainer-brand" href="trainer.html" aria-label="Chess Opening Puzzle Trainer home">
+      <span class="trainer-brand-mark" aria-hidden="true">♞</span>
+      <span class="trainer-brand-copy">
+        <strong>Chess Opening Puzzle Trainer</strong>
+        <span>Opening tactics, in context</span>
+      </span>
+    </a>
+    <div class="trainer-header-session" aria-live="polite">
+      <span id="trainer-header-deck">Opening deck</span>
+      <strong id="trainer-header-progress">0 / 10</strong>
+    </div>
+    <nav class="trainer-header-actions" aria-label="Trainer navigation">
+      <button id="deck-library-open" class="trainer-header-button" type="button">Decks</button>
+      <button id="customize-open" class="trainer-header-button" type="button" aria-haspopup="dialog" aria-controls="customize-panel">Customize</button>
+      <a class="trainer-dashboard-link" href="index.html" aria-label="Back to the main chess dashboard">Dashboard</a>
+    </nav>
   </header>
-  <main>
+
+  <main class="trainer-main">
     <section id="puzzles-page" data-caro-kann-trainer aria-labelledby="puzzles-title">
-      <div class="puzzles-heading">
-        <div>
-          <h1 id="puzzles-title">Chess Opening Puzzle Trainer</h1>
-          <p id="puzzle-intro" class="puzzle-intro">Choose an opening deck and play its complete tactical continuations from the Lichess puzzle database.</p>
-        </div>
-        <p id="puzzle-progress-summary" class="puzzle-progress-summary" role="status" aria-live="polite">
-          Loading puzzle manifest…
-        </p>
-      </div>
+      <h1 id="puzzles-title">Chess Opening Puzzle Trainer</h1>
 
       <div id="puzzle-storage-warning" class="puzzle-page-alert" role="alert" hidden></div>
 
-      <form id="caro-puzzle-filters" class="caro-puzzle-filters" aria-label="Opening puzzle filters">
-        <div class="caro-filter-grid">
-          <label class="opening-deck-filter">
-            <span>Opening deck</span>
-            <select id="opening-puzzle-deck" name="deck" aria-describedby="caro-filter-status">
-              <option value="caro-kann-black">Caro-Kann Defense — Black</option>
-            </select>
-          </label>
-          <label>
-            <span>Study mode</span>
-            <select id="caro-filter-mode" name="mode">
-              <option value="all">All opening puzzles</option>
-              <option value="curriculum">Curriculum</option>
-              <option value="main-lines">Main lines</option>
-              <option value="sidelines">Sidelines</option>
-            </select>
-          </label>
-          <label>
-            <span>Variation</span>
-            <select id="caro-filter-variation" name="variation">
-              <option value="all">All variations</option>
-            </select>
-          </label>
-          <label>
-            <span>Difficulty</span>
-            <select id="caro-filter-difficulty" name="difficulty">
-              <option value="all">All difficulties</option>
-              <option value="beginner">Beginner</option>
-              <option value="developing">Developing</option>
-              <option value="intermediate">Intermediate</option>
-              <option value="advanced">Advanced</option>
-              <option value="expert">Expert</option>
-            </select>
-          </label>
-          <label>
-            <span>Provenance</span>
-            <select id="caro-filter-provenance" name="provenance">
-              <option value="all">All sources</option>
-              <option value="standard">Standard</option>
-              <option value="master">Master</option>
-              <option value="masterVsMaster">Master-vs-master</option>
-              <option value="superGM">Super-GM</option>
-            </select>
-          </label>
-          <label>
-            <span>Tactical theme</span>
-            <select id="caro-filter-theme" name="theme">
-              <option value="all">All themes</option>
-              <option value="mates">Mates</option>
-              <option value="forks">Forks</option>
-              <option value="pins">Pins</option>
-              <option value="sacrifices">Sacrifices</option>
-              <option value="defensive">Defensive moves</option>
-              <option value="quiet">Quiet moves</option>
-            </select>
-          </label>
-          <label class="caro-opening-filter">
-            <input id="caro-filter-opening" name="openingOnly" type="checkbox">
-            <span>Opening-only</span>
-          </label>
-          <button id="caro-filter-reset" type="reset">Reset filters</button>
+      <aside id="trainer-onboarding" class="trainer-onboarding" aria-labelledby="trainer-onboarding-title" hidden>
+        <div>
+          <h2 id="trainer-onboarding-title">Opening tactics, one complete line at a time</h2>
+          <p>Choose a deck and play for the side shown. Your opponent replies automatically; finish the stored continuation. Progress stays on this device.</p>
         </div>
-        <p id="caro-filter-status" class="caro-filter-status" role="status" aria-live="polite">
-          Reading available study groups…
-        </p>
-      </form>
+        <button id="trainer-onboarding-dismiss" type="button">Got it</button>
+      </aside>
 
-      <div class="puzzle-tabs" role="tablist" aria-label="Puzzle progress">
-        <button id="puzzles-unsolved-tab" class="puzzle-tab active" type="button"
-                role="tab" aria-selected="true" aria-controls="puzzles-unsolved-panel"
-                tabindex="0">
-          Unsolved <span id="puzzles-unsolved-count" aria-hidden="true"></span>
-        </button>
-        <button id="puzzles-solved-tab" class="puzzle-tab" type="button"
-                role="tab" aria-selected="false" aria-controls="puzzles-solved-panel"
-                tabindex="-1">
-          Solved <span id="puzzles-solved-count" aria-hidden="true"></span>
-        </button>
+      <div class="trainer-study-bar" aria-label="Current study setup">
+        <label class="trainer-study-control opening-deck-filter">
+          <span>Opening deck</span>
+          <select id="opening-puzzle-deck" name="deck" aria-describedby="caro-filter-status">
+            <option value="caro-kann-black">Caro-Kann Defense — Black</option>
+          </select>
+        </label>
+        <label class="trainer-study-control">
+          <span>Study mode</span>
+          <select id="caro-filter-mode" name="mode" aria-describedby="study-mode-help">
+            <option value="all">Focused mix</option>
+            <option value="curriculum">Guided curriculum</option>
+          </select>
+        </label>
+        <p id="study-mode-help" class="visually-hidden">Guided curriculum moves from accessible puzzles toward more demanding positions within each available opening group.</p>
+        <fieldset class="session-size-control">
+          <legend>Session</legend>
+          <div class="session-size-options">
+            <label><input type="radio" name="sessionSize" value="5"><span>5</span></label>
+            <label><input type="radio" name="sessionSize" value="10" checked><span>10</span></label>
+            <label><input type="radio" name="sessionSize" value="20"><span>20</span></label>
+          </div>
+        </fieldset>
+        <button id="session-restart" class="trainer-secondary-action" type="button">New session</button>
+      </div>
+
+      <section id="curriculum-journey" class="curriculum-journey" aria-labelledby="curriculum-title" hidden>
+        <div class="curriculum-heading">
+          <div>
+            <p class="trainer-eyebrow">Guided journey</p>
+            <h2 id="curriculum-title">Learn this opening through its tactical patterns</h2>
+          </div>
+          <button id="curriculum-continue" class="trainer-secondary-action" type="button">Continue recommended lesson</button>
+        </div>
+        <div id="curriculum-groups" class="curriculum-groups"></div>
+      </section>
+
+      <div class="trainer-session-nav">
+        <div class="puzzle-tabs" role="tablist" aria-label="Trainer views">
+          <button id="puzzles-unsolved-tab" class="puzzle-tab active" type="button"
+                  role="tab" aria-selected="true" aria-controls="puzzles-unsolved-panel" tabindex="0">
+            Train <span id="puzzles-unsolved-count" aria-hidden="true"></span>
+          </button>
+          <button id="puzzles-solved-tab" class="puzzle-tab" type="button"
+                  role="tab" aria-selected="false" aria-controls="puzzles-solved-panel" tabindex="-1">
+            Solved archive <span id="puzzles-solved-count" aria-hidden="true"></span>
+          </button>
+        </div>
+
+        <div class="trainer-session-summary">
+          <p id="puzzle-progress-summary" class="puzzle-progress-summary" role="status" aria-live="polite">
+            Preparing your training deck…
+          </p>
+          <div id="active-filter-chips" class="active-filter-chips" aria-label="Active filters"></div>
+          <div class="trainer-review-actions">
+            <button id="reviews-due-button" class="trainer-text-action" type="button" disabled>Reviews due: 0</button>
+            <button id="review-mistakes-button" class="trainer-text-action" type="button" hidden>Review mistakes</button>
+          </div>
+        </div>
       </div>
 
       <div id="puzzles-unsolved-panel" class="puzzle-tab-panel" role="tabpanel"
            aria-labelledby="puzzles-unsolved-tab" tabindex="0">
         <div id="puzzle-page-state" class="puzzle-page-state" role="status" aria-live="polite" tabindex="-1">
-          Loading the first balanced puzzle chunk…
+          <h2>Preparing your next puzzle…</h2>
+          <p>Loading the first positions for this deck.</p>
         </div>
 
         <div id="puzzle-workspace" class="puzzle-workspace" hidden>
           <div class="puzzle-task">
             <div class="puzzle-session-progress">
-              <span id="puzzle-queue-position"></span>
+              <span id="puzzle-queue-position">Puzzle 1 of 10</span>
+              <span id="puzzle-review-state" class="puzzle-review-state">New</span>
             </div>
-            <h2 id="puzzle-prompt" class="puzzle-prompt" tabindex="-1">Find the best sequence</h2>
-            <p id="puzzle-side-to-move" class="puzzle-side-to-move">Loading solver color…</p>
+            <div class="puzzle-progress-track" aria-hidden="true"><span id="puzzle-progress-fill"></span></div>
+            <h2 id="puzzle-prompt" class="puzzle-prompt" tabindex="-1">Find the best continuation</h2>
+            <p id="puzzle-side-to-move" class="puzzle-side-to-move">Black to move · 1 of 2</p>
           </div>
 
           <div class="puzzle-board-column">
@@ -127,9 +144,8 @@
                  role="img" aria-label="Interactive opening puzzle board"
                  aria-describedby="puzzle-side-to-move puzzle-board-help"></div>
             <p id="puzzle-board-help" class="visually-hidden">
-              Select a piece and destination on the solver-oriented board, or use the keyboard move field below the puzzle controls.
+              Select a piece and destination on the solver-oriented board, or use the keyboard move field after the puzzle controls.
             </p>
-
             <fieldset id="puzzle-promotion-chooser" class="puzzle-promotion-chooser" hidden>
               <legend>Choose a promotion piece</legend>
               <div id="puzzle-promotion-options" class="puzzle-promotion-options"></div>
@@ -138,19 +154,19 @@
           </div>
 
           <div id="puzzle-feedback" class="puzzle-feedback puzzle-queue-feedback" role="status"
-               aria-live="polite" aria-atomic="true"></div>
+               aria-live="polite" aria-atomic="true">Make the best move for the displayed side.</div>
 
           <div class="puzzle-side puzzle-queue-side">
             <div class="puzzle-controls puzzle-queue-controls" role="group" aria-label="Puzzle controls">
-              <button id="puzzle-continue" class="puzzle-primary-action" type="button" hidden>Continue</button>
-              <button id="puzzle-skip" type="button">Skip for now</button>
-              <button id="puzzle-reset" type="button">Reset position</button>
+              <button id="puzzle-continue" class="puzzle-primary-action" type="button" hidden>Next puzzle</button>
               <button id="puzzle-hint" type="button">Hint</button>
-              <button id="puzzle-show" type="button">Show solution</button>
+              <button id="puzzle-skip" type="button">Skip</button>
+              <button id="puzzle-reset" type="button">Reset</button>
+              <button id="puzzle-show" class="trainer-tertiary-action" type="button">Reveal solution</button>
             </div>
 
             <section class="puzzle-context" aria-labelledby="puzzle-context-title">
-              <h3 id="puzzle-context-title">Puzzle details</h3>
+              <h3 id="puzzle-context-title">After the puzzle</h3>
               <div id="puzzle-context-body"></div>
             </section>
           </div>
@@ -170,6 +186,17 @@
             </form>
           </details>
         </div>
+
+        <section id="session-complete" class="session-complete" aria-labelledby="session-complete-title" hidden>
+          <p class="trainer-eyebrow">Session complete</p>
+          <h2 id="session-complete-title" tabindex="-1">Focused work, finished.</h2>
+          <div id="session-results" class="session-results"></div>
+          <div id="session-weak-spots" class="session-weak-spots"></div>
+          <div class="session-complete-actions">
+            <button id="session-review-mistakes" class="puzzle-primary-action" type="button">Review mistakes</button>
+            <button id="session-start-another" class="trainer-secondary-action" type="button">Start another session</button>
+          </div>
+        </section>
       </div>
 
       <div id="puzzles-solved-panel" class="puzzle-tab-panel" role="tabpanel"
@@ -180,9 +207,7 @@
                    aria-labelledby="puzzle-solved-review-title" hidden>
             <div class="puzzle-solved-review-heading">
               <h2 id="puzzle-solved-review-title" tabindex="-1">Solved puzzle review</h2>
-              <button id="puzzle-solved-review-close" class="puzzle-review-button" type="button">
-                Back to solved puzzles
-              </button>
+              <button id="puzzle-solved-review-close" class="puzzle-review-button" type="button">Back to solved puzzles</button>
             </div>
             <div class="puzzle-solved-review-grid">
               <div id="puzzle-solved-board" class="puzzle-board puzzle-review-board"
@@ -193,17 +218,114 @@
           <div id="puzzles-solved-list" class="puzzles-solved-list" aria-label="Solved opening puzzles"></div>
         </div>
       </div>
+
+      <form id="caro-puzzle-filters" class="customize-panel" aria-label="Customize puzzle filters" hidden>
+        <div class="customize-backdrop" data-customize-close></div>
+        <section id="customize-panel" class="customize-sheet" role="dialog" aria-modal="true" aria-labelledby="customize-title">
+          <div class="customize-heading">
+            <div>
+              <p class="trainer-eyebrow">Study controls</p>
+              <h2 id="customize-title">Customize this session</h2>
+            </div>
+            <button id="customize-close" class="icon-button" type="button" aria-label="Close Customize">×</button>
+          </div>
+          <div class="customize-scroll">
+            <label class="customize-search">
+              <span>Search variations and themes</span>
+              <input id="customize-search" type="search" placeholder="Try “Advance” or “fork”" autocomplete="off">
+            </label>
+
+            <fieldset class="customize-group">
+              <legend>Variation <small>Choose a branch of this opening.</small></legend>
+              <select id="caro-filter-variation" name="variation" hidden><option value="all">All variations</option></select>
+              <div id="variation-choice-list" class="choice-list" role="radiogroup" aria-label="Variation"></div>
+            </fieldset>
+
+            <div class="customize-grid">
+              <label>
+                <span>Difficulty <small>Application challenge, not memorization depth.</small></span>
+                <select id="caro-filter-difficulty" name="difficulty">
+                  <option value="all">All levels</option>
+                  <option value="beginner">Beginner</option>
+                  <option value="developing">Developing</option>
+                  <option value="intermediate">Intermediate</option>
+                  <option value="advanced">Advanced</option>
+                  <option value="expert">Expert</option>
+                </select>
+              </label>
+              <label>
+                <span>Source level <small>Provenance describes the players in the source game.</small></span>
+                <select id="caro-filter-provenance" name="provenance">
+                  <option value="all">All source games</option>
+                  <option value="standard">Community games</option>
+                  <option value="master">Master game</option>
+                  <option value="masterVsMaster">Master vs. master</option>
+                  <option value="superGM">Super-GM game</option>
+                </select>
+              </label>
+              <label>
+                <span>Line coverage <small>Choose core branches, less common sidelines, or both.</small></span>
+                <select id="caro-filter-lines" name="lineCoverage">
+                  <option value="all">Main lines and sidelines</option>
+                  <option value="main-lines">Main lines only</option>
+                  <option value="sidelines">Sidelines only</option>
+                </select>
+              </label>
+            </div>
+
+            <fieldset class="customize-group">
+              <legend>Tactical theme <small>Focus on the idea you want to recognize.</small></legend>
+              <select id="caro-filter-theme" name="theme" hidden><option value="all">All themes</option></select>
+              <div id="theme-choice-list" class="choice-list choice-list-compact" role="radiogroup" aria-label="Tactical theme"></div>
+            </fieldset>
+
+            <label class="caro-opening-filter">
+              <input id="caro-filter-opening" name="openingOnly" type="checkbox">
+              <span><strong>Early opening positions only</strong><small>Only puzzles where the tactic happens during the opening phase.</small></span>
+            </label>
+            <p id="caro-filter-status" class="caro-filter-status" role="status" aria-live="polite">Preparing available choices…</p>
+          </div>
+          <div class="customize-actions">
+            <button id="caro-filter-reset" type="reset">Reset all</button>
+            <button id="customize-apply" class="puzzle-primary-action" type="button">Apply filters</button>
+          </div>
+        </section>
+      </form>
+
+      <section id="deck-library" class="deck-library" hidden>
+        <div class="customize-backdrop" data-library-close></div>
+        <div class="deck-library-panel" role="dialog" aria-modal="true" aria-labelledby="deck-library-title">
+          <div class="customize-heading">
+            <div>
+              <p class="trainer-eyebrow">Opening library</p>
+              <h2 id="deck-library-title">Choose the positions you want to own</h2>
+            </div>
+            <button id="deck-library-close" class="icon-button" type="button" aria-label="Close deck library">×</button>
+          </div>
+          <p class="deck-library-intro">Every deck starts after the opponent’s move and keeps your chosen color at the bottom of the board.</p>
+          <div id="deck-library-cards" class="deck-library-cards" aria-live="polite"></div>
+          <div class="progress-tools">
+            <h3>Your device progress</h3>
+            <p>Export a backup or restore progress on another browser. No account required.</p>
+            <div>
+              <button id="progress-export" type="button">Export progress</button>
+              <label class="file-button">Import progress<input id="progress-import" type="file" accept="application/json,.json"></label>
+            </div>
+            <p id="progress-transfer-status" role="status" aria-live="polite"></p>
+          </div>
+        </div>
+      </section>
     </section>
   </main>
 
-  <script src="vendor/tabulator.min.js"></script>
-  <script src="vendor/chessground.min.js"></script>
   <script>
     /* DATA_INJECTION_POINT */
   </script>
+  <script src="vendor/chessground.min.js"></script>
+  <script src="chess-ui.js"></script>
   <script src="puzzle-domain.js"></script>
   <script src="caro-kann-domain.js"></script>
-  <script src="app.js"></script>
+  <script src="trainer-domain.js"></script>
   <script src="caro-kann-puzzles.js"></script>
 </body>
 </html>

@@ -302,3 +302,14 @@ test("generic readable variations flatten configured opening roots", () => {
     openingTagRoots: ["Modern_Defense", "Queens_Pawn_Game_Modern_Defense"],
   }), "Modern Defense: Queen’s Pawn Move Order");
 });
+
+test("generic curriculum groups preserve punctuation from readable variation labels", () => {
+  assert.equal(Caro.curriculumGroup({
+    openingFamily: "Englund Gambit",
+    variation: "Englund Gambit: Hartlaub-Charlick Gambit",
+  }), "Hartlaub-Charlick Gambit");
+  assert.equal(Caro.curriculumGroup({
+    openingFamily: "Modern Defense",
+    variation: "Modern Defense: Queen’s Pawn Move Order",
+  }), "Queen’s Pawn Move Order");
+});

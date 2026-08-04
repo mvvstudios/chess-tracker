@@ -10,6 +10,10 @@ PAGE_TEMPLATES = [
     "index", "leaks", "losses", "process", "sessions", "opening", "blunders",
     "puzzles", "caro-kann-puzzles",
 ]
+PAGE_ALIASES = {
+    "trainer": "caro-kann-puzzles",
+}
+TRAINER_TEMPLATE = "caro-kann-puzzles"
 
 
 def _safe_json(payload: dict) -> str:
@@ -37,16 +41,24 @@ def render_dashboard(template_path: Path, output_path: Path, payload: dict) -> N
 
 
 def render_all_pages(template_dir: Path, output_dir: Path, payload: dict) -> None:
-    """Render each template in PAGE_TEMPLATES to <output_dir>/<name>.html.
+    """Render dashboard templates and their public aliases.
 
-    Each output file is produced by calling render_dashboard with the matching
-    template at <template_dir>/<name>.html.
+    Opening-trainer pages only need the username used to retain the existing
+    browser progress namespace. Keeping the rest of the personal dashboard
+    payload out of both trainer URLs also keeps the public shell compact.
     """
     template_dir = Path(template_dir)
     output_dir = Path(output_dir)
-    for name in PAGE_TEMPLATES:
+    outputs = [(name, name) for name in PAGE_TEMPLATES]
+    outputs.extend(PAGE_ALIASES.items())
+    for output_name, template_name in outputs:
+        page_payload = (
+            {"username": payload.get("username", "")}
+            if template_name == TRAINER_TEMPLATE
+            else payload
+        )
         render_dashboard(
-            template_path=template_dir / f"{name}.html",
-            output_path=output_dir / f"{name}.html",
-            payload=payload,
+            template_path=template_dir / f"{template_name}.html",
+            output_path=output_dir / f"{output_name}.html",
+            payload=page_payload,
         )
