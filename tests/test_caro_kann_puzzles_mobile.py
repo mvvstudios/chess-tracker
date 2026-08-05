@@ -206,17 +206,17 @@ def test_opening_controller_uses_selected_orientation_and_preserves_phone_intera
     interactive = CONTROLLER.index("function paintInteractiveBoard")
     solved_review = CONTROLLER.index("function renderSolvedReview")
     queue_controller = CONTROLLER[interactive:solved_review]
-    assert "orientation: boardOrientation()" in queue_controller
-    assert "turnColor: solverColor()" in queue_controller
+    assert "orientation: boardOrientation(candidate)" in queue_controller
+    assert "turnColor: solverColor(candidate)" in queue_controller
     assert "viewOnly: false" in queue_controller
-    assert "color: locked ? undefined : solverColor()" in queue_controller
+    assert "color: locked ? undefined : solverColor(candidate)" in queue_controller
     assert "draggable: { enabled: !completed && !coarsePointer && !locked }" in queue_controller
     assert "selectable: { enabled: !locked }" in queue_controller
     assert "focus({ preventScroll: true })" in CONTROLLER
     assert "scrollIntoView" not in CONTROLLER
 
     review_controller = CONTROLLER[solved_review:]
-    assert "orientation: boardOrientation()" in review_controller
+    assert "orientation: boardOrientation(candidate)" in review_controller
     assert "viewOnly: true" in review_controller
     assert 'const CATALOG_URL = "data/opening-puzzle-catalog.json"' in CONTROLLER
     assert 'const PAGE_TITLE = "Chess Opening Puzzle Trainer"' in CONTROLLER

@@ -21,7 +21,7 @@
   const SESSION_SIZES = [5, 10, 20];
   const DEFAULT_SESSION_MODE = "endless";
   const ENDLESS_BATCH_SIZE = 20;
-  const DATA_CACHE = "chess-opening-trainer-data-v2";
+  const DATA_CACHE = "chess-opening-trainer-data-v3";
   const fallbackEscape = value => String(value == null ? "" : value).replace(
     /[&"'<>]/g,
     character => ({
@@ -170,6 +170,8 @@
     solvedReviewTrigger: null,
     filterSignature: "",
     deckManifests: new Map(),
+    personalEnvelope: null,
+    personalEnvelopePromise: null,
     reviewStore: null,
     session: null,
     presentation: null,
@@ -228,6 +230,21 @@
 
   function progressUsername() {
     return window.DATA && window.DATA.username ? window.DATA.username : "local";
+  }
+
+  function isPersonalBlunderDeck(deck) {
+    return Boolean(deck && Caro && typeof Caro.isPersonalBlunderDeck === "function"
+      && Caro.isPersonalBlunderDeck(deck));
+  }
+
+  function progressNamespace(deck) {
+    return isPersonalBlunderDeck(deck) ? undefined : deck && deck.id;
+  }
+
+  function createDeckProgressStore(deck) {
+    return Domain.createProgressStore(
+      progressUsername(), undefined, progressNamespace(deck),
+    );
   }
 
   function initializeLearningStore() {
@@ -440,7 +457,7 @@
   function cacheDownloadedDeckData(url, response) {
     if (!window.caches || typeof window.caches.open !== "function"
         || !response || typeof response.clone !== "function"
-        || !/^(?:data\/opening-puzzle-catalog\.json|data\/[^/]+\/(?:manifest\.json|selection-index\.json|chunks\/chunk-\d+\.json))$/.test(String(url))) {
+        || !/^(?:data\/(?:opening-puzzle-catalog|my-blunder-puzzles)\.json|data\/[^/]+\/(?:manifest\.json|selection-index\.json|chunks\/chunk-\d+\.json))$/.test(String(url))) {
       return;
     }
     try {
@@ -542,6 +559,120 @@
     if (elements.filterVariation) elements.filterVariation.value = "all";
   }
 
+  function normalizedSubject(value) {
+    return String(value == null ? "" : value).trim().toLowerCase();
+  }
+
+  async function personalEnvelopeForDeck(deck, generation, signal) {
+    const dataPath = Caro.safeRelativePath(deck && deck.dataPath);
+    if (dataPath !== "my-blunder-puzzles.json") {
+      throw new Error("The personal puzzle data path is invalid.");
+    }
+    if (state.personalEnvelope) return state.personalEnvelope;
+    if (!state.personalEnvelopePromise
+        || state.personalEnvelopePromise.generation !== generation) {
+      const request = { generation, promise: null };
+      request.promise = fetchJson(`data/${dataPath}`, generation, signal)
+        .then(envelope => {
+          if (!envelope || Number(envelope.schemaVersion) !== 1
+              || !envelope.catalog || !Array.isArray(envelope.catalog.candidates)
+              || normalizedSubject(envelope.username) !== normalizedSubject(progressUsername())) {
+            throw new Error("The personal puzzle export is invalid.");
+          }
+          state.personalEnvelope = envelope;
+          return envelope;
+        })
+        .finally(() => {
+          if (state.personalEnvelopePromise === request) {
+            state.personalEnvelopePromise = null;
+          }
+        });
+      state.personalEnvelopePromise = request;
+    }
+    return state.personalEnvelopePromise.promise;
+  }
+
+  function personalCandidatesForDeck(deck, envelope) {
+    const candidates = [];
+    const ids = new Set();
+    const rawCandidates = envelope && envelope.catalog
+      && Array.isArray(envelope.catalog.candidates) ? envelope.catalog.candidates : [];
+    rawCandidates.forEach(rawCandidate => {
+      const candidate = Caro.adaptPersonalBlunderRecord(rawCandidate, deck);
+      const id = puzzleId(candidate);
+      if (!candidate || !id || ids.has(id)) return;
+      ids.add(id);
+      candidates.push(candidate);
+    });
+    return candidates;
+  }
+
+  function personalRawCandidateBelongsToDeck(candidate, deck) {
+    if (!candidate || typeof candidate !== "object") return false;
+    const category = String(candidate.repertoire_deck_id
+      || candidate.repertoireDeckId || "").trim().toLowerCase();
+    const color = String(candidate.user_color || "").trim().toLowerCase();
+    return (!deck.repertoireDeckId || deck.repertoireDeckId === category)
+      && (deck.solverColor === "mixed" || deck.solverColor === color);
+  }
+
+  function countCandidateValues(candidates, getter) {
+    return candidates.reduce((counts, candidate) => {
+      const values = getter(candidate);
+      (Array.isArray(values) ? values : [values]).filter(Boolean).forEach(value => {
+        const key = String(value);
+        counts[key] = (counts[key] || 0) + 1;
+      });
+      return counts;
+    }, {});
+  }
+
+  function personalManifest(deck, candidates, envelope) {
+    return {
+      raw: envelope,
+      schemaVersion: "personal-1",
+      deckId: deck.id,
+      id: deck.id,
+      displayName: deck.label,
+      name: deck.label,
+      openingFamily: deck.openingFamily,
+      solverColor: deck.solverColor,
+      orientation: deck.orientation,
+      openingTagRoots: [],
+      generatedAt: String(envelope.generatedAt || ""),
+      balancedExported: candidates.length,
+      chunks: [],
+      selectionIndex: null,
+      datasetVersion: "",
+      variationCounts: countCandidateValues(candidates, candidate => candidate.variation),
+      difficultyCounts: {},
+      provenanceCounts: { standard: candidates.length },
+      themeCounts: countCandidateValues(candidates, candidate => candidate.themes || []),
+    };
+  }
+
+  async function loadPersonalBlunderDeck(deck, generation) {
+    const envelope = await personalEnvelopeForDeck(
+      deck, generation, state.abortController && state.abortController.signal,
+    );
+    if (generation !== state.loadGeneration) return false;
+    const eligibleCount = envelope.catalog.candidates.filter(candidate =>
+      personalRawCandidateBelongsToDeck(candidate, deck)
+    ).length;
+    state.candidates = personalCandidatesForDeck(deck, envelope);
+    state.candidateIds = new Set(state.candidates.map(puzzleId));
+    state.invalidCount = Math.max(0, eligibleCount - state.candidates.length);
+    state.manifest = personalManifest(deck, state.candidates, envelope);
+    state.deckManifests.set(deck.id, state.manifest);
+    state.store = createDeckProgressStore(deck);
+    updateDeckChrome(false);
+    populateFilterOptions();
+    rebuildPartition(true);
+    const started = await startPreferredSession({ preserveTab: true, resume: false });
+    if (!started) renderAll();
+    return true;
+  }
+
   async function switchDeck(deckId, initial) {
     const deck = deckById(deckId);
     if (!deck) return false;
@@ -565,6 +696,14 @@
     const manifestUrl = manifestPath ? `data/${manifestPath}` : "";
     state.datasetBase = datasetBaseForManifest(manifestPath);
     try {
+      if (isPersonalBlunderDeck(deck)) {
+        const loaded = await loadPersonalBlunderDeck(deck, generation);
+        if (!loaded) return false;
+        updateDeckUrl(deck.id, initial);
+        trackEvent("deck_selected", { deckId: deck.id, solverColor: deck.solverColor });
+        if (!initial) focusPuzzleStart();
+        return true;
+      }
       if (!manifestUrl || !state.datasetBase) throw new Error("The catalog manifest path is invalid.");
       const rawManifest = await fetchJson(
         manifestUrl,
@@ -600,8 +739,7 @@
       state.manifest = manifest;
       state.deckManifests.set(deck.id, manifest);
       updateDeckChrome(false);
-      const username = window.DATA && window.DATA.username ? window.DATA.username : "local";
-      state.store = Domain.createProgressStore(username, undefined, deck.id);
+      state.store = createDeckProgressStore(deck);
       await loadSelectionIndex(generation);
       if (generation !== state.loadGeneration) return false;
       populateFilterOptions();
@@ -650,14 +788,26 @@
     }
   }
 
-  function solverColor() {
-    return state.manifest && state.manifest.solverColor
-      || state.deck && state.deck.solverColor || "black";
+  function solverColor(candidate) {
+    const selected = candidate || currentCandidate();
+    const candidateColor = selected && String(
+      selected.solverColor || selected.solver_color || selected.user_color || "",
+    ).toLowerCase();
+    if (candidateColor === "white" || candidateColor === "black") return candidateColor;
+    const deckColor = state.manifest && state.manifest.solverColor
+      || state.deck && state.deck.solverColor;
+    return deckColor === "white" ? "white" : "black";
   }
 
-  function boardOrientation() {
-    return state.manifest && state.manifest.orientation
-      || state.deck && state.deck.orientation || solverColor();
+  function boardOrientation(candidate) {
+    const selected = candidate || currentCandidate();
+    const candidateOrientation = selected && String(selected.orientation || "").toLowerCase();
+    if (candidateOrientation === "white" || candidateOrientation === "black") {
+      return candidateOrientation;
+    }
+    const deckOrientation = state.manifest && state.manifest.orientation
+      || state.deck && state.deck.orientation;
+    return deckOrientation === "white" ? "white" : solverColor(selected);
   }
 
   function openingFamily() {
@@ -666,11 +816,11 @@
   }
 
   function colorLabel(value) {
-    return value === "white" ? "White" : "Black";
+    return value === "mixed" ? "Both colors" : value === "white" ? "White" : "Black";
   }
 
-  function opponentColor() {
-    return solverColor() === "white" ? "black" : "white";
+  function opponentColor(candidate) {
+    return solverColor(candidate) === "white" ? "black" : "white";
   }
 
   function updateDeckChrome(loading) {
@@ -678,10 +828,14 @@
     const side = colorLabel(state.deck.solverColor);
     if (elements.title) elements.title.textContent = PAGE_TITLE;
     if (elements.intro) {
-      elements.intro.textContent = `Train complete ${state.deck.openingFamily} tactical lines as ${side}.`;
+      elements.intro.textContent = state.deck.solverColor === "mixed"
+        ? `Train complete ${state.deck.openingFamily} tactical lines for both colors.`
+        : `Train complete ${state.deck.openingFamily} tactical lines as ${side}.`;
     }
     if (elements.boardHelp) {
-      elements.boardHelp.textContent = `Select a piece and destination on the ${side}-oriented board, or use the keyboard move field below the puzzle controls.`;
+      elements.boardHelp.textContent = state.deck.solverColor === "mixed"
+        ? "Select a piece and destination on the player-oriented board, or use the keyboard move field below the puzzle controls."
+        : `Select a piece and destination on the ${side}-oriented board, or use the keyboard move field below the puzzle controls.`;
     }
     if (elements.headerDeck) elements.headerDeck.textContent = `${state.deck.openingFamily} · ${side}`;
     if (loading && elements.summary) elements.summary.textContent = "Preparing your training deck…";
@@ -1681,8 +1835,10 @@
   function solvedProgressCount() {
     if (!state.store || typeof state.store.all !== "function") return state.solved.length;
     try {
-      return Object.values(state.store.all()).filter(progress =>
-        progress && (progress.status === "solved" || progress.solvedAt)
+      const available = isPersonalBlunderDeck(state.deck) ? state.candidateIds : null;
+      return Object.entries(state.store.all()).filter(([id, progress]) =>
+        (!available || available.has(id))
+        && progress && (progress.status === "solved" || progress.solvedAt)
       ).length;
     } catch (_error) {
       return state.solved.length;
@@ -1791,7 +1947,7 @@
     if (completed && state.feedbackMode !== "revealed") state.feedbackMode = "solved";
     else if (state.revealed && state.feedbackMode === "idle") state.feedbackMode = "revealed";
 
-    const side = colorLabel(solverColor());
+    const side = colorLabel(solverColor(candidate));
     const decisionLabel = line.steps.length > 1 ? ` · ${line.index + 1} of ${line.steps.length}` : "";
     elements.prompt.textContent = completed
       ? state.feedbackMode === "revealed" ? "Solution revealed" : "Line complete"
@@ -2002,13 +2158,13 @@
         : `<span class="puzzle-revealed-status">Solution shown</span> — play ${escapeHtml(best)} to ${line && line.isFinalStep ? "finish" : "continue"}.`;
     } else if (state.feedbackMode === "continuation") {
       elements.feedback.setAttribute("data-state", "success");
-      elements.feedback.innerHTML = `<span class="ok">✓ Correct</span> — ${colorLabel(opponentColor())} replied ${escapeHtml(state.lastReplySan || "with the stored move")}.`;
+      elements.feedback.innerHTML = `<span class="ok">✓ Correct</span> — ${colorLabel(opponentColor(candidate))} replied ${escapeHtml(state.lastReplySan || "with the stored move")}.`;
     } else if (state.feedbackMode === "incorrect") {
       elements.feedback.setAttribute("data-state", "incorrect");
       elements.feedback.innerHTML = `<span class="bad">× Try again</span> — that move is legal, but misses the stored tactic.`;
     } else if (state.linePhase === "playing_reply") {
       elements.feedback.setAttribute("data-state", "success");
-      elements.feedback.innerHTML = `<span class="ok">✓ Correct</span> — ${colorLabel(opponentColor())} replied ${escapeHtml(state.lastReplySan || "with the stored move")}…`;
+      elements.feedback.innerHTML = `<span class="ok">✓ Correct</span> — ${colorLabel(opponentColor(candidate))} replied ${escapeHtml(state.lastReplySan || "with the stored move")}…`;
     } else {
       elements.feedback.textContent = line && (line.steps.length > 1 || step.opponent_reply_uci)
         ? "Find the best move, then complete the continuation."
@@ -2068,18 +2224,18 @@
     }
     const config = {
       fen,
-      orientation: boardOrientation(),
+      orientation: boardOrientation(candidate),
       coordinatesOnSquares: true,
       // Never put the reusable queue board through Chessground's view-only
       // lifecycle; disabling movable/selectable preserves phone listeners.
       viewOnly: false,
-      turnColor: solverColor(),
+      turnColor: solverColor(candidate),
       lastMove: uciSquares(lastMove),
       check: false,
       drawable: { enabled: false, visible: true },
       movable: {
         free: false,
-        color: locked ? undefined : solverColor(),
+        color: locked ? undefined : solverColor(candidate),
         dests: locked ? new Map() : legalDests(step),
         events: { after: handleBoardMove },
       },
@@ -2150,6 +2306,7 @@
   }
 
   function openPromotionChooser(from, to, choices) {
+    const candidate = currentCandidate();
     state.pendingPromotion = { from, to };
     state.linePhase = "choosing_promotion";
     const labels = { q: "Queen", r: "Rook", b: "Bishop", n: "Knight" };
@@ -2158,9 +2315,8 @@
     ).join("");
     elements.promotionChooser.hidden = false;
     elements.promotionChooser.setAttribute("aria-describedby", "puzzle-feedback");
-    elements.feedback.textContent = `Choose the piece for ${colorLabel(solverColor())}’s promotion.`;
+    elements.feedback.textContent = `Choose the piece for ${colorLabel(solverColor(candidate))}’s promotion.`;
     setControlState(false);
-    const candidate = currentCandidate();
     if (candidate) paintInteractiveBoard(candidate, false);
     const first = elements.promotionOptions.querySelector("button");
     if (first) first.focus();
@@ -2199,7 +2355,7 @@
     }
     const kind = result && result.kind;
     if (kind === "illegal") {
-      elements.feedback.innerHTML = `<span class="bad">Illegal move.</span> Choose a legal move for ${colorLabel(solverColor())}.`;
+      elements.feedback.innerHTML = `<span class="bad">Illegal move.</span> Choose a legal move for ${colorLabel(solverColor(candidate))}.`;
       resetBoardPosition(candidate, false);
       elements.uciInput.focus();
       return;
@@ -2314,7 +2470,7 @@
 
   function playOpponentReply(candidate, result) {
     if (!result || !result.reply) {
-      elements.feedback.textContent = `The stored ${colorLabel(opponentColor())} reply is incomplete. Reset the puzzle and try again.`;
+      elements.feedback.textContent = `The stored ${colorLabel(opponentColor(candidate))} reply is incomplete. Reset the puzzle and try again.`;
       resetPuzzleLine(candidate, true);
       return;
     }
@@ -2415,7 +2571,7 @@
     state.board.setShapes([{ orig: best.slice(0, 2), brush: "yellow" }]);
     if (state.presentation) state.presentation.hintUsed = true;
     elements.hintButton.disabled = true;
-    elements.feedback.textContent = `Hint: start with the ${colorLabel(solverColor())} piece on ${best.slice(0, 2)}.`;
+    elements.feedback.textContent = `Hint: start with the ${colorLabel(solverColor(candidate))} piece on ${best.slice(0, 2)}.`;
     elements.feedback.setAttribute("data-state", "revealed");
     trackEvent("hint_used", { puzzleNumber: displayPuzzleNumber() });
   }
@@ -2507,7 +2663,7 @@
       return `<article class="puzzle-solved-item">
         <div class="puzzle-solved-item-main">
           <h2>${escapeHtml(candidate.variation || openingFamily())}</h2>
-          <p>${escapeHtml(colorLabel(solverColor()))} · ${escapeHtml(titleCase(candidate.difficulty || "—"))} · rating ${escapeHtml(candidate.rating == null ? "—" : candidate.rating)}</p>
+          <p>${escapeHtml(colorLabel(solverColor(candidate)))} · ${escapeHtml(titleCase(candidate.difficulty || "—"))} · rating ${escapeHtml(candidate.rating == null ? "—" : candidate.rating)}</p>
           <p class="puzzle-solved-meta">${escapeHtml(provenanceLabel(candidate.provenance))} · solved ${escapeHtml(formatTimestamp(solvedTimestamp(progress)))}</p>
         </div>
         <button type="button" class="puzzle-review-button" data-solved-index="${index}" aria-label="Review solved ${escapeHtml(candidate.variation || openingFamily())} puzzle">Review</button>
@@ -2554,7 +2710,7 @@
     const selected = timeline[state.solvedTeachingPly] || timeline[timeline.length - 1] || {};
     const config = {
       fen: selected.fen || candidate.puzzleFen || candidate.fen_before,
-      orientation: boardOrientation(),
+      orientation: boardOrientation(candidate),
       coordinatesOnSquares: true,
       viewOnly: true,
       lastMove: uciSquares(selected.uci),
@@ -2880,8 +3036,14 @@
     await Promise.all(state.catalog.decks.map(async deck => {
       if (state.deckManifests.has(deck.id)) return;
       try {
-        const raw = await fetchJson(`data/${deck.manifestPath}`, 0, null);
-        state.deckManifests.set(deck.id, Caro.normalizeManifest(raw, deck));
+        if (isPersonalBlunderDeck(deck)) {
+          const envelope = await personalEnvelopeForDeck(deck, 0, null);
+          const candidates = personalCandidatesForDeck(deck, envelope);
+          state.deckManifests.set(deck.id, personalManifest(deck, candidates, envelope));
+        } else {
+          const raw = await fetchJson(`data/${deck.manifestPath}`, 0, null);
+          state.deckManifests.set(deck.id, Caro.normalizeManifest(raw, deck));
+        }
       } catch (error) {
         console.error(`Could not load ${deck.id} library details`, error);
       }
@@ -2890,9 +3052,12 @@
 
   function deckProgress(deck) {
     try {
-      const store = Domain.createProgressStore(progressUsername(), undefined, deck.id);
-      const solved = Object.values(store.all()).filter(record => record
-        && (record.status === "solved" || record.solvedAt)).length;
+      const store = createDeckProgressStore(deck);
+      const allowed = isPersonalBlunderDeck(deck) && state.personalEnvelope
+        ? new Set(personalCandidatesForDeck(deck, state.personalEnvelope).map(puzzleId)) : null;
+      const solved = Object.entries(store.all()).filter(([id, record]) =>
+        (!allowed || allowed.has(id))
+        && record && (record.status === "solved" || record.solvedAt)).length;
       const counts = state.reviewStore && state.reviewStore.reviewCounts
         ? state.reviewStore.reviewCounts(deck.id) : {};
       return { solved, mastered: Number(counts && (counts.mastered || counts.Mastered) || 0) };
@@ -2909,9 +3074,12 @@
       const progress = deckProgress(deck);
       const current = state.deck && deck.id === state.deck.id;
       const shortName = deck.openingFamily.replace(/ Defense$/, "");
+      const perspective = deck.solverColor === "mixed"
+        ? "Both colors · board follows each puzzle"
+        : `Solve as ${colorLabel(deck.solverColor)} · board oriented for ${colorLabel(deck.solverColor)}`;
       return `<article class="deck-card${current ? " current" : ""}">
         <h3>${escapeHtml(deck.openingFamily)}</h3>
-        <p>Solve as ${escapeHtml(colorLabel(deck.solverColor))} · board oriented for ${escapeHtml(colorLabel(deck.solverColor))}</p>
+        <p>${escapeHtml(perspective)}</p>
         <p>${available == null ? "Loading availability…" : `${available.toLocaleString()} puzzles available`}</p>
         <p class="deck-card-progress">${progress.solved.toLocaleString()} solved · ${progress.mastered.toLocaleString()} mastered</p>
         <button type="button" data-select-deck="${escapeHtml(deck.id)}">${current ? `Continue ${escapeHtml(shortName)}` : progress.solved ? "Continue" : "Start"}</button>
@@ -2982,7 +3150,7 @@
     const decks = {};
     (state.catalog ? state.catalog.decks : []).forEach(deck => {
       try {
-        const store = Domain.createProgressStore(progressUsername(), undefined, deck.id);
+        const store = createDeckProgressStore(deck);
         decks[deck.id] = { permanentSolvedProgress: store.all() };
       } catch (_error) {
         decks[deck.id] = { permanentSolvedProgress: {} };
@@ -3026,7 +3194,8 @@
       return;
     }
     if (!storage || !incoming || typeof incoming !== "object") return;
-    const key = Domain.storageKey(progressUsername(), deckId);
+    const deck = state.catalog && state.catalog.decks.find(item => item.id === deckId);
+    const key = Domain.storageKey(progressUsername(), progressNamespace(deck || { id: deckId }));
     let current = { version: 1, username: String(progressUsername()).trim().toLowerCase(), records: {} };
     try {
       const raw = storage.getItem(key);
@@ -3083,7 +3252,7 @@
       if (payload.trainer && state.reviewStore && typeof state.reviewStore.importData === "function") {
         state.reviewStore.importData(payload.trainer);
       }
-      state.store = Domain.createProgressStore(progressUsername(), undefined, state.deck.id);
+      state.store = createDeckProgressStore(state.deck);
       rebuildPartition(false);
       renderAll();
       renderDeckLibrary();
@@ -3427,7 +3596,7 @@
       if (!state.store || (event && event.key && event.key !== state.store.key && event.key !== reviewKey)) return;
       try {
         if (event && event.key === reviewKey && state.reviewStore.refresh) state.reviewStore.refresh();
-        state.store = Domain.createProgressStore(progressUsername(), undefined, state.deck.id);
+        state.store = createDeckProgressStore(state.deck);
         prepareReviewRecords();
         // Another tab may update the archives while this one is showing a
         // completed line. Refresh the backing stores without destroying the

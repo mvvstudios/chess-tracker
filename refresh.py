@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import sys
@@ -23,6 +24,13 @@ from chess_tracker.analysis import (
 )
 from chess_tracker.blunder_phases import compute_blunder_phases
 from chess_tracker.blunder_categories import compute_blunder_analysis
+from chess_tracker.blunder_puzzle_export import (
+    MY_BLUNDER_DECK_IDS,
+    MY_BLUNDER_PUZZLE_DATA_PATH,
+    augment_opening_puzzle_catalog,
+    blunder_deck_catalog_entries,
+    write_my_blunder_puzzle_export,
+)
 from chess_tracker.render import render_all_pages, DEFAULT_TEMPLATE_DIR
 
 
@@ -804,6 +812,65 @@ def sync_opening_puzzle_web_data(
     }
 
 
+def publish_my_blunder_trainer_data(
+    puzzle_catalog: dict,
+    *,
+    username: str,
+    generated_at: str,
+    dashboard_dir: Path = Path("dashboard"),
+) -> dict:
+    """Publish the personal export and merge its virtual decks into the trainer.
+
+    The ordinary opening catalog remains authoritative under ``public/data``.
+    Personal descriptors are added only to the generated Pages copy after the
+    strict Lichess datasets have been synchronized.
+    """
+
+    data_dir = _opening_puzzle_dashboard_data_dir(Path(dashboard_dir))
+    data_dir.mkdir(parents=True, exist_ok=True)
+    export_path = data_dir / MY_BLUNDER_PUZZLE_DATA_PATH
+    envelope = write_my_blunder_puzzle_export(
+        puzzle_catalog,
+        username,
+        export_path,
+        generated_at,
+    )
+
+    catalog_path = data_dir / OPENING_PUZZLE_CATALOG_NAME
+    if catalog_path.is_file():
+        catalog = _read_json_object(catalog_path, "deployed opening-puzzle catalog")
+        catalog = augment_opening_puzzle_catalog(catalog)
+    else:
+        entries = blunder_deck_catalog_entries()
+        catalog = {
+            "schemaVersion": 1,
+            "defaultDeckId": MY_BLUNDER_DECK_IDS[0],
+            "decks": entries,
+        }
+
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{OPENING_PUZZLE_CATALOG_NAME}.",
+        suffix=".tmp",
+        dir=data_dir,
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            json.dump(catalog, stream, ensure_ascii=False, indent=2)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary_path, catalog_path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+    return {
+        "path": export_path,
+        "candidates": len(envelope["catalog"]["candidates"]),
+        "decks": len(MY_BLUNDER_DECK_IDS),
+    }
+
+
 def accept_game(game: dict, time_class: str, time_control: str | None = None) -> bool:
     """True if a Chess.com game dict is a rated standard-chess game in the
     requested time class.
@@ -1227,6 +1294,17 @@ def main(argv=None) -> int:
             "      Opening trainer data unavailable; run the extractor to "
             f"create {DEFAULT_OPENING_PUZZLE_DATA_DIR / OPENING_PUZZLE_CATALOG_NAME}."
         )
+    personal_puzzle_sync = publish_my_blunder_trainer_data(
+        puzzle_catalog,
+        username=args.username,
+        generated_at=payload["generated_at"],
+        dashboard_dir=dashboard_dir,
+    )
+    print(
+        "      Personal blunder trainer data: "
+        f"{personal_puzzle_sync['candidates']} puzzles across "
+        f"{personal_puzzle_sync['decks']} deck(s)."
+    )
 
     print(f"\nDone. Rendered to: {(dashboard_dir / 'index.html').resolve()}")
     print(f"  Browsers block file:// subresources; serve over HTTP instead:")

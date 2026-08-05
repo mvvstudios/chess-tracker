@@ -42,6 +42,68 @@ function record(overrides = {}) {
   };
 }
 
+function personalBlunderRecord(color, overrides = {}) {
+  const white = color === "white";
+  const fenBefore = white
+    ? "8/8/8/8/8/2k5/3K4/8 w - - 1 2"
+    : "8/8/8/8/5K2/2Qp4/3k4/8 b - - 3 47";
+  const bestMoveUci = white ? "d2e3" : "d2c3";
+  const bestMoveSan = white ? "Ke3" : "Kxc3";
+  const postBestFen = white
+    ? "8/8/8/8/8/2k1K3/8/8 b - - 2 2"
+    : "8/8/8/8/5K2/2kp4/8/8 w - - 0 48";
+  return {
+    puzzle_id: `personal-${color}`,
+    game_id: `https://www.chess.com/game/live/${white ? "1" : "2"}`,
+    game_url: `https://www.chess.com/game/live/${white ? "1" : "2"}`,
+    user_color: color,
+    orientation: color,
+    side_to_move: color,
+    fullmove: white ? 2 : 47,
+    fen_before: fenBefore,
+    played_move_uci: white ? "d2c2" : "d2d1",
+    played_move_san: white ? "Kc2" : "Kd1",
+    best_move_uci: bestMoveUci,
+    best_move_san: bestMoveSan,
+    post_best_fen: postBestFen,
+    legal_moves_uci: white ? ["d2e3", "d2e2"] : ["d2c3", "d2d1"],
+    legal_dests: white ? { d2: ["e3", "e2"] } : { d2: ["c3", "d1"] },
+    promotion_options: {},
+    principal_variation_uci: [bestMoveUci],
+    principal_variation_san: [bestMoveSan],
+    solution_steps: [{
+      fen_before: fenBefore,
+      best_move_uci: bestMoveUci,
+      best_move_san: bestMoveSan,
+      post_best_fen: postBestFen,
+      legal_moves_uci: white ? ["d2e3", "d2e2"] : ["d2c3", "d2d1"],
+      legal_dests: white ? { d2: ["e3", "e2"] } : { d2: ["c3", "d1"] },
+      promotion_options: {},
+      opponent_reply_uci: null,
+      opponent_reply_san: null,
+      post_reply_fen: null,
+    }],
+    opening: white ? "Colle System" : "Pirc Defense",
+    repertoire_deck_id: white ? "colle-white" : "pirc-black",
+    categories: ["personalBlunder"],
+    ...overrides,
+  };
+}
+
+function personalBlunderDeck(overrides = {}) {
+  return {
+    id: "my-blunders-all",
+    label: "My Blunders — ALL",
+    openingFamily: "My Blunders — ALL",
+    sourceKind: "personal-blunders",
+    dataPath: "my-blunder-puzzles.json",
+    progressScope: "personal",
+    solverColor: "mixed",
+    orientation: "mixed",
+    ...overrides,
+  };
+}
+
 test("manifest normalization reads nested export counts and chunk metadata", () => {
   const datasetVersion = "a".repeat(64);
   const manifest = Caro.normalizeManifest({
@@ -318,6 +380,85 @@ test("Caro-Kann progress uses a key distinct from personal blunder progress", ()
   const caro = PuzzleDomain.storageKey("Alice", "caro-kann-black");
   assert.equal(caro, "chess-tracker:puzzle-progress:v1:caro-kann-black:alice");
   assert.notEqual(caro, personal);
+});
+
+test("personal blunder decks accept the dedicated source contract and mixed perspective", () => {
+  const normalized = Caro.normalizeDeck(personalBlunderDeck());
+  assert.ok(normalized);
+  assert.equal(normalized.id, "my-blunders-all");
+  assert.equal(normalized.sourceKind, "personal-blunders");
+  assert.equal(normalized.dataPath, "my-blunder-puzzles.json");
+  assert.equal(normalized.progressScope, "personal");
+  assert.equal(normalized.solverColor, "mixed");
+  assert.equal(normalized.orientation, "mixed");
+  assert.equal(normalized.manifestPath, "");
+  assert.equal(Caro.isPersonalBlunderDeck(normalized), true);
+
+  assert.equal(Caro.normalizeDeck(personalBlunderDeck({ dataPath: "other.json" })), null);
+  assert.equal(Caro.normalizeDeck(personalBlunderDeck({ dataPath: "../my-blunder-puzzles.json" })), null);
+  assert.equal(Caro.normalizeDeck(personalBlunderDeck({ progressScope: "deck" })), null);
+  assert.equal(Caro.normalizeDeck(personalBlunderDeck({ orientation: "black" })), null);
+  assert.equal(Caro.normalizeDeck({
+    id: "mixed-opening",
+    solverColor: "mixed",
+    orientation: "mixed",
+    manifestPath: "mixed-opening/manifest.json",
+  }), null);
+});
+
+test("personal blunder adaptation accepts validated White and Black records", () => {
+  const deck = personalBlunderDeck();
+  const white = Caro.adaptPersonalBlunderRecord(personalBlunderRecord("white"), deck);
+  const black = Caro.adaptPersonalBlunderRecord(personalBlunderRecord("black"), deck);
+
+  assert.equal(white.id, "personal-white");
+  assert.equal(white.deckId, "my-blunders-all");
+  assert.equal(white.solverColor, "white");
+  assert.equal(white.orientation, "white");
+  assert.equal(white.source, "chess.com");
+  assert.equal(white.variation, "Colle System");
+  assert.equal(PuzzleDomain.solutionSteps(white).length, 1);
+
+  assert.equal(black.id, "personal-black");
+  assert.equal(black.solverColor, "black");
+  assert.equal(black.orientation, "black");
+  assert.equal(black.puzzleFen, personalBlunderRecord("black").fen_before);
+  assert.equal(PuzzleDomain.solutionSteps(black)[0].best_move_uci, "d2c3");
+});
+
+test("personal blunder adaptation rejects mismatched FENs, first steps, and repertoire categories", () => {
+  const allDeck = personalBlunderDeck();
+  const white = personalBlunderRecord("white");
+  assert.equal(Caro.adaptPersonalBlunderRecord({
+    ...white,
+    fen_before: white.fen_before.replace(" w ", " b "),
+  }, allDeck), null);
+  assert.equal(Caro.adaptPersonalBlunderRecord({
+    ...white,
+    solution_steps: [],
+  }, allDeck), null);
+  assert.equal(Caro.adaptPersonalBlunderRecord({
+    ...white,
+    solution_steps: [{
+      ...white.solution_steps[0],
+      fen_before: "8/8/8/8/8/8/3K4/2k5 w - - 1 2",
+    }],
+  }, allDeck), null);
+
+  const colleDeck = personalBlunderDeck({
+    id: "my-blunders-colle",
+    label: "My Blunders — Colle System",
+    openingFamily: "My Blunders — Colle System",
+    solverColor: "white",
+    orientation: "white",
+    repertoireDeckId: "colle-white",
+  });
+  assert.ok(Caro.adaptPersonalBlunderRecord(white, colleDeck));
+  assert.equal(Caro.adaptPersonalBlunderRecord({
+    ...white,
+    repertoire_deck_id: "englund-white",
+  }, colleDeck), null);
+  assert.equal(Caro.adaptPersonalBlunderRecord(personalBlunderRecord("black"), colleDeck), null);
 });
 
 test("catalog accepts compact entries without roots and rejects unsafe manifest paths", () => {

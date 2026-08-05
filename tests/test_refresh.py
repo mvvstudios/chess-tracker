@@ -886,6 +886,95 @@ def test_opening_puzzle_sync_refuses_symlinked_source_manifest_escape(tmp_path):
         sync_opening_puzzle_web_data(source, tmp_path / "dashboard")
 
 
+# --- personal blunder trainer export ---
+
+def _personal_puzzle_catalog():
+    return {
+        "candidates": [
+            {
+                "puzzle_id": "puzzle-stable",
+                "repertoire_deck_id": "caro-kann-black",
+            }
+        ],
+        "coverage": {"eligible_puzzles": 1},
+        "errors": [],
+    }
+
+
+def test_publish_my_blunder_trainer_data_preserves_opening_catalog(tmp_path):
+    dashboard = tmp_path / "dashboard"
+    data_dir = dashboard / "data"
+    data_dir.mkdir(parents=True)
+    opening_catalog = {
+        "schemaVersion": 1,
+        "defaultDeckId": "caro-kann-black",
+        "decks": [
+            {
+                "id": "caro-kann-black",
+                "label": "Caro-Kann Defense — Black",
+                "openingFamily": "Caro-Kann Defense",
+                "solverColor": "black",
+                "orientation": "black",
+                "manifestPath": "caro-kann-black/manifest.json",
+            }
+        ],
+    }
+    (data_dir / "opening-puzzle-catalog.json").write_text(
+        json.dumps(opening_catalog)
+    )
+
+    result = refresh.publish_my_blunder_trainer_data(
+        _personal_puzzle_catalog(),
+        username="M_V-V",
+        generated_at="2026-08-05T04:00:00+00:00",
+        dashboard_dir=dashboard,
+    )
+
+    assert result == {
+        "path": data_dir / "my-blunder-puzzles.json",
+        "candidates": 1,
+        "decks": 6,
+    }
+    envelope = json.loads((data_dir / "my-blunder-puzzles.json").read_text())
+    assert envelope == {
+        "schemaVersion": 1,
+        "generatedAt": "2026-08-05T04:00:00+00:00",
+        "username": "M_V-V",
+        "catalog": _personal_puzzle_catalog(),
+    }
+
+    deployed_catalog = json.loads(
+        (data_dir / "opening-puzzle-catalog.json").read_text()
+    )
+    assert deployed_catalog["defaultDeckId"] == "caro-kann-black"
+    assert deployed_catalog["decks"][0] == opening_catalog["decks"][0]
+    assert [deck["id"] for deck in deployed_catalog["decks"][1:]] == [
+        "my-blunders-all",
+        "my-blunders-colle",
+        "my-blunders-pirc",
+        "my-blunders-englund",
+        "my-blunders-modern",
+        "my-blunders-caro-kann",
+    ]
+
+
+def test_publish_my_blunder_trainer_data_can_create_personal_only_catalog(tmp_path):
+    dashboard = tmp_path / "dashboard"
+
+    refresh.publish_my_blunder_trainer_data(
+        {"candidates": [], "coverage": {}, "errors": []},
+        username="me",
+        generated_at="2026-08-05T04:00:00+00:00",
+        dashboard_dir=dashboard,
+    )
+
+    catalog = json.loads(
+        (dashboard / "data" / "opening-puzzle-catalog.json").read_text()
+    )
+    assert catalog["defaultDeckId"] == "my-blunders-all"
+    assert len(catalog["decks"]) == 6
+
+
 # --- puzzle-line backfill wiring ---
 
 def _refresh_game_for_backfill():

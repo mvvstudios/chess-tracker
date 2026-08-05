@@ -174,6 +174,29 @@ def test_black_candidate_uses_black_orientation_and_absolute_ply():
     assert candidate["side_to_move"] == "black"
 
 
+def test_candidate_copies_repertoire_classification_and_analysis_categories():
+    pgn = (
+        '[ECOUrl "https://www.chess.com/openings/Caro-Kann-Defense"]\n\n'
+        "1. e4 c6 2. d4 d5 3. Nc3 *"
+    )
+    game = _game(pgn, user_color="black")
+    evidence = _evidence(
+        pgn,
+        3,
+        "g8f6",
+        side="black",
+        categories=["material_loss", "", "material_loss", 7],
+    )
+
+    candidate = derive_puzzle_candidates(
+        [game], _cache(game, [evidence], side="black"), "me"
+    )[0]
+
+    assert candidate["repertoire_deck_id"] == "caro-kann-black"
+    assert candidate["categories"] == ["material_loss"]
+    assert candidate["puzzle_id"] == stable_puzzle_id("me", game["url"], 3)
+
+
 def test_duplicate_imports_and_duplicate_evidence_do_not_duplicate_puzzles():
     game = _game()
     evidence = _evidence(MAINLINE_PGN, 4, "f1c4", side="white")

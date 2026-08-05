@@ -62,6 +62,11 @@
     return normalized === "white" || normalized === "black" ? normalized : "";
   }
 
+  function perspective(value) {
+    const normalized = text(value).toLowerCase();
+    return normalized === "mixed" ? normalized : color(normalized);
+  }
+
   function oppositeColor(value) {
     return value === "white" ? "black" : value === "black" ? "white" : "";
   }
@@ -80,20 +85,29 @@
   function normalizeDeck(rawDeck) {
     const raw = object(rawDeck);
     const id = text(raw.id || raw.deckId || raw.deck_id).toLowerCase();
-    const solverColor = color(raw.solverColor || raw.solver_color || raw.sideToMove);
-    const orientation = color(raw.orientation);
+    const sourceKind = text(raw.sourceKind || raw.source_kind).toLowerCase();
+    const personalBlunders = sourceKind === "personal-blunders";
+    const solverColor = perspective(raw.solverColor || raw.solver_color || raw.sideToMove);
+    const orientation = perspective(raw.orientation);
     const manifestPath = safeRelativePath(raw.manifestPath || raw.manifest_path);
+    const dataPath = safeRelativePath(raw.dataPath || raw.data_path);
     const roots = array(raw.openingTagRoots || raw.opening_tag_roots)
       .map(text).filter(Boolean);
     // The deploy catalog is intentionally compact and may leave tag roots to
     // the authoritative manifest. Record adaptation still requires manifest
     // roots and therefore never turns this into fuzzy matching.
-    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id) || !manifestPath
-        || manifestPath !== `${id}/manifest.json`
-        || !solverColor || orientation !== solverColor) return null;
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id) || !solverColor
+        || orientation !== solverColor) return null;
+    if (personalBlunders) {
+      if (dataPath !== "my-blunder-puzzles.json"
+          || text(raw.progressScope || raw.progress_scope).toLowerCase() !== "personal") {
+        return null;
+      }
+    } else if (!manifestPath || manifestPath !== `${id}/manifest.json`
+        || !color(solverColor)) return null;
     const openingFamily = text(raw.openingFamily || raw.opening_family) || id;
     const displayName = text(raw.label || raw.displayName || raw.display_name)
-      || `${openingFamily} — ${solverColor === "white" ? "White" : "Black"}`;
+      || `${openingFamily} — ${solverColor === "mixed" ? "ALL" : solverColor === "white" ? "White" : "Black"}`;
     return {
       raw,
       id,
@@ -105,7 +119,16 @@
       orientation,
       openingTagRoots: [...new Set(roots)],
       manifestPath,
+      dataPath,
+      sourceKind,
+      progressScope: personalBlunders ? "personal" : "deck",
+      repertoireDeckId: text(raw.repertoireDeckId || raw.repertoire_deck_id).toLowerCase(),
     };
+  }
+
+  function isPersonalBlunderDeck(value) {
+    return Boolean(value && text(value.sourceKind || value.source_kind).toLowerCase()
+      === "personal-blunders");
   }
 
   function normalizeCatalog(rawCatalog) {
@@ -359,6 +382,74 @@
     });
   }
 
+  function adaptPersonalBlunderRecord(rawRecord, rawDeck) {
+    const record = object(rawRecord);
+    const deck = normalizeDeck(rawDeck);
+    if (!deck || !isPersonalBlunderDeck(deck)) return null;
+
+    const id = text(record.puzzle_id || record.puzzleId || record.id);
+    const solverColor = color(record.user_color || record.solverColor || record.solver_color);
+    const orientation = color(record.orientation);
+    const sideToMove = color(record.side_to_move || record.sideToMove);
+    const puzzleFen = text(record.fen_before || record.puzzleFen || record.puzzle_fen);
+    const rawSteps = array(record.solution_steps || record.solutionSteps);
+    const firstRawStep = object(rawSteps[0]);
+    const firstFen = text(firstRawStep.fen_before || firstRawStep.fenBefore);
+    const category = text(record.repertoire_deck_id || record.repertoireDeckId).toLowerCase();
+    if (!id || id !== String(record.puzzle_id || record.puzzleId || record.id || "").trim()
+        || !solverColor || orientation !== solverColor || sideToMove !== solverColor
+        || !puzzleFen || sideFromFen(puzzleFen) !== solverColor[0]
+        || !rawSteps.length || firstFen !== puzzleFen
+        || (deck.solverColor !== "mixed" && deck.solverColor !== solverColor)
+        || (deck.repertoireDeckId && deck.repertoireDeckId !== category)) {
+      return null;
+    }
+
+    const steps = rawSteps.map(rawStep => Object.assign({}, object(rawStep)));
+    const first = object(steps[0]);
+    const opening = text(record.opening) || "My Blunders";
+    const themes = array(record.categories).map(text).filter(Boolean);
+    return Object.assign({}, record, {
+      id,
+      puzzle_id: id,
+      deckId: deck.id,
+      deck_id: deck.id,
+      sourceKind: "personal-blunders",
+      source: "chess.com",
+      sourceUrl: text(record.game_url || record.gameUrl),
+      openingFamily: deck.openingFamily,
+      variation: opening,
+      originalFen: puzzleFen,
+      puzzleFen,
+      fen_before: puzzleFen,
+      solverColor,
+      solver_color: solverColor,
+      sideToMove,
+      side_to_move: sideToMove,
+      side: solverColor,
+      user_color: solverColor,
+      orientation,
+      solutionSteps: steps,
+      solution_steps: steps,
+      solutionUci: array(record.principal_variation_uci).slice(),
+      solutionSan: array(record.principal_variation_san).slice(),
+      solutionLength: array(record.principal_variation_uci).length || steps.length,
+      solverDecisionCount: steps.length,
+      best_move_uci: first.bestMoveUci || first.best_move_uci,
+      best_move_san: first.bestMoveSan || first.best_move_san,
+      post_best_fen: first.postBestFen || first.post_best_fen,
+      legal_moves_uci: first.legalMovesUci || first.legal_moves_uci,
+      legal_dests: first.legalDests || first.legal_dests,
+      promotion_options: first.promotionOptions || first.promotion_options || {},
+      themes,
+      primaryTacticalTheme: themes[0] || "personalBlunder",
+      provenance: "standard",
+      difficulty: "",
+      rating: null,
+      isOpeningPuzzle: Number(record.fullmove) <= 8,
+    });
+  }
+
   function normalizedWords(value) {
     return text(value).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   }
@@ -605,6 +696,7 @@
     safeRelativePath,
     normalizeDeck,
     normalizeCatalog,
+    isPersonalBlunderDeck,
     matchesOpeningRoot,
     matchingOpeningTags,
     hasCaroKannTag,
@@ -613,6 +705,7 @@
     normalizeManifest,
     normalizeSelectionIndex,
     adaptRecord,
+    adaptPersonalBlunderRecord,
     curriculumGroup,
     isMainLine,
     themeMatches,

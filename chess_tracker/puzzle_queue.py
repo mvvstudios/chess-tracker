@@ -31,6 +31,7 @@ from typing import Any, Iterable
 import chess
 import chess.pgn
 
+from chess_tracker.blunder_repertoire import classify_blunder_repertoire
 from chess_tracker.pgn import _clean_opening_label
 
 
@@ -73,6 +74,8 @@ class PuzzleCandidate:
     game_date: str | None
     end_time: int | None
     opening: str | None
+    repertoire_deck_id: str | None
+    categories: list[str]
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -220,6 +223,12 @@ def build_puzzle_queue(
             )
             continue
 
+        repertoire_deck_id = classify_blunder_repertoire(
+            raw_game,
+            user_color,
+            parsed_game=parsed_game,
+        )
+
         if evidence:
             coverage["games_with_blunders"] += 1
 
@@ -235,6 +244,7 @@ def build_puzzle_queue(
                 game_id=game_id,
                 game_uuid=game_uuid,
                 game_url=game_url,
+                repertoire_deck_id=repertoire_deck_id,
             )
             if pv_was_truncated:
                 coverage["pv_truncated"] += 1
@@ -303,6 +313,7 @@ def _candidate_from_evidence(
     game_id: str,
     game_uuid: str | None,
     game_url: str | None,
+    repertoire_deck_id: str | None,
 ) -> tuple[PuzzleCandidate | None, tuple[str, str] | None, bool]:
     if not isinstance(raw_blunder, dict):
         return None, ("invalid_blunder", "Blunder evidence is not an object."), False
@@ -439,6 +450,8 @@ def _candidate_from_evidence(
         game_date=_game_date(raw_game, parsed_game),
         end_time=end_time,
         opening=_opening_name(raw_game, parsed_game),
+        repertoire_deck_id=repertoire_deck_id,
+        categories=_string_list(raw_blunder.get("categories")),
     ), None, pv_was_truncated
 
 
@@ -743,6 +756,17 @@ def _optional_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, (list, tuple)):
+        return []
+    return list(dict.fromkeys(
+        text
+        for item in value
+        if isinstance(item, str)
+        if (text := _optional_string(item)) is not None
+    ))
 
 
 def _add_error(

@@ -1,8 +1,8 @@
 "use strict";
 
 const CACHE_PREFIX = "chess-opening-trainer-";
-const SHELL_CACHE_VERSION = "v4";
-const DATA_CACHE_VERSION = "v2";
+const SHELL_CACHE_VERSION = "v5";
+const DATA_CACHE_VERSION = "v3";
 const SHELL_CACHE = `${CACHE_PREFIX}shell-${SHELL_CACHE_VERSION}`;
 const DATA_CACHE = `${CACHE_PREFIX}data-${DATA_CACHE_VERSION}`;
 
@@ -73,6 +73,7 @@ function dataPath(url) {
 function isDeckDataRequest(url) {
   const path = dataPath(url);
   return path === "data/opening-puzzle-catalog.json"
+    || path === "data/my-blunder-puzzles.json"
     || /^data\/[^/]+\/manifest\.json$/.test(path)
     || /^data\/[^/]+\/selection-index\.json$/.test(path)
     || /^data\/[^/]+\/chunks\/chunk-\d+\.json$/.test(path);

@@ -90,8 +90,8 @@ def test_web_app_manifest_targets_public_route_and_has_real_icons():
 
 def test_service_worker_precaches_only_shell_and_lazily_caches_requested_deck_data():
     source = SERVICE_WORKER.read_text()
-    assert 'SHELL_CACHE_VERSION = "v4"' in source
-    assert 'DATA_CACHE_VERSION = "v2"' in source
+    assert 'SHELL_CACHE_VERSION = "v5"' in source
+    assert 'DATA_CACHE_VERSION = "v3"' in source
     match = re.search(r"const SHELL_ASSETS = (\[.*?\]);", source, re.DOTALL)
     assert match, "service worker must declare an explicit shell asset list"
     shell_assets = json.loads(match.group(1))
@@ -107,6 +107,7 @@ def test_service_worker_precaches_only_shell_and_lazily_caches_requested_deck_da
     # an actual trainer request. Full exports and analytical shards are never
     # part of the browser cache contract.
     assert 'path === "data/opening-puzzle-catalog.json"' in source
+    assert 'path === "data/my-blunder-puzzles.json"' in source
     assert "manifest\\.json" in source
     assert "selection-index\\.json" in source
     assert "chunks\\/chunk-" in source

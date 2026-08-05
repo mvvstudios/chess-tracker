@@ -313,6 +313,55 @@ function whiteDeckRecord(id = "colle-white-one") {
   };
 }
 
+function personalBlunderRecord(color, id = `personal-${color}`) {
+  const white = color === "white";
+  const fenBefore = white
+    ? "8/8/8/8/8/2k5/3K4/8 w - - 1 2"
+    : "8/8/8/8/5K2/2Qp4/3k4/8 b - - 3 47";
+  const bestMoveUci = white ? "d2e3" : "d2c3";
+  const bestMoveSan = white ? "Ke3" : "Kxc3";
+  const postBestFen = white
+    ? "8/8/8/8/8/2k1K3/8/8 b - - 2 2"
+    : "8/8/8/8/5K2/2kp4/8/8 w - - 0 48";
+  const legalMoves = white ? ["d2e3", "d2e2"] : ["d2c3", "d2d1"];
+  const legalDests = white ? { d2: ["e3", "e2"] } : { d2: ["c3", "d1"] };
+  return {
+    puzzle_id: id,
+    game_id: `https://www.chess.com/game/live/${white ? "1" : "2"}`,
+    game_url: `https://www.chess.com/game/live/${white ? "1" : "2"}`,
+    user_color: color,
+    orientation: color,
+    side_to_move: color,
+    fullmove: white ? 2 : 47,
+    fen_before: fenBefore,
+    played_move_uci: white ? "d2c2" : "d2d1",
+    played_move_san: white ? "Kc2" : "Kd1",
+    best_move_uci: bestMoveUci,
+    best_move_san: bestMoveSan,
+    post_best_fen: postBestFen,
+    legal_moves_uci: legalMoves,
+    legal_dests: legalDests,
+    promotion_options: {},
+    principal_variation_uci: [bestMoveUci],
+    principal_variation_san: [bestMoveSan],
+    solution_steps: [{
+      fen_before: fenBefore,
+      best_move_uci: bestMoveUci,
+      best_move_san: bestMoveSan,
+      post_best_fen: postBestFen,
+      legal_moves_uci: legalMoves,
+      legal_dests: legalDests,
+      promotion_options: {},
+      opponent_reply_uci: null,
+      opponent_reply_san: null,
+      post_reply_fen: null,
+    }],
+    opening: white ? "Colle System" : "Pirc Defense",
+    repertoire_deck_id: white ? "colle-white" : "pirc-black",
+    categories: ["personalBlunder"],
+  };
+}
+
 function blackDeckRecord(deckId, root, family, id = `${deckId}-one`) {
   const puzzle = continuationRecord();
   puzzle.id = id;
@@ -421,8 +470,34 @@ const DECKS = [{
   manifestPath: "modern-black/manifest.json",
 }];
 
-function catalog() {
-  return { schemaVersion: 1, defaultDeckId: "caro-kann-black", decks: DECKS };
+const PERSONAL_BLUNDER_DECK = {
+  id: "my-blunders-all",
+  label: "My Blunders — ALL",
+  openingFamily: "My Blunders — ALL",
+  sourceKind: "personal-blunders",
+  dataPath: "my-blunder-puzzles.json",
+  progressScope: "personal",
+  repertoireDeckId: null,
+  solverColor: "mixed",
+  orientation: "mixed",
+};
+
+const PERSONAL_BLUNDER_COLLE_DECK = {
+  id: "my-blunders-colle",
+  label: "My Blunders — Colle System",
+  openingFamily: "My Blunders — Colle System",
+  sourceKind: "personal-blunders",
+  dataPath: "my-blunder-puzzles.json",
+  progressScope: "personal",
+  repertoireDeckId: "colle-white",
+  solverColor: "white",
+  orientation: "white",
+};
+
+const PERSONAL_BLUNDER_DECKS = [PERSONAL_BLUNDER_DECK, PERSONAL_BLUNDER_COLLE_DECK];
+
+function catalog(extraDecks = []) {
+  return { schemaVersion: 1, defaultDeckId: "caro-kann-black", decks: DECKS.concat(extraDecks) };
 }
 
 function deckManifest(deckId, chunkCount = 1) {
@@ -521,6 +596,8 @@ async function createHarness(records, {
   chunkPayloadsByDeck = null,
   selectionIndexesByDeck = null,
   trainerEnabled = false,
+  personalEnvelope = null,
+  delayedPersonalEnvelope = false,
 } = {}) {
   const elements = Object.fromEntries(ELEMENT_IDS.map(id => [id, new FakeElement(id)]));
   elements["caro-filter-mode"].value = "all";
@@ -540,7 +617,9 @@ async function createHarness(records, {
   const timers = new Map();
   const delayedManifestResolvers = new Map();
   const delayedChunkResolvers = new Map();
+  const delayedPersonalRequests = [];
   const windowListeners = Object.create(null);
+  let personalAbortCount = 0;
   let nextTimer = 1;
   const document = {
     getElementById(id) {
@@ -570,6 +649,25 @@ async function createHarness(records, {
   });
   context.window = context;
   context.window.DATA = { username: "me" };
+  if (delayedPersonalEnvelope) {
+    context.window.AbortController = class FakeAbortController {
+      constructor() {
+        const listeners = [];
+        this.signal = {
+          aborted: false,
+          addEventListener(type, callback) {
+            if (type === "abort") listeners.push(callback);
+          },
+        };
+        this.abort = () => {
+          if (this.signal.aborted) return;
+          this.signal.aborted = true;
+          personalAbortCount += 1;
+          listeners.splice(0).forEach(callback => callback());
+        };
+      }
+    };
+  }
   context.window.matchMedia = query => ({ matches: query === "(pointer: coarse)" });
   context.window.addEventListener = (type, callback) => {
     windowListeners[type] = callback;
@@ -581,10 +679,33 @@ async function createHarness(records, {
     return id;
   };
   context.window.clearTimeout = id => timers.delete(id);
-  context.window.fetch = async url => {
+  context.window.fetch = async (url, options = {}) => {
     fetches.push(String(url));
     if (String(url) === "data/opening-puzzle-catalog.json") {
-      return { ok: true, async json() { return catalog(); } };
+      const extraDecks = personalEnvelope ? PERSONAL_BLUNDER_DECKS : [];
+      return { ok: true, async json() { return catalog(extraDecks); } };
+    }
+    if (String(url) === "data/my-blunder-puzzles.json") {
+      if (personalEnvelope && delayedPersonalEnvelope) {
+        return new Promise((resolve, reject) => {
+          const request = {
+            resolve() {
+              resolve({ ok: true, async json() { return personalEnvelope; } });
+            },
+          };
+          delayedPersonalRequests.push(request);
+          if (options.signal && typeof options.signal.addEventListener === "function") {
+            options.signal.addEventListener("abort", () => {
+              const error = new Error("The personal puzzle request was aborted.");
+              error.name = "AbortError";
+              reject(error);
+            });
+          }
+        });
+      }
+      return personalEnvelope
+        ? { ok: true, async json() { return personalEnvelope; } }
+        : { ok: false, status: 404 };
     }
     const manifestMatch = String(url).match(/^data\/([^/]+)\/manifest\.json$/);
     if (manifestMatch) {
@@ -653,7 +774,9 @@ async function createHarness(records, {
       callback();
     },
     progress(id = records[0].id, deckId = "caro-kann-black") {
-      const key = `chess-tracker:puzzle-progress:v1:${deckId}:me`;
+      const key = deckId
+        ? `chess-tracker:puzzle-progress:v1:${deckId}:me`
+        : "chess-tracker:puzzle-progress:v1:me";
       const raw = storage.getItem(key);
       return raw ? JSON.parse(raw).records[id] || null : null;
     },
@@ -673,6 +796,12 @@ async function createHarness(records, {
       delayedChunkResolvers.delete(url);
       resolve();
     },
+    resolvePersonalEnvelope() {
+      const request = delayedPersonalRequests[delayedPersonalRequests.length - 1];
+      assert.ok(request, "expected a delayed personal-puzzle request");
+      request.resolve();
+    },
+    get personalAbortCount() { return personalAbortCount; },
     async settle() {
       for (let index = 0; index < 4; index += 1) {
         await new Promise(resolve => setImmediate(resolve));
@@ -832,6 +961,103 @@ test("catalog dropdown exposes all five opening decks", async () => {
   const options = harness.elements["opening-puzzle-deck"].innerHTML;
   ["caro-kann-black", "colle-white", "englund-white", "pirc-black", "modern-black"]
     .forEach(deckId => assert.match(options, new RegExp(`value="${deckId}"`)));
+});
+
+test("My Blunders ALL loads its export, follows each puzzle color, and reuses personal progress", async () => {
+  const opening = continuationRecord();
+  const white = personalBlunderRecord("white");
+  const black = personalBlunderRecord("black");
+  const harness = await createHarness([opening], {
+    personalEnvelope: {
+      schemaVersion: 1,
+      generatedAt: "2026-08-05T04:00:00.000Z",
+      username: "ME",
+      catalog: {
+        candidates: [white, black],
+        coverage: { eligible_candidates: 2 },
+        errors: [],
+      },
+    },
+  });
+
+  assert.match(
+    harness.elements["opening-puzzle-deck"].innerHTML,
+    /value="my-blunders-all">My Blunders — ALL/,
+  );
+  assert.equal(await harness.context.CaroKannTrainer.selectDeck("my-blunders-all"), true);
+  assert.equal(harness.context.CaroKannTrainer.selectedDeckId, "my-blunders-all");
+  assert.equal(harness.fetches.includes("data/my-blunder-puzzles.json"), true);
+  assert.equal(harness.fetches.some(url => url.includes("my-blunders-all/manifest")), false);
+
+  const recordsByColor = { white, black };
+  const firstColor = harness.board.config.orientation;
+  const first = recordsByColor[firstColor];
+  assert.ok(first);
+  assert.equal(harness.board.config.fen, first.fen_before);
+  assert.equal(harness.board.config.turnColor, firstColor);
+  assert.equal(harness.board.config.movable.color, firstColor);
+
+  const answer = first.solution_steps[0].best_move_uci;
+  harness.board.config.movable.events.after(answer.slice(0, 2), answer.slice(2, 4));
+  assert.equal(harness.progress(first.puzzle_id, null).status, "solved");
+  assert.equal(
+    harness.storage.getItem("chess-tracker:puzzle-progress:v1:my-blunders-all:me"),
+    null,
+  );
+  assert.equal(harness.elements["puzzles-solved-count"].textContent, "(1)");
+
+  harness.elements["puzzle-continue"].dispatch("click");
+  await harness.settle();
+  const secondColor = harness.board.config.orientation;
+  const second = recordsByColor[secondColor];
+  assert.ok(second);
+  assert.notEqual(secondColor, firstColor);
+  assert.equal(harness.board.config.fen, second.fen_before);
+  assert.equal(harness.board.config.turnColor, secondColor);
+  assert.equal(harness.board.config.movable.color, secondColor);
+
+  assert.equal(await harness.context.CaroKannTrainer.selectDeck("caro-kann-black"), true);
+  assert.equal(harness.context.CaroKannTrainer.selectedDeckId, "caro-kann-black");
+  assert.equal(harness.board.config.fen, opening.puzzleFen);
+  assert.equal(harness.board.config.orientation, "black");
+  assert.equal(harness.board.config.movable.color, "black");
+  assert.equal(harness.progress(opening.id), null);
+  assert.equal(harness.progress(first.puzzle_id, null).status, "solved");
+  assert.equal(
+    harness.fetches.filter(url => url === "data/my-blunder-puzzles.json").length,
+    1,
+  );
+});
+
+test("a rapid personal-deck switch survives aborting a slow shared blunder export", async () => {
+  const white = personalBlunderRecord("white");
+  const harness = await createHarness([continuationRecord()], {
+    delayedPersonalEnvelope: true,
+    personalEnvelope: {
+      schemaVersion: 1,
+      generatedAt: "2026-08-05T04:00:00.000Z",
+      username: "me",
+      catalog: {
+        candidates: [white, personalBlunderRecord("black")],
+        coverage: { eligible_candidates: 2 },
+        errors: [],
+      },
+    },
+  });
+
+  const stale = harness.context.CaroKannTrainer.selectDeck("my-blunders-all");
+  await harness.settle();
+  const latest = harness.context.CaroKannTrainer.selectDeck("my-blunders-colle");
+  await harness.settle();
+  assert.ok(harness.personalAbortCount > 0);
+
+  harness.resolvePersonalEnvelope();
+  assert.equal(await stale, false);
+  assert.equal(await latest, true);
+  assert.equal(harness.context.CaroKannTrainer.selectedDeckId, "my-blunders-colle");
+  assert.equal(harness.board.config.fen, white.fen_before);
+  assert.equal(harness.board.config.orientation, "white");
+  assert.equal(harness.board.config.movable.color, "white");
 });
 
 test("switching to a White deck clears the old queue and changes solver orientation", async () => {
