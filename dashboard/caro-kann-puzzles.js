@@ -627,7 +627,63 @@
     }, {});
   }
 
+  function personalDatasetVersion(deck, candidates) {
+    const fingerprints = candidates.map(candidate => {
+      const themes = Array.isArray(candidate.themes) ? candidate.themes.slice().sort() : [];
+      const primaryTheme = candidate.primaryTacticalTheme || themes[0] || "personalBlunder";
+      const rating = candidate.rating !== null && candidate.rating !== ""
+        && Number.isFinite(Number(candidate.rating)) ? Number(candidate.rating) : "";
+      return [
+        puzzleId(candidate), candidate.variation || "My Blunders", candidate.difficulty || "",
+        candidate.provenance || "standard", themes.join("\x1d"), primaryTheme,
+        Math.max(1, Number(candidate.solutionLength) || 1),
+        String(candidate.best_move_uci || "").toLowerCase(), rating,
+        candidate.isOpeningPuzzle === true ? "1" : "0",
+        Caro.isMainLine(candidate) ? "1" : "0", Caro.curriculumGroup(candidate),
+      ].join("\x1e");
+    }).filter(Boolean).sort();
+    let hash = 2166136261;
+    const source = `${deck.id}\x1f${fingerprints.join("\x1f")}`;
+    for (let index = 0; index < source.length; index += 1) {
+      hash ^= source.charCodeAt(index);
+      hash = Math.imul(hash, 16777619) >>> 0;
+    }
+    return `personal-2:${fingerprints.length}:${hash.toString(16).padStart(8, "0")}`;
+  }
+
+  function personalSelectionIndex(deck, candidates) {
+    const datasetVersion = personalDatasetVersion(deck, candidates);
+    const entries = candidates.slice().sort((left, right) =>
+      puzzleId(left).localeCompare(puzzleId(right))
+    ).map((candidate, offset) => {
+      const answer = String(candidate.best_move_uci || "").toLowerCase();
+      const themes = Array.isArray(candidate.themes) ? candidate.themes.slice() : [];
+      const primaryTheme = candidate.primaryTacticalTheme || themes[0] || "personalBlunder";
+      const solutionLength = Math.max(1, Number(candidate.solutionLength) || 1);
+      return {
+        id: puzzleId(candidate),
+        chunkIndex: 0,
+        offset,
+        variation: candidate.variation || "My Blunders",
+        difficulty: candidate.difficulty || "",
+        provenance: candidate.provenance || "standard",
+        themes,
+        primaryTacticalTheme: primaryTheme,
+        tacticalSignature: `${primaryTheme}|${solutionLength}|?|${answer.slice(2, 4) || "?"}`,
+        rating: candidate.rating !== null && candidate.rating !== ""
+          && Number.isFinite(Number(candidate.rating))
+          ? Number(candidate.rating) : Number.MAX_SAFE_INTEGER,
+        solutionLength,
+        mainLine: Caro.isMainLine(candidate),
+        openingOnly: candidate.isOpeningPuzzle === true,
+        curriculumGroup: Caro.curriculumGroup(candidate),
+      };
+    });
+    return { deckId: deck.id, datasetVersion, entries };
+  }
+
   function personalManifest(deck, candidates, envelope) {
+    const datasetVersion = personalDatasetVersion(deck, candidates);
     return {
       raw: envelope,
       schemaVersion: "personal-1",
@@ -643,7 +699,7 @@
       balancedExported: candidates.length,
       chunks: [],
       selectionIndex: null,
-      datasetVersion: "",
+      datasetVersion,
       variationCounts: countCandidateValues(candidates, candidate => candidate.variation),
       difficultyCounts: {},
       provenanceCounts: { standard: candidates.length },
@@ -663,6 +719,12 @@
     state.candidateIds = new Set(state.candidates.map(puzzleId));
     state.invalidCount = Math.max(0, eligibleCount - state.candidates.length);
     state.manifest = personalManifest(deck, state.candidates, envelope);
+    if (state.reviewStore && typeof state.reviewStore.reserveSelectionSession === "function") {
+      state.selectionIndex = personalSelectionIndex(deck, state.candidates);
+      state.selectionEntriesById = new Map(
+        state.selectionIndex.entries.map(entry => [String(entry.id), entry]),
+      );
+    }
     state.deckManifests.set(deck.id, state.manifest);
     state.store = createDeckProgressStore(deck);
     updateDeckChrome(false);
@@ -982,6 +1044,7 @@
     const chunks = [];
     const seen = new Set();
     (ids || []).forEach(id => {
+      if (state.candidateIds.has(String(id))) return;
       const entry = state.selectionEntriesById.get(String(id));
       const index = Number(entry && (entry.chunkIndex !== undefined
         ? entry.chunkIndex : entry.chunk));
@@ -1219,11 +1282,12 @@
       migrateCandidateReview(candidate);
       const id = puzzleId(candidate);
       if (requested) return requested.has(id);
-      if (!state.reviewStore) return !solvedIds.has(id);
+      if (solvedIds.has(id)) return false;
+      if (!state.reviewStore) return true;
       const review = reviewClass(candidate);
       // A recorded Learning/Mastered item stays spaced until its dueAt time.
       // New unsolved positions and genuinely Due reviews make up the queue.
-      return review === "Due" || review === "New" && !solvedIds.has(id);
+      return review === "Due" || review === "New";
     });
     const priority = { Due: 0, Learning: 1, New: 2, Mastered: 3 };
     return candidates.slice().sort((left, right) => {
@@ -1326,18 +1390,19 @@
       const record = state.reviewRecords[id];
       const classification = Trainer && typeof Trainer.classifyReview === "function"
         ? Trainer.classifyReview(record, at) : record ? reviewClass({ id }) : "New";
-      return classification === "Learning" || classification === "Mastered"
-        || classification === "New" && solved.has(id);
+      return solved.has(id) || classification === "Learning" || classification === "Mastered";
     });
   }
 
   function indexedDueIds(at) {
     if (!state.selectionIndex || !state.reviewStore
         || typeof state.reviewStore.dueReviews !== "function") return [];
+    if (isPersonalBlunderDeck(state.deck)) return [];
     try {
+      const solved = storedSolvedIds();
       return state.reviewStore.dueReviews(state.deck.id, at)
         .map(review => String(review.id || review.puzzleId || review))
-        .filter(id => state.selectionEntriesById.has(id));
+        .filter(id => state.selectionEntriesById.has(id) && !solved.has(id));
     } catch (_error) {
       return [];
     }

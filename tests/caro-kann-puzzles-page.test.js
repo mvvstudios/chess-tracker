@@ -391,10 +391,29 @@ function seedSolved(storage, ids) {
   );
 }
 
+function seedPersonalSolved(storage, ids) {
+  const at = "2026-08-03T12:00:00Z";
+  const records = Object.fromEntries(ids.map(id => [id, {
+    id,
+    status: "solved",
+    attempts: 1,
+    firstAttemptAt: at,
+    solvedAt: at,
+    solutionRevealedAt: null,
+    createdAt: at,
+    updatedAt: at,
+  }]));
+  storage.setItem(
+    "chess-tracker:puzzle-progress:v1:me",
+    JSON.stringify({ version: 1, username: "me", records }),
+  );
+}
+
 function seedTrainerState(storage, {
   sessionMode = "finite",
   sessionSize = 10,
   reviews = {},
+  reviewsByDeck = null,
 } = {}) {
   const at = new Date().toISOString();
   storage.setItem("chess-tracker:opening-trainer:v2:me", JSON.stringify({
@@ -407,7 +426,7 @@ function seedTrainerState(storage, {
       onboardingDismissed: true,
       updatedAt: at,
     },
-    reviews: { "caro-kann-black": reviews },
+    reviews: reviewsByDeck || { "caro-kann-black": reviews },
     updatedAt: at,
   }));
 }
@@ -956,6 +975,48 @@ test("a partial indexed chunk failure preserves membership and blocks a compacte
   assert.equal(harness.elements["puzzle-workspace"].hidden, true);
 });
 
+test("ordinary indexed training excludes permanently solved Due puzzles until explicit review", async () => {
+  const storage = new MemoryStorage();
+  const records = Array.from({ length: 10 }, (_unused, index) =>
+    recordWithId(`solved-due-${index + 1}`)
+  );
+  const solved = records[0];
+  const dueAt = "2026-08-01T12:00:00.000Z";
+  seedSolved(storage, [solved.id]);
+  seedTrainerState(storage, {
+    sessionMode: "finite",
+    sessionSize: 5,
+    reviews: {
+      [solved.id]: {
+        deckId: "caro-kann-black",
+        puzzleId: solved.id,
+        encounters: 1,
+        dueAt,
+        updatedAt: dueAt,
+      },
+    },
+  });
+  const fixture = indexedDeckFixture("caro-kann-black", [records], "e".repeat(64));
+  const harness = await createHarness(records, {
+    storage,
+    trainerEnabled: true,
+    manifestsByDeck: { "caro-kann-black": fixture.manifest },
+    selectionIndexesByDeck: { "caro-kann-black": fixture.index },
+    chunkPayloadsByDeck: { "caro-kann-black": [records] },
+  });
+
+  assert.equal(
+    harness.trainerState().selection.active.puzzleIds.includes(solved.id),
+    false,
+  );
+  assert.equal(harness.elements["reviews-due-button"].textContent, "Reviews due: 1");
+
+  harness.elements["reviews-due-button"].dispatch("click");
+  await harness.settle();
+  assert.equal(harness.context.CaroKannTrainer.sessionSummary.total, 1);
+  assert.equal(harness.elements["puzzle-review-state"].textContent, "Due");
+});
+
 test("catalog dropdown exposes all five opening decks", async () => {
   const harness = await createHarness([continuationRecord()]);
   const options = harness.elements["opening-puzzle-deck"].innerHTML;
@@ -1027,6 +1088,139 @@ test("My Blunders ALL loads its export, follows each puzzle color, and reuses pe
     harness.fetches.filter(url => url === "data/my-blunder-puzzles.json").length,
     1,
   );
+});
+
+test("My Blunders starts fresh across reloads and circulates recent batches before reuse", async () => {
+  const storage = new MemoryStorage();
+  seedTrainerState(storage, { sessionMode: "finite", sessionSize: 5 });
+  const candidates = Array.from({ length: 20 }, (_unused, index) => {
+    const candidate = personalBlunderRecord("white", `personal-circulation-${index + 1}`);
+    candidate.opening = index < 10
+      ? "Colle System: Main Line" : "Colle System: Rare Sideline";
+    return candidate;
+  });
+  const mainLineIds = new Set(candidates.slice(0, 10).map(candidate => candidate.puzzle_id));
+  const personalEnvelope = {
+    schemaVersion: 1,
+    generatedAt: "2026-08-05T04:00:00.000Z",
+    username: "me",
+    catalog: {
+      candidates,
+      coverage: { eligible_candidates: candidates.length },
+      errors: [],
+    },
+  };
+  const options = { storage, trainerEnabled: true, personalEnvelope };
+
+  const firstHarness = await createHarness([continuationRecord()], options);
+  assert.equal(await firstHarness.context.CaroKannTrainer.selectDeck("my-blunders-all"), true);
+  const first = firstHarness.trainerState().selection.active.puzzleIds.slice();
+
+  const stored = firstHarness.trainerState();
+  const dueAt = "2026-08-01T12:00:00.000Z";
+  stored.reviews["my-blunders-all"] = {
+    [first[0]]: {
+      deckId: "my-blunders-all",
+      puzzleId: first[0],
+      encounters: 1,
+      dueAt,
+      updatedAt: dueAt,
+    },
+  };
+  storage.setItem("chess-tracker:opening-trainer:v2:me", JSON.stringify(stored));
+
+  const reloadedHarness = await createHarness([continuationRecord()], options);
+  assert.equal(reloadedHarness.context.CaroKannTrainer.selectedDeckId, "my-blunders-all");
+  const second = reloadedHarness.trainerState().selection.active.puzzleIds.slice();
+  assert.equal(first.length, 5);
+  assert.equal(second.length, 5);
+  assert.equal(new Set(first.concat(second)).size, 10);
+  assert.equal(second.includes(first[0]), false, "personal Due items do not bypass circulation");
+
+  reloadedHarness.elements["session-start-fresh"].dispatch("click");
+  await reloadedHarness.settle();
+  const third = reloadedHarness.trainerState().selection.active.puzzleIds.slice();
+  assert.equal(third.length, 5);
+  assert.equal(new Set(first.concat(second, third)).size, 15);
+
+  reloadedHarness.elements["session-start-fresh"].dispatch("click");
+  await reloadedHarness.settle();
+  const fourth = reloadedHarness.trainerState().selection.active.puzzleIds.slice();
+  assert.equal(fourth.length, 5);
+  assert.equal(new Set(first.concat(second, third, fourth)).size, 20);
+
+  reloadedHarness.elements["caro-filter-lines"].value = "main-lines";
+  reloadedHarness.elements["customize-apply"].dispatch("click");
+  await reloadedHarness.settle();
+  assert.equal(
+    reloadedHarness.trainerState().selection.active.puzzleIds.every(id => mainLineIds.has(id)),
+    true,
+  );
+});
+
+test("My Blunders shares monotonic solved progress across filters and reviews it only explicitly", async () => {
+  const storage = new MemoryStorage();
+  const candidates = Array.from({ length: 12 }, (_unused, index) =>
+    personalBlunderRecord("white", `personal-shared-solved-${index + 1}`)
+  );
+  const solved = candidates[0];
+  const dueAt = "2026-08-01T12:00:00.000Z";
+  seedPersonalSolved(storage, [solved.puzzle_id]);
+  seedTrainerState(storage, {
+    sessionMode: "finite",
+    sessionSize: 5,
+    reviewsByDeck: {
+      "my-blunders-colle": {
+        [solved.puzzle_id]: {
+          encounters: 1,
+          dueAt,
+          updatedAt: dueAt,
+        },
+      },
+      "my-blunders-all": {
+        [solved.puzzle_id]: {
+          encounters: 1,
+          dueAt,
+          updatedAt: dueAt,
+        },
+      },
+    },
+  });
+  const harness = await createHarness([continuationRecord()], {
+    storage,
+    trainerEnabled: true,
+    personalEnvelope: {
+      schemaVersion: 1,
+      generatedAt: "2026-08-05T04:00:00.000Z",
+      username: "me",
+      catalog: {
+        candidates,
+        coverage: { eligible_candidates: candidates.length },
+        errors: [],
+      },
+    },
+  });
+
+  assert.equal(await harness.context.CaroKannTrainer.selectDeck("my-blunders-colle"), true);
+  assert.equal(
+    harness.trainerState().selection.active.puzzleIds.includes(solved.puzzle_id),
+    false,
+  );
+  assert.equal(harness.progress(solved.puzzle_id, null).status, "solved");
+
+  assert.equal(await harness.context.CaroKannTrainer.selectDeck("my-blunders-all"), true);
+  assert.equal(
+    harness.trainerState().selection.active.puzzleIds.includes(solved.puzzle_id),
+    false,
+  );
+  assert.equal(harness.progress(solved.puzzle_id, null).status, "solved");
+  assert.equal(harness.elements["puzzles-solved-count"].textContent, "(1)");
+  assert.equal(harness.elements["reviews-due-button"].textContent, "Reviews due: 1");
+
+  harness.elements["reviews-due-button"].dispatch("click");
+  await harness.settle();
+  assert.equal(harness.context.CaroKannTrainer.sessionSummary.total, 1);
+  assert.equal(harness.elements["puzzle-review-state"].textContent, "Due");
 });
 
 test("a rapid personal-deck switch survives aborting a slow shared blunder export", async () => {

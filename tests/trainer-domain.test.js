@@ -84,6 +84,66 @@ function selectionIndex(count = 80, {
   };
 }
 
+const FOCUSED_DIFFICULTY_CADENCE = [
+  "beginner", "developing", "intermediate", "advanced", "beginner",
+  "developing", "expert", "intermediate", "beginner", "developing",
+  "advanced", "beginner", "developing", "intermediate", "beginner",
+  "developing", "advanced", "intermediate", "beginner", "developing",
+];
+
+function mixedSelectionIndex(chunks = 4) {
+  return {
+    schemaVersion: 1,
+    deckId: "colle-white",
+    datasetVersion: "mixed-v1",
+    entries: Array.from({ length: chunks }, (_unused, chunkIndex) => (
+      FOCUSED_DIFFICULTY_CADENCE.map((difficulty, offset) => ({
+        id: `mixed-${chunkIndex + 1}-${offset + 1}`,
+        chunkIndex,
+        chunkOffset: offset,
+        variation: "Mixed variation",
+        difficulty,
+        rating: 400 + chunkIndex * 20 + offset,
+        provenance: "standard",
+        themes: [`theme${offset % 8}`, "opening"],
+        primaryTheme: `theme${offset % 8}`,
+        isOpeningPuzzle: true,
+        solutionLength: 3,
+        solverDecisionCount: 2,
+        tacticalSignature: `signature-${chunkIndex}-${offset}`,
+        curriculumGroup: "Main lines",
+        mainLine: true,
+      }))
+    )).flat(),
+  };
+}
+
+function difficultySelectionIndex(chunks, {
+  deckId = "colle-white",
+  datasetVersion = "difficulty-v1",
+} = {}) {
+  return {
+    schemaVersion: 1,
+    deckId,
+    datasetVersion,
+    entries: chunks.flatMap((difficulties, chunkIndex) => difficulties.map((difficulty, offset) => ({
+      id: `${datasetVersion}-${chunkIndex + 1}-${offset + 1}`,
+      chunkIndex,
+      chunkOffset: offset,
+      difficulty,
+    }))),
+  };
+}
+
+function difficultyCounts(index, ids) {
+  const byId = new Map(index.entries.map(entry => [entry.id, entry]));
+  return ids.reduce((counts, id) => {
+    const difficulty = byId.get(id).difficulty;
+    counts[difficulty] = (counts[difficulty] || 0) + 1;
+    return counts;
+  }, {});
+}
+
 function select(config = {}) {
   return Trainer.selectSession({
     index: config.index || selectionIndex(),
@@ -283,6 +343,231 @@ test("Focused selection consumes 5, 10, and 20 forward from one durable cohort",
   const locations = new Map(index.entries.map(entry => [entry.id, entry.chunkIndex]));
   assert.equal(new Set(sessions[0].map(id => locations.get(id))).size, 1,
     "Focused traversal keeps a batch chunk-local");
+});
+
+test("Focused Mix follows the balanced 5, 10, and 20-puzzle difficulty cadence", () => {
+  const index = mixedSelectionIndex();
+  const expected = [
+    [5, { beginner: 2, developing: 1, intermediate: 1, advanced: 1 }],
+    [10, { beginner: 3, developing: 3, intermediate: 2, advanced: 1, expert: 1 }],
+    [20, { beginner: 6, developing: 6, intermediate: 4, advanced: 3, expert: 1 }],
+  ];
+
+  expected.forEach(([size, counts]) => {
+    const first = select({
+      index,
+      request: { size, fresh: true, trainingLength: "finite" },
+      rng: () => 0.375,
+    });
+    const again = select({
+      index,
+      request: { size, fresh: true, trainingLength: "finite" },
+      rng: () => 0.375,
+    });
+    assert.deepEqual(first.ids, again.ids, `${size}-puzzle selection stays deterministic`);
+    assert.deepEqual(difficultyCounts(index, first.ids), counts);
+    const locations = new Map(index.entries.map(entry => [entry.id, entry.chunkIndex]));
+    assert.equal(new Set(first.ids.map(id => locations.get(id))).size, 1,
+      `${size}-puzzle selection remains chunk-local`);
+  });
+});
+
+test("Focused Mix keeps its 20-new-puzzle mix while traversing without repeats", () => {
+  const index = mixedSelectionIndex(5);
+  let state;
+  const sessions = [];
+  for (const [sessionIndex, size] of [5, 10, 20, 20].entries()) {
+    const result = select({
+      index,
+      state,
+      request: { size, fresh: true, trainingLength: "finite" },
+      now: `2026-08-04T12:${String(sessionIndex).padStart(2, "0")}:00Z`,
+      rng: () => 0.375,
+    });
+    state = result.nextState;
+    sessions.push(result.ids);
+  }
+
+  assert.equal(new Set(sessions.flat()).size, 55, "durable traversal does not repeat puzzles");
+  assert.deepEqual(difficultyCounts(index, sessions[2]), {
+    beginner: 6,
+    developing: 6,
+    intermediate: 4,
+    advanced: 3,
+    expert: 1,
+  });
+  assert.deepEqual(difficultyCounts(index, sessions[3]), {
+    beginner: 6,
+    developing: 6,
+    intermediate: 4,
+    advanced: 3,
+    expert: 1,
+  });
+});
+
+test("Focused Mix forms complete cadence cycles across complementary skewed chunks", () => {
+  const index = difficultySelectionIndex([
+    Array(12).fill("beginner").concat(Array(12).fill("developing")),
+    Array(8).fill("intermediate").concat(Array(6).fill("advanced"), Array(2).fill("expert")),
+  ], { datasetVersion: "skewed-v1" });
+  const first = select({
+    index,
+    request: { size: 20, fresh: true, trainingLength: "finite" },
+    rng: () => 0.375,
+  });
+  const second = select({
+    index,
+    state: first.nextState,
+    request: { size: 20, fresh: true, trainingLength: "finite" },
+    now: "2026-08-04T12:01:00Z",
+    rng: () => 0.375,
+  });
+  const expected = {
+    beginner: 6,
+    developing: 6,
+    intermediate: 4,
+    advanced: 3,
+    expert: 1,
+  };
+
+  assert.deepEqual(difficultyCounts(index, first.ids), expected);
+  assert.deepEqual(difficultyCounts(index, second.ids), expected);
+  assert.equal(new Set(first.ids.concat(second.ids)).size, 40);
+  const locations = new Map(index.entries.map(entry => [entry.id, entry.chunkIndex]));
+  assert.equal(new Set(first.ids.map(id => locations.get(id))).size, 2,
+    "cross-chunk loading happens only when no chunk can supply a complete cadence");
+});
+
+test("Focused Mix remains lossless for single and unknown difficulty cohorts", () => {
+  ["beginner", "unclassified"].forEach(difficulty => {
+    const index = difficultySelectionIndex([
+      Array(17).fill(difficulty),
+      Array(13).fill(difficulty),
+    ], { datasetVersion: `narrow-${difficulty}` });
+    let state;
+    const ids = [];
+    for (let session = 0; session < 6; session += 1) {
+      const result = select({
+        index,
+        state,
+        request: { size: 5, fresh: true, trainingLength: "finite" },
+        now: `2026-08-04T13:${String(session).padStart(2, "0")}:00Z`,
+        rng: () => 0.375,
+      });
+      state = result.nextState;
+      ids.push(...result.ids);
+    }
+    assert.equal(ids.length, 30, difficulty);
+    assert.equal(new Set(ids).size, 30, `${difficulty} traversal emits every puzzle once`);
+    assert.deepEqual(new Set(ids), new Set(index.entries.map(entry => entry.id)));
+  });
+});
+
+test("real Focused deck indexes begin with the exact mix in one chunk", () => {
+  [
+    "caro-kann-black",
+    "colle-white",
+    "englund-white",
+    "pirc-black",
+    "modern-black",
+  ].forEach(deckId => {
+    const index = JSON.parse(fs.readFileSync(
+      path.join(__dirname, "..", "public", "data", deckId, "selection-index.json"),
+      "utf8",
+    ));
+    const result = select({
+      index,
+      request: { size: 20, fresh: true, trainingLength: "finite" },
+      rng: () => 0.375,
+    });
+    assert.deepEqual(difficultyCounts(index, result.ids), {
+      beginner: 6,
+      developing: 6,
+      intermediate: 4,
+      advanced: 3,
+      expert: 1,
+    }, deckId);
+    const locations = new Map(index.entries.map(entry => [entry.id, entry.chunkIndex]));
+    assert.equal(new Set(result.ids.map(id => locations.get(id))).size, 1, deckId);
+    assert.equal(result.nextState.cohorts[0].orderVersion, "focused-v2", deckId);
+  });
+});
+
+test("real Modern traversal keeps the exact mix through every complete cadence", () => {
+  const index = JSON.parse(fs.readFileSync(
+    path.join(__dirname, "..", "public", "data", "modern-black", "selection-index.json"),
+    "utf8",
+  ));
+  const totals = difficultyCounts(index, index.entries.map(entry => entry.id));
+  const completeCadences = Math.min(
+    Math.floor(totals.beginner / 6),
+    Math.floor(totals.developing / 6),
+    Math.floor(totals.intermediate / 4),
+    Math.floor(totals.advanced / 3),
+    totals.expert,
+  );
+  const expected = {
+    beginner: 6,
+    developing: 6,
+    intermediate: 4,
+    advanced: 3,
+    expert: 1,
+  };
+  let state;
+  const seen = new Set();
+  const start = Date.parse("2026-08-04T12:00:00Z");
+  for (let session = 0; session < completeCadences; session += 1) {
+    const result = select({
+      index,
+      state,
+      request: { size: 20, fresh: true, trainingLength: "finite" },
+      now: new Date(start + session * 60_000).toISOString(),
+      rng: () => 0.375,
+    });
+    state = result.nextState;
+    assert.deepEqual(difficultyCounts(index, result.ids), expected, `session ${session + 1}`);
+    result.ids.forEach(id => {
+      assert.equal(seen.has(id), false, id);
+      seen.add(id);
+    });
+  }
+  assert.equal(seen.size, completeCadences * 20);
+});
+
+test("focused-v1 traversal resets without touching adaptive reviews", () => {
+  const storage = new MemoryStorage();
+  const store = Trainer.createTrainerStore("alice", { storage, clock: fixedClock().clock });
+  store.recordOutcome("caro-kann-black", candidate("review-survives-v2"), { skipped: true });
+  const envelope = JSON.parse(storage.getItem(store.key));
+  envelope.selection = {
+    schemaVersion: Trainer.SELECTION_SCHEMA_VERSION,
+    cohorts: [{
+      deckId: "colle-white",
+      datasetVersion: "mixed-v1",
+      filters: {},
+      orderVersion: "focused-v1",
+      seed: "legacy-seed",
+      cursor: 37,
+      epoch: 2,
+      deferredIds: ["legacy-deferred"],
+      lastUsedAt: "2026-08-03T12:00:00Z",
+    }],
+    recentByDeck: {},
+    active: null,
+    updatedAt: "2026-08-03T12:00:00Z",
+  };
+  storage.setItem(store.key, JSON.stringify(envelope));
+
+  const reloaded = Trainer.createTrainerStore("alice", { storage, clock: fixedClock().clock });
+  assert.equal(reloaded.getReview("caro-kann-black", "review-survives-v2").skips, 1);
+  assert.deepEqual(reloaded.getSelectionState().cohorts, []);
+  const reserved = reloaded.reserveSelectionSession({
+    index: mixedSelectionIndex(),
+    filters: {},
+    request: { size: 5, fresh: true, trainingLength: "finite" },
+    rng: () => 0.375,
+  });
+  assert.equal(reserved.nextState.cohorts[0].orderVersion, "focused-v2");
 });
 
 test("Focused selection repeats only after complete epoch exhaustion", () => {

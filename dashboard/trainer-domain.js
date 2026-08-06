@@ -32,6 +32,19 @@
   const DIFFICULTY_ORDER = Object.freeze([
     "beginner", "developing", "intermediate", "advanced", "expert",
   ]);
+  const FOCUSED_DIFFICULTY_CADENCE = Object.freeze([
+    "beginner", "developing", "intermediate", "advanced", "beginner",
+    "developing", "expert", "intermediate", "beginner", "developing",
+    "advanced", "beginner", "developing", "intermediate", "beginner",
+    "developing", "advanced", "intermediate", "beginner", "developing",
+  ]);
+  const FOCUSED_DIFFICULTY_QUOTAS = Object.freeze({
+    beginner: 6,
+    developing: 6,
+    intermediate: 4,
+    advanced: 3,
+    expert: 1,
+  });
   const COUNTER_FIELDS = Object.freeze([
     "encounters",
     "cleanSolves",
@@ -346,8 +359,8 @@
     if (!deckId || !datasetVersion || !seed) return null;
     const filters = normalizeSelectionFilters(raw.filters);
     const orderVersion = text(raw.orderVersion || raw.order_version)
-      || selectionOrderVersion(filters);
-    if (!["focused-v1", "guided-v1"].includes(orderVersion)) return null;
+      || (filters.mode === "curriculum" ? "guided-v1" : "focused-v1");
+    if (!["focused-v1", "focused-v2", "guided-v1"].includes(orderVersion)) return null;
     const filterSignature = selectionFilterSignature(filters);
     return {
       key: [deckId, datasetVersion, orderVersion, filterSignature].join("|"),
@@ -419,7 +432,11 @@
       return emptySelectionState();
     }
     const state = emptySelectionState();
-    state.cohorts = array(raw.cohorts).map(sanitizeSelectionCohort).filter(Boolean)
+    // focused-v2 has a different ordinal mapping. Discard only the obsolete
+    // traversal cursor; active membership, the recent ring, and reviews remain intact.
+    state.cohorts = array(raw.cohorts).map(sanitizeSelectionCohort).filter(cohort => (
+      cohort && cohort.orderVersion !== "focused-v1"
+    ))
       .sort((left, right) => (timestampMillis(left.lastUsedAt) || 0)
         - (timestampMillis(right.lastUsedAt) || 0))
       .slice(-MAX_SELECTION_COHORTS);
@@ -482,7 +499,7 @@
     return Math.floor(normalized * 0x100000000).toString(16).padStart(8, "0");
   }
 
-  function focusedEpochOrder(entries, seed, epoch) {
+  function focusedChunkGroups(entries, seed, epoch) {
     const groups = new Map();
     array(entries).forEach(entry => {
       const key = String(entry.chunkIndex);
@@ -497,11 +514,124 @@
       }
       return left[0].localeCompare(right[0]);
     });
-    return deterministicShuffle(groupEntries, `${seed}:${epoch}:chunks`).flatMap(([key, values]) => {
+    return deterministicShuffle(groupEntries, `${seed}:${epoch}:chunks`);
+  }
+
+  function focusedDifficulty(entry) {
+    return DIFFICULTY_ORDER.includes(entry.difficulty) ? entry.difficulty : "";
+  }
+
+  function focusedQueues(values, seed) {
+    const buckets = new Map(DIFFICULTY_ORDER.concat([""]).map(difficulty => [difficulty, []]));
+    array(values).forEach(entry => buckets.get(focusedDifficulty(entry)).push(entry));
+    return new Map([...buckets.entries()].map(([difficulty, matching]) => [difficulty, {
+      entries: seed === null ? matching.slice() : deterministicShuffle(
+        matching,
+        `${seed}:difficulty:${difficulty || "other"}`,
+      ),
+      cursor: 0,
+    }]));
+  }
+
+  function focusedQueueRemaining(queue) {
+    return queue ? Math.max(0, queue.entries.length - queue.cursor) : 0;
+  }
+
+  function focusedCompleteCycles(queues) {
+    return Math.min(...DIFFICULTY_ORDER.map(difficulty => Math.floor(
+      focusedQueueRemaining(queues.get(difficulty)) / FOCUSED_DIFFICULTY_QUOTAS[difficulty]
+    )));
+  }
+
+  function takeFocusedEntry(queues, difficulty) {
+    const queue = queues.get(difficulty);
+    if (!queue || queue.cursor >= queue.entries.length) return null;
+    const entry = queue.entries[queue.cursor];
+    queue.cursor += 1;
+    return entry;
+  }
+
+  function takeFocusedCycles(queues, count) {
+    const result = [];
+    for (let cycle = 0; cycle < count; cycle += 1) {
+      FOCUSED_DIFFICULTY_CADENCE.forEach(difficulty => {
+        result.push(takeFocusedEntry(queues, difficulty));
+      });
+    }
+    return result;
+  }
+
+  function appendFocusedRemainders(target, queues) {
+    DIFFICULTY_ORDER.concat([""]).forEach(difficulty => {
+      const queue = queues.get(difficulty);
+      if (!queue) return;
+      target.get(difficulty).push(...queue.entries.slice(queue.cursor));
+      queue.cursor = queue.entries.length;
+    });
+  }
+
+  function focusedRemainderEntries(queues) {
+    return DIFFICULTY_ORDER.concat([""]).flatMap(difficulty => {
+      const queue = queues.get(difficulty);
+      return queue ? queue.entries.slice(queue.cursor) : [];
+    });
+  }
+
+  function drainFocusedRemainders(queues) {
+    const total = [...queues.values()].reduce(
+      (count, queue) => count + focusedQueueRemaining(queue),
+      0,
+    );
+    const result = [];
+    while (result.length < total) {
+      const cadenceIndex = result.length % FOCUSED_DIFFICULTY_CADENCE.length;
+      let entry = takeFocusedEntry(queues, FOCUSED_DIFFICULTY_CADENCE[cadenceIndex]);
+      if (!entry) {
+        const fallback = [...new Set(
+          FOCUSED_DIFFICULTY_CADENCE.slice(cadenceIndex + 1)
+            .concat(FOCUSED_DIFFICULTY_CADENCE.slice(0, cadenceIndex + 1), [""])
+        )];
+        for (const difficulty of fallback) {
+          entry = takeFocusedEntry(queues, difficulty);
+          if (entry) break;
+        }
+      }
+      if (!entry) break;
+      result.push(entry);
+    }
+    return result;
+  }
+
+  function focusedEpochOrder(entries, seed, epoch) {
+    const result = [];
+    const pooled = new Map(DIFFICULTY_ORDER.concat([""]).map(difficulty => [difficulty, []]));
+    const pooledChunkOrder = [];
+    focusedChunkGroups(entries, seed, epoch).forEach(([key, values]) => {
       const canonical = values.slice().sort((left, right) => left.offset - right.offset
         || left.id.localeCompare(right.id));
-      return deterministicShuffle(canonical, `${seed}:${epoch}:chunk:${key}`);
+      const queues = focusedQueues(canonical, `${seed}:${epoch}:chunk:${key}`);
+      result.push(...takeFocusedCycles(queues, focusedCompleteCycles(queues)));
+      pooledChunkOrder.push(...drainFocusedRemainders(focusedQueues(
+        focusedRemainderEntries(queues),
+        null,
+      )));
+      appendFocusedRemainders(pooled, queues);
     });
+
+    // Prefer complete cycles from one chunk. Only leftovers cross chunk
+    // boundaries, and any final cohort too narrow for another cycle stays lossless.
+    const pooledQueues = focusedQueues(
+      DIFFICULTY_ORDER.concat([""]).flatMap(difficulty => pooled.get(difficulty)),
+      null,
+    );
+    const crossChunkCycles = takeFocusedCycles(
+      pooledQueues,
+      focusedCompleteCycles(pooledQueues),
+    );
+    const crossChunkIds = new Set(crossChunkCycles.map(entry => entry.id));
+    result.push(...crossChunkCycles);
+    result.push(...pooledChunkOrder.filter(entry => !crossChunkIds.has(entry.id)));
+    return result;
   }
 
   function guidedDifficultyRank(entry) {
@@ -578,7 +708,7 @@
   }
 
   function selectionOrderVersion(filters) {
-    return filters.mode === "curriculum" ? "guided-v1" : "focused-v1";
+    return filters.mode === "curriculum" ? "guided-v1" : "focused-v2";
   }
 
   function isolateSelectionDataset(rawState, deckId, datasetVersion) {
@@ -617,9 +747,10 @@
   }
 
   function cohortOrder(entries, cohort) {
-    return cohort.orderVersion === "guided-v1"
-      ? guidedEpochOrder(entries, cohort.seed, cohort.epoch, GUIDED_RATING_WINDOW_SIZE)
-      : focusedEpochOrder(entries, cohort.seed, cohort.epoch);
+    if (cohort.orderVersion === "guided-v1") {
+      return guidedEpochOrder(entries, cohort.seed, cohort.epoch, GUIDED_RATING_WINDOW_SIZE);
+    }
+    return focusedEpochOrder(entries, cohort.seed, cohort.epoch);
   }
 
   function appendDeferred(cohort, id) {
