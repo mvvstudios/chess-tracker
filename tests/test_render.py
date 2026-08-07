@@ -92,14 +92,55 @@ def test_opening_trainer_outputs_only_embed_compact_progress_identity(tmp_path):
         assert "must-not-reach-trainer" not in html
 
 
-def test_index_places_blunders_after_opening_tables():
+def test_index_places_quality_review_tables_after_opening_tables():
     html = Path("chess_tracker/templates/index.html").read_text()
     white_pos = html.index('id="white-block"')
     black_pos = html.index('id="black-block"')
     blunder_pos = html.index('id="blunder-analysis-block"')
     scramble_pos = html.index('id="scramble-review-block"')
+    mistake_pos = html.index('id="mistake-analysis-block"')
+    scramble_mistake_pos = html.index('id="scramble-mistake-review-block"')
 
-    assert white_pos < black_pos < blunder_pos < scramble_pos
+    assert (
+        white_pos
+        < black_pos
+        < blunder_pos
+        < scramble_pos
+        < mistake_pos
+        < scramble_mistake_pos
+    )
+
+
+def test_dashboard_templates_include_independent_mistake_review_surfaces():
+    required_ids = [
+        "mistake-analysis-block",
+        "mistake-coverage-cards",
+        "mistake-analysis-empty",
+        "mistake-review-table",
+        "mistake-board",
+        "mistake-board-meta",
+        "scramble-mistake-review-table",
+        "scramble-mistake-board",
+        "scramble-mistake-board-meta",
+    ]
+    for template_name in ("index.html", "blunders.html"):
+        html = Path("chess_tracker/templates", template_name).read_text()
+        for element_id in required_ids:
+            assert html.count(f'id="{element_id}"') == 1
+        assert "Mistake table" in html
+        assert "Scramble mistakes" in html
+
+
+def test_dashboard_app_renders_mistakes_with_separate_tables_and_boards():
+    app = Path("dashboard/app.js").read_text()
+
+    assert "renderMistakeAnalysis(D.mistake_analysis);" in app
+    assert 'tableId: "mistake-review-table"' in app
+    assert 'boardId: "mistake-board"' in app
+    assert 'scrambleTableId: "scramble-mistake-review-table"' in app
+    assert 'scrambleBoardId: "scramble-mistake-board"' in app
+    assert 'itemsKey: "mistakes"' in app
+    assert 'singular: "mistake"' in app
 
 
 def test_shared_navigation_links_both_puzzle_trainers_with_active_states():

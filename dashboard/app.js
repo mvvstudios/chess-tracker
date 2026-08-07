@@ -58,6 +58,7 @@
   renderTrapExposures(D.trap_exposures, D.trap_exposure_audit);
   renderBlunderPhases(D.blunder_phases, D.engine_coverage);
   renderBlunderAnalysis(D.blunder_analysis);
+  renderMistakeAnalysis(D.mistake_analysis);
   renderSessions(D.sessions);
   renderDrillinCards(D);
 
@@ -1306,31 +1307,75 @@
   }
 
   function renderBlunderAnalysis(analysis) {
-    const root = document.getElementById("blunder-analysis-block");
+    renderQualityAnalysis(analysis, {
+      rootId: "blunder-analysis-block",
+      cardsId: "blunder-coverage-cards",
+      emptyId: "blunder-analysis-empty",
+      tableId: "blunder-review-table",
+      boardId: "blunder-board",
+      metaId: "blunder-board-meta",
+      scrambleTableId: "scramble-review-table",
+      scrambleBoardId: "scramble-board",
+      scrambleMetaId: "scramble-board-meta",
+      itemsKey: "blunders",
+      singular: "blunder",
+      plural: "blunders",
+      itemLabel: "Blunder",
+      itemsLabel: "Blunders",
+    });
+  }
+
+  function renderMistakeAnalysis(analysis) {
+    renderQualityAnalysis(analysis, {
+      rootId: "mistake-analysis-block",
+      cardsId: "mistake-coverage-cards",
+      emptyId: "mistake-analysis-empty",
+      tableId: "mistake-review-table",
+      boardId: "mistake-board",
+      metaId: "mistake-board-meta",
+      scrambleTableId: "scramble-mistake-review-table",
+      scrambleBoardId: "scramble-mistake-board",
+      scrambleMetaId: "scramble-mistake-board-meta",
+      itemsKey: "mistakes",
+      singular: "mistake",
+      plural: "mistakes",
+      itemLabel: "Mistake",
+      itemsLabel: "Mistakes",
+    });
+  }
+
+  function renderQualityAnalysis(analysis, config) {
+    const root = document.getElementById(config.rootId);
     if (!root) return;
 
-    const cardsEl = document.getElementById("blunder-coverage-cards");
-    const emptyEl = document.getElementById("blunder-analysis-empty");
+    const cardsEl = document.getElementById(config.cardsId);
+    const emptyEl = document.getElementById(config.emptyId);
     if (!analysis) {
       if (cardsEl) cardsEl.innerHTML = "";
       if (emptyEl) {
         emptyEl.style.display = "";
-        emptyEl.textContent = "Run refresh.py with Stockfish analysis to build blunder categories.";
+        emptyEl.textContent = `Run refresh.py with Stockfish analysis to build ${config.singular} categories.`;
       }
-      ["blunder-review-table", "scramble-review-table"]
+      [config.tableId, config.scrambleTableId]
         .forEach(id => {
           const el = document.getElementById(id);
           if (el) el.innerHTML = "";
         });
-      ["blunder-board-meta", "scramble-board-meta"].forEach(id => {
+      [config.metaId, config.scrambleMetaId].forEach(id => {
         const meta = document.getElementById(id);
-        if (meta) meta.innerHTML = `<div class="empty">No blunders to review.</div>`;
+        if (meta) meta.innerHTML = `<div class="empty">No ${config.plural} to review.</div>`;
       });
       return;
     }
     if (emptyEl) emptyEl.style.display = "none";
 
     const cov = analysis.engine_coverage || {};
+    const itemsAnalyzed = cov.items_analyzed ?? cov[`${config.plural}_analyzed`] ?? 0;
+    const clearItems = cov.clear_items ?? cov[`clear_${config.plural}`];
+    const scrambleItems = cov.scramble_items ?? cov[`scramble_${config.plural}`] ?? 0;
+    const gamesWithItems = cov.games_with_items ?? cov[`games_with_${config.plural}`] ?? 0;
+    const categorizedItems = cov.categorized_items ?? cov[`categorized_${config.plural}`] ?? 0;
+    const uncategorizedItems = cov.uncategorized_items ?? cov[`uncategorized_${config.plural}`] ?? 0;
     const cell = (label, value, sub, alert = false) =>
       `<div class="behavior-card${alert ? " alert" : ""}">
          <div class="bh-label">${label}</div>
@@ -1341,36 +1386,59 @@
       cardsEl.innerHTML = [
         cell("Engine coverage", `${cov.analyzed_games || 0} / ${cov.eligible_games || 0}`,
           "games analyzed"),
-        cell("Blunders analyzed", `${cov.blunders_analyzed || 0}`,
-          cov.clear_blunders != null
-            ? `${cov.clear_blunders} clear · ${cov.scramble_blunders || 0} scramble`
-            : `${cov.games_with_blunders || 0} games with blunders`,
-          (cov.blunders_analyzed || 0) >= 10),
-        cell("Categorized", `${cov.categorized_blunders || 0}`,
-          `${cov.uncategorized_blunders || 0} uncategorized`),
+        cell(`${config.itemsLabel} analyzed`, `${itemsAnalyzed}`,
+          clearItems != null
+            ? `${clearItems} clear · ${scrambleItems} scramble`
+            : `${gamesWithItems} games with ${config.plural}`,
+          itemsAnalyzed >= 10),
+        cell("Categorized", `${categorizedItems}`,
+          `${uncategorizedItems} uncategorized`),
       ].join("");
     }
 
-    renderBlunderReview(analysis);
+    renderQualityReview(analysis, config);
   }
 
-  function renderBlunderReview(analysis) {
-    const tableEl = document.getElementById("blunder-review-table");
-    const boardEl = document.getElementById("blunder-board");
-    const metaEl = document.getElementById("blunder-board-meta");
+  function renderQualityReview(analysis, config) {
+    const tableEl = document.getElementById(config.tableId);
+    const boardEl = document.getElementById(config.boardId);
+    const metaEl = document.getElementById(config.metaId);
     if (!tableEl) return;
 
-    const blunderById = {};
-    (analysis.blunders || []).forEach(b => { if (b.id) blunderById[b.id] = b; });
-    const rows = analysis.impact_rows || analysis.blunders || analysis.examples || [];
-    const scrambleRows = analysis.scramble_impact_rows || [];
+    const items = analysis.items || analysis[config.itemsKey] || [];
+    const itemById = {};
+    items.forEach(item => { if (item.id) itemById[item.id] = item; });
+    const clearItems = items.filter(item => item && item.scramble !== true);
+    const scrambleItems = items.filter(item => item && item.scramble === true);
+    const impactRows = Array.isArray(analysis.impact_rows)
+      ? analysis.impact_rows : [];
+    const scrambleImpactRows = Array.isArray(analysis.scramble_impact_rows)
+      ? analysis.scramble_impact_rows : [];
+    // An uncategorized engine error has no aggregate tree row. Keep it visible
+    // as an exact-position row instead of implying that no error exists.
+    const rows = impactRows.length
+      ? impactRows.concat(clearItems.filter(item => !Array.isArray(item.categories)
+        || item.categories.length === 0))
+      : clearItems.length ? clearItems : analysis.examples || [];
+    const scrambleRows = scrambleImpactRows.length
+      ? scrambleImpactRows.concat(scrambleItems.filter(item => !Array.isArray(item.categories)
+        || item.categories.length === 0))
+      : scrambleItems;
+    const scrambleEl = document.getElementById(config.scrambleTableId);
+    const scrambleMetaEl = document.getElementById(config.scrambleMetaId);
     if (rows.length === 0 && scrambleRows.length === 0) {
-      tableEl.innerHTML = `<p class="mq-empty">No blunders in the analyzed games.</p>`;
+      tableEl.innerHTML = `<p class="mq-empty">No ${config.plural} in the analyzed games.</p>`;
       if (metaEl) metaEl.innerHTML = `<div class="empty">No position selected.</div>`;
+      if (scrambleEl) {
+        scrambleEl.innerHTML = `<p class="mq-empty">No scramble ${config.plural} in the analyzed games.</p>`;
+      }
+      if (scrambleMetaEl) {
+        scrambleMetaEl.innerHTML = `<div class="empty">No position selected.</div>`;
+      }
       return;
     }
 
-    const scrambleBoardEl = document.getElementById("scramble-board");
+    const scrambleBoardEl = document.getElementById(config.scrambleBoardId);
     [boardEl, scrambleBoardEl].forEach(el => {
       if (el && !el._cg) {
         el._cg = makeBoard(el, {
@@ -1383,43 +1451,60 @@
 
     const labels = analysis.category_labels || {};
     if (rows.length === 0) {
-      tableEl.innerHTML = `<p class="mq-empty">No clear-headed blunders in the analyzed games.</p>`;
+      tableEl.innerHTML = `<p class="mq-empty">No clear-headed ${config.plural} in the analyzed games.</p>`;
       if (metaEl) metaEl.innerHTML = `<div class="empty">No position selected.</div>`;
     } else {
-      buildBlunderTree("#blunder-review-table", rows, labels, blunderById,
-                       {autoSelect: true});
+      buildBlunderTree(`#${config.tableId}`, rows, labels, itemById, {
+        autoSelect: true,
+        boardId: config.boardId,
+        metaId: config.metaId,
+        singular: config.singular,
+        plural: config.plural,
+        itemLabel: config.itemLabel,
+        itemsLabel: config.itemsLabel,
+      });
     }
 
-    const scrambleEl = document.getElementById("scramble-review-table");
     if (scrambleEl) {
-      const scrambleMetaEl = document.getElementById("scramble-board-meta");
       if (scrambleRows.length === 0) {
-        scrambleEl.innerHTML = `<p class="mq-empty">No scramble blunders in the analyzed games.</p>`;
+        scrambleEl.innerHTML = `<p class="mq-empty">No scramble ${config.plural} in the analyzed games.</p>`;
         if (scrambleMetaEl) scrambleMetaEl.innerHTML = `<div class="empty">No position selected.</div>`;
       } else {
-        buildBlunderTree("#scramble-review-table", scrambleRows, labels, blunderById,
-                         {clockColumn: true, autoSelect: true,
-                          boardId: "scramble-board", metaId: "scramble-board-meta"});
+        buildBlunderTree(`#${config.scrambleTableId}`, scrambleRows, labels, itemById, {
+          clockColumn: true,
+          autoSelect: true,
+          boardId: config.scrambleBoardId,
+          metaId: config.scrambleMetaId,
+          singular: config.singular,
+          plural: config.plural,
+          itemLabel: config.itemLabel,
+          itemsLabel: config.itemsLabel,
+        });
       }
     }
   }
 
-  // One category → pattern → blunder tree. Each blunder table (clear-headed
+  // One category → pattern → exact-error tree. Each table (clear-headed
   // and scramble) drives its own board panel via opts.boardId/metaId; the
-  // scramble table additionally shows a Clock column.
-  function buildBlunderTree(selector, rows, labels, blunderById, opts = {}) {
+  // scramble table additionally shows a Clock column. Internal row_type and ID
+  // fields retain their historic "blunder" names for payload compatibility.
+  function buildBlunderTree(selector, rows, labels, itemById, opts = {}) {
     // Each table drives its own board panel; selection is scoped per table.
     const target = {
       containerSel: selector,
       boardId: opts.boardId || "blunder-board",
       metaId: opts.metaId || "blunder-board-meta",
+      singular: opts.singular || "blunder",
+      plural: opts.plural || "blunders",
+      itemLabel: opts.itemLabel || "Blunder",
+      itemsLabel: opts.itemsLabel || "Blunders",
     };
     const columns = [
-      {title: "Category / blunder", field: "label", minWidth: 240,
-       formatter: c => blunderImpactNameCell(c.getData())},
+      {title: `Category / ${target.singular}`, field: "label", minWidth: 240,
+       formatter: c => blunderImpactNameCell(c.getData(), target)},
       {title: "Focus", field: "focus_area", width: 128,
-       formatter: c => blunderImpactFocusCell(c.getData())},
-      {title: "Blunders", field: "count", width: 88, sorter: "number",
+       formatter: c => blunderImpactFocusCell(c.getData(), target)},
+      {title: target.itemsLabel, field: "count", width: 88, sorter: "number",
        formatter: c => isBlunderAggregateRow(c.getData()) ? formatNumber(c.getValue()) : ""},
       {title: "Phase", field: "top_phase_label", minWidth: 130,
        formatter: c => isBlunderAggregateRow(c.getData())
@@ -1455,46 +1540,56 @@
       columns,
       initialSort: [{column: "count", dir: "desc"}],
     });
-    table.on("rowClick", (e, row) => selectBlunderRow(e, row, labels, blunderById, target));
+    table.on("rowClick", (e, row) => selectBlunderRow(e, row, labels, itemById, target));
     table.on("rowDblClick", (e, row) => {
-      const d = resolveBlunderForRow(row.getData(), blunderById);
+      const d = resolveBlunderForRow(row.getData(), itemById);
       const url = d.position_url || d.game_url;
       if (url) window.open(url, "_blank", "noopener");
     });
     if (opts.autoSelect) {
       table.on("tableBuilt", () => {
         const first = table.getRows()[0];
-        if (first) selectBlunderRow(null, first, labels, blunderById, target);
+        if (first) selectBlunderRow(null, first, labels, itemById, target);
       });
     }
     return table;
   }
 
-  function blunderImpactNameCell(data) {
+  function qualityDescription(value, target) {
+    const description = String(value || "");
+    if (target.singular !== "mistake") return description;
+    return description
+      .replace(/\bBlunders\b/g, target.itemsLabel)
+      .replace(/\bblunders\b/g, target.plural)
+      .replace(/\bBlunder\b/g, target.itemLabel)
+      .replace(/\bblunder\b/g, target.singular);
+  }
+
+  function blunderImpactNameCell(data, target) {
     if (data.row_type === "category") {
       return `<span class="blunder-label">${escapeAttr(data.label || "Category")}</span>` +
-        `<div class="table-sub">${escapeAttr(data.description || "")}</div>`;
+        `<div class="table-sub">${escapeAttr(qualityDescription(data.description, target))}</div>`;
     }
     if (data.row_type === "pattern") {
       return `<span class="blunder-pattern-label">${escapeAttr(data.label || "Pattern")}</span>` +
-        `<div class="table-sub">${escapeAttr(data.description || "")}</div>`;
+        `<div class="table-sub">${escapeAttr(qualityDescription(data.description, target))}</div>`;
     }
-    return `<span>${escapeAttr(data.move_label || "Blunder")}</span>` +
+    return `<span>${escapeAttr(data.move_label || target.itemLabel)}</span>` +
       `<div class="table-sub">${escapeAttr(data.played_move_san || "—")} → ${escapeAttr(data.best_move_san || "—")}</div>`;
   }
 
-  function blunderImpactFocusCell(data) {
+  function blunderImpactFocusCell(data, target) {
     if (data.row_type === "category") return escapeAttr(data.focus_area || "—");
     if (data.row_type === "pattern") return escapeAttr(data.focus_area || "Pattern");
-    return `<span class="table-sub">${escapeAttr(data.phase_label || "Exact blunder")}</span>`;
+    return `<span class="table-sub">${escapeAttr(data.phase_label || `Exact ${target.singular}`)}</span>`;
   }
 
-  function resolveBlunderForRow(data, blunderById) {
+  function resolveBlunderForRow(data, itemById) {
     if (isBlunderAggregateRow(data)) {
-      return blunderById[data.representative_blunder_id] || {};
+      return itemById[data.representative_blunder_id] || {};
     }
     if (data.row_type === "blunder") {
-      return blunderById[data.blunder_id] || {};
+      return itemById[data.blunder_id] || {};
     }
     return data || {};
   }
@@ -1503,7 +1598,7 @@
     return data && (data.row_type === "category" || data.row_type === "pattern");
   }
 
-  function selectBlunderRow(event, row, labels, blunderById, target) {
+  function selectBlunderRow(event, row, labels, itemById, target) {
     document.querySelectorAll(
       `${target.containerSel} .tabulator-row.row-selected`
     ).forEach(el => el.classList.remove("row-selected"));
@@ -1521,7 +1616,7 @@
         }
       }
     }
-    updateBlunderBoard(resolveBlunderForRow(rowData, blunderById), labels, rowData, target);
+    updateBlunderBoard(resolveBlunderForRow(rowData, itemById), labels, rowData, target);
   }
 
   function updateBlunderBoard(data, labels, rowContext, target) {
@@ -1572,9 +1667,9 @@
     const isAggregate = rowContext && isBlunderAggregateRow(rowContext);
     const contextTitle = isAggregate
       ? rowContext.label
-      : (data.move_label || "Blunder");
+      : (data.move_label || target.itemLabel);
     const contextStats = isAggregate
-      ? `${formatNumber(rowContext.count)} blunders · ${formatNumber(rowContext.total_cp_loss)} total cp lost · representative example shown`
+      ? `${formatNumber(rowContext.count)} ${target.plural} · ${formatNumber(rowContext.total_cp_loss)} total cp lost · representative example shown`
       : `${data.opening_label || "Unknown opening"} · ${phaseLabel(data.phase_bucket || data.phase)}`;
     const categoryDetail = isAggregate && rowContext.row_type === "pattern"
       ? `<div class="row"><span class="k">Category</span><span class="v">${escapeAttr(labels[rowContext.category_key] || rowContext.category_key || "—")}</span></div>`

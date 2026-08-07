@@ -12,7 +12,8 @@
   const SESSION_SIZES = Object.freeze([5, 10, 20]);
   const DEFAULT_SESSION_SIZE = 10;
   const SESSION_MODES = Object.freeze(["endless", "finite"]);
-  const DEFAULT_SESSION_MODE = "endless";
+  const DEFAULT_SESSION_MODE = "finite";
+  const TRAINING_DEFAULTS_VERSION = 1;
   const STORAGE_PREFIX = "chess-tracker:opening-trainer:v2:";
   const LEGACY_STORAGE_PREFIX = "chess-tracker:opening-trainer:v1:";
   const EXPORT_SCHEMA = "chess-tracker-opening-trainer";
@@ -217,6 +218,17 @@
       openingOnly: raw.openingOnly === true || raw.opening_only === true,
       curriculumGroup: text(raw.curriculumGroup || raw.curriculum_group),
     };
+  }
+
+  function normalizeFilterPools(rawPools) {
+    const pools = {};
+    const source = object(rawPools);
+    Object.keys(source).forEach(rawDeckId => {
+      const deckId = normalizedDeckId(rawDeckId);
+      if (!deckId) return;
+      pools[deckId] = normalizeSelectionFilters(source[rawDeckId]);
+    });
+    return pools;
   }
 
   function selectionFilterSignature(rawFilters) {
@@ -969,6 +981,8 @@
       lastDeckId: null,
       sessionMode: DEFAULT_SESSION_MODE,
       sessionSize: DEFAULT_SESSION_SIZE,
+      trainingDefaultsVersion: TRAINING_DEFAULTS_VERSION,
+      filtersByDeck: {},
       onboardingDismissed: false,
       updatedAt: null,
     };
@@ -979,17 +993,35 @@
     const deckId = normalizedDeckId(
       raw.lastDeckId || raw.last_deck_id || raw.lastDeck || raw.deckId
     );
+    const storedDefaultsVersion = nonnegativeInteger(
+      raw.trainingDefaultsVersion !== undefined
+        ? raw.trainingDefaultsVersion : raw.training_defaults_version,
+      0,
+    );
+    const storedMode = normalizeSessionMode(
+      raw.sessionMode !== undefined ? raw.sessionMode : raw.session_mode,
+      DEFAULT_SESSION_MODE,
+    );
     return {
       lastDeckId: deckId || null,
-      sessionMode: normalizeSessionMode(
-        raw.sessionMode !== undefined ? raw.sessionMode : raw.session_mode,
-        DEFAULT_SESSION_MODE,
-      ),
+      // Before Focused Mix became the default, ordinary visits automatically
+      // persisted Endless. An unmarked Endless value is therefore legacy app
+      // behavior, not a reliable user choice. Once marked, explicit Endless is
+      // preserved like any other preference.
+      sessionMode: storedDefaultsVersion < TRAINING_DEFAULTS_VERSION
+        && storedMode === "endless" ? DEFAULT_SESSION_MODE : storedMode,
       sessionSize: normalizeSessionSize(
         raw.sessionSize !== undefined ? raw.sessionSize
           : raw.session_size !== undefined ? raw.session_size
             : raw.sessionLength,
         DEFAULT_SESSION_SIZE,
+      ),
+      trainingDefaultsVersion: Math.max(
+        TRAINING_DEFAULTS_VERSION,
+        storedDefaultsVersion,
+      ),
+      filtersByDeck: normalizeFilterPools(
+        raw.filtersByDeck !== undefined ? raw.filtersByDeck : raw.filters_by_deck,
       ),
       onboardingDismissed: raw.onboardingDismissed === true
         || raw.onboarding_dismissed === true
@@ -1179,10 +1211,12 @@
     const right = sanitizePreferences(rightPreferences);
     const leftHasData = Boolean(left.updatedAt || left.lastDeckId
       || left.sessionMode !== DEFAULT_SESSION_MODE
-      || left.sessionSize !== DEFAULT_SESSION_SIZE || left.onboardingDismissed);
+      || left.sessionSize !== DEFAULT_SESSION_SIZE || left.onboardingDismissed
+      || Object.keys(left.filtersByDeck).length);
     const rightHasData = Boolean(right.updatedAt || right.lastDeckId
       || right.sessionMode !== DEFAULT_SESSION_MODE
-      || right.sessionSize !== DEFAULT_SESSION_SIZE || right.onboardingDismissed);
+      || right.sessionSize !== DEFAULT_SESSION_SIZE || right.onboardingDismissed
+      || Object.keys(right.filtersByDeck).length);
     const rightIsNewer = (!leftHasData && rightHasData)
       || (timestampMillis(right.updatedAt) || 0) > (timestampMillis(left.updatedAt) || 0);
     const preferred = rightIsNewer ? right : left;
@@ -1190,6 +1224,16 @@
       lastDeckId: preferred.lastDeckId || left.lastDeckId || right.lastDeckId || null,
       sessionMode: normalizeSessionMode(preferred.sessionMode, DEFAULT_SESSION_MODE),
       sessionSize: normalizeSessionSize(preferred.sessionSize, DEFAULT_SESSION_SIZE),
+      trainingDefaultsVersion: Math.max(
+        TRAINING_DEFAULTS_VERSION,
+        left.trainingDefaultsVersion || 0,
+        right.trainingDefaultsVersion || 0,
+      ),
+      filtersByDeck: Object.assign(
+        {},
+        rightIsNewer ? left.filtersByDeck : right.filtersByDeck,
+        preferred.filtersByDeck,
+      ),
       onboardingDismissed: Boolean(left.onboardingDismissed || right.onboardingDismissed),
       updatedAt: latestTimestamp(left.updatedAt, right.updatedAt),
     };
@@ -1239,6 +1283,16 @@
     ));
     if (streak >= MASTER_STREAK && interval >= MASTER_INTERVAL_DAYS) return "Mastered";
     return "Learning";
+  }
+
+  function isUnresolvedMistake(rawRecord) {
+    if (!rawRecord || typeof rawRecord !== "object") return false;
+    return timestampMillis(rawRecord.mistakeAt || rawRecord.mistake_at) !== null
+      && nonnegativeInteger(
+        rawRecord.correctStreak !== undefined
+          ? rawRecord.correctStreak : rawRecord.correct_streak,
+        0,
+      ) === 0;
   }
 
   function normalizeOutcome(rawOutcome) {
@@ -1404,14 +1458,26 @@
       if (!persistent) return;
       const next = mergeStates(subject, current || emptyState(subject), legacy);
       let currentVersion = null;
+      let currentPreferences = {};
       if (currentRaw !== null) {
         try {
-          currentVersion = Number(JSON.parse(currentRaw).version);
+          const parsedCurrent = JSON.parse(currentRaw);
+          currentVersion = Number(parsedCurrent.version);
+          currentPreferences = object(parsedCurrent.preferences);
         } catch (_error) {
           currentVersion = null;
         }
       }
-      const needsMigrationWrite = currentVersion === 1 || Boolean(legacy)
+      const storedDefaultsVersion = nonnegativeInteger(
+        currentPreferences.trainingDefaultsVersion !== undefined
+          ? currentPreferences.trainingDefaultsVersion
+          : currentPreferences.training_defaults_version,
+        0,
+      );
+      const needsDefaultsMigration = Boolean(current)
+        && currentVersion === CURRENT_VERSION
+        && storedDefaultsVersion < TRAINING_DEFAULTS_VERSION;
+      const needsMigrationWrite = currentVersion === 1 || needsDefaultsMigration || Boolean(legacy)
         && (currentRaw === null || JSON.stringify(current) !== JSON.stringify(next));
       state = next;
       if (needsMigrationWrite) writeState();
@@ -1557,6 +1623,23 @@
         }));
     }
 
+    function unresolvedMistakeReviews(deckValue, rawQuery) {
+      const query = object(rawQuery);
+      const limit = query.limit === undefined
+        ? Number.MAX_SAFE_INTEGER
+        : Math.max(0, nonnegativeInteger(query.limit, 0));
+      return recordsForDeck(deckValue)
+        .filter(isUnresolvedMistake)
+        .sort((left, right) => (timestampMillis(right.mistakeAt) || 0)
+          - (timestampMillis(left.mistakeAt) || 0)
+          || left.puzzleId.localeCompare(right.puzzleId))
+        .slice(0, limit)
+        .map(record => ({
+          ...clone(record),
+          classification: classifyReview(record, moment(query.at, clock)),
+        }));
+    }
+
     function reviewCounts(deckValue, candidateValues, at) {
       sync();
       const deckId = normalizedDeckId(deckValue);
@@ -1589,6 +1672,15 @@
       if (Object.prototype.hasOwnProperty.call(raw, "sessionMode")) {
         next.sessionMode = normalizeSessionMode(raw.sessionMode, next.sessionMode);
       }
+      if (Object.prototype.hasOwnProperty.call(raw, "trainingDefaultsVersion")) {
+        next.trainingDefaultsVersion = Math.max(
+          next.trainingDefaultsVersion || 0,
+          nonnegativeInteger(raw.trainingDefaultsVersion, 0),
+        );
+      }
+      if (Object.prototype.hasOwnProperty.call(raw, "filtersByDeck")) {
+        next.filtersByDeck = normalizeFilterPools(raw.filtersByDeck);
+      }
       if (Object.prototype.hasOwnProperty.call(raw, "onboardingDismissed")) {
         next.onboardingDismissed = raw.onboardingDismissed === true;
       }
@@ -1596,6 +1688,26 @@
       state.preferences = sanitizePreferences(next, when);
       updateState(when);
       return clone(state.preferences);
+    }
+
+    function getFilterPool(deckValue) {
+      sync();
+      const deckId = normalizedDeckId(deckValue);
+      if (!deckId) throw new TypeError("A valid opening deck ID is required.");
+      return clone(state.preferences.filtersByDeck[deckId] || null);
+    }
+
+    function setFilterPool(deckValue, rawFilters, at) {
+      sync();
+      const deckId = normalizedDeckId(deckValue);
+      if (!deckId) throw new TypeError("A valid opening deck ID is required.");
+      const when = moment(at, clock);
+      const next = clone(state.preferences);
+      next.filtersByDeck[deckId] = normalizeSelectionFilters(rawFilters);
+      next.updatedAt = when;
+      state.preferences = sanitizePreferences(next, when);
+      updateState(when);
+      return clone(state.preferences.filtersByDeck[deckId]);
     }
 
     function exportedData() {
@@ -1779,6 +1891,8 @@
       },
 
       setPreferences,
+      getFilterPool,
+      setFilterPool,
       getSelectionState,
       reserveSelectionSession,
       recordActiveSelectionResult,
@@ -1811,9 +1925,18 @@
       upsertSnapshot,
       dueReviews,
       mistakeReviews,
+      unresolvedMistakeReviews,
 
       mistakeIds(deckId, query) {
         return mistakeReviews(deckId, query).map(record => record.puzzleId);
+      },
+
+      unresolvedMistakeIds(deckId, query) {
+        return unresolvedMistakeReviews(deckId, query).map(record => record.puzzleId);
+      },
+
+      unresolvedMistakeCount(deckId) {
+        return unresolvedMistakeReviews(deckId).length;
       },
 
       reviewCounts,
@@ -2042,6 +2165,7 @@
     DEFAULT_SESSION_SIZE,
     SESSION_MODES,
     DEFAULT_SESSION_MODE,
+    TRAINING_DEFAULTS_VERSION,
     STORAGE_PREFIX,
     LEGACY_STORAGE_PREFIX,
     EXPORT_SCHEMA,
@@ -2056,6 +2180,7 @@
     normalizeSessionMode,
     normalizeSelectionFilters,
     selectionFilterSignature,
+    isUnresolvedMistake,
     sanitizeSelectionState,
     selectGuidedCandidates,
     selectSession,

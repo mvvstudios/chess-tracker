@@ -129,10 +129,19 @@
       return;
     }
 
+    // The shared export also feeds the trainer's separate My Mistakes decks.
+    // Keep this legacy page strictly scoped to blunders so its title, archive,
+    // and long-lived unscoped progress namespace retain their original meaning.
+    const blunders = state.catalog.candidates.filter(candidate => {
+      const quality = String(candidate && (
+        candidate.quality_label || candidate.qualityLabel
+      ) || "blunder").trim().toLowerCase();
+      return quality === "blunder";
+    });
     const sorted = typeof Domain.sortCandidates === "function"
-      ? Domain.sortCandidates(state.catalog.candidates.slice())
-      : state.catalog.candidates.slice();
-    state.candidates = Array.isArray(sorted) ? sorted : state.catalog.candidates.slice();
+      ? Domain.sortCandidates(blunders.slice())
+      : blunders.slice();
+    state.candidates = Array.isArray(sorted) ? sorted : blunders.slice();
     state.queueSeed = dailyQueueSeed(DATA.username || "unknown");
     if (!syncPartition(true)) return;
     renderAll();

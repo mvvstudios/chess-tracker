@@ -218,6 +218,82 @@ def test_attach_move_quality_reanalyzes_when_cache_version_differs():
     assert cache["g1"]["version"] == ANALYSIS_CACHE_VERSION
 
 
+def test_attach_move_quality_reanalyzes_rounded_mistake_at_blunder_boundary():
+    from chess_tracker.analysis import ANALYSIS_CACHE_VERSION, attach_move_quality
+
+    calls = []
+
+    def fake(pgn, side, depth):
+        calls.append((pgn, side, depth))
+        summary = _summary(acc=88.0)
+        summary["mistake_evidence"] = [{"wp_loss": 29.999}]
+        return summary
+
+    cached = _summary(acc=50.0)
+    cached["mistake_evidence"] = [{"wp_loss": 30.0}]
+    cache = {"g1": {
+        "version": ANALYSIS_CACHE_VERSION,
+        "depth": 12,
+        "summary": cached,
+    }}
+
+    summaries = attach_move_quality(
+        [{"url": "g1", "pgn": "p1"}], {"g1": "white"}, cache,
+        depth=12, analyze_fn=fake,
+    )
+
+    assert calls == [("p1", "white", 12)]
+    assert summaries[0]["mistake_evidence"][0]["wp_loss"] == 29.999
+    assert cache["g1"]["summary"] == summaries[0]
+
+
+def test_attach_move_quality_reuses_unrounded_mistake_below_blunder_boundary():
+    from chess_tracker.analysis import ANALYSIS_CACHE_VERSION, attach_move_quality
+
+    cached = _summary(acc=50.0)
+    cached["mistake_evidence"] = [{"wp_loss": 29.999}]
+    cache = {"g1": {
+        "version": ANALYSIS_CACHE_VERSION,
+        "depth": 12,
+        "summary": cached,
+    }}
+
+    def should_not_run(*_args):
+        raise AssertionError("unrounded Mistake evidence must remain reusable")
+
+    summaries = attach_move_quality(
+        [{"url": "g1", "pgn": "p1"}], {"g1": "white"}, cache,
+        depth=12, analyze_fn=should_not_run,
+    )
+
+    assert summaries == [cached]
+
+
+def test_load_quality_cache_discards_only_ambiguous_rounded_mistakes(tmp_path):
+    import json
+    from chess_tracker.analysis import load_quality_cache
+
+    cache_path = tmp_path / "quality.json"
+    cache_path.write_text(json.dumps({
+        "ambiguous": {
+            "summary": {"mistake_evidence": [{"wp_loss": "30.0"}]},
+        },
+        "safe-mistake": {
+            "summary": {"mistake_evidence": [{"wp_loss": 29.999}]},
+        },
+        "valid-blunder": {
+            "summary": {
+                "mistake_evidence": [],
+                "blunder_evidence": [{"wp_loss": 30.0}],
+            },
+        },
+    }))
+
+    cache = load_quality_cache(cache_path)
+
+    assert set(cache) == {"safe-mistake", "valid-blunder"}
+
+
 def test_aggregate_move_quality_weights_and_buckets():
     from chess_tracker.analysis import aggregate_move_quality
     summaries = [
@@ -352,6 +428,31 @@ def test_puzzle_line_backfill_zero_bound_processes_every_pending_position():
 
     assert calls == ["e2e4", "d2d4"]
     assert stats == {"backfilled": 2, "ready": 2, "pending": 0, "failed": 0}
+
+
+def test_puzzle_line_backfill_includes_mistake_evidence():
+    from chess_tracker.analysis import PUZZLE_LINE_VERSION, backfill_puzzle_lines
+
+    mistake = _legacy_blunder("e2e4", 250)
+    cache = {
+        "game": {
+            "summary": {
+                "game_url": "game",
+                "side": "white",
+                "moves_analyzed": 1,
+                "blunder_evidence": [],
+                "mistake_evidence": [mistake],
+            }
+        }
+    }
+
+    stats = backfill_puzzle_lines(
+        [{"url": "game"}], cache,
+        depth=8, max_positions=1, analyze_fn=_three_ply_info,
+    )
+
+    assert stats == {"backfilled": 1, "ready": 1, "pending": 0, "failed": 0}
+    assert mistake["puzzle_line_version"] == PUZZLE_LINE_VERSION
 
 
 def test_puzzle_line_backfill_skips_ready_cache_and_sets_marker():
@@ -536,7 +637,45 @@ def test_analyze_move_quality_flags_white_queen_blunder():
     assert q is not None
     assert q["moves_analyzed"] == 3        # white made e4, Qh5, Qxe5
     assert q["blunders"] >= 1
+    assert all(item["quality_label"] == "blunder" for item in q["blunder_evidence"])
+    assert all(item["quality_label"] == "mistake" for item in q["mistake_evidence"])
     assert q["accuracy"] < 100
+
+
+def test_analyze_move_quality_preserves_unrounded_mistake_boundary():
+    from chess_tracker.analysis import analyze_move_quality, win_pct
+
+    class FakeEngine:
+        def __init__(self):
+            self.infos = [
+                {
+                    "score": chess.engine.PovScore(chess.engine.Cp(-85), chess.WHITE),
+                    "pv": [chess.Move.from_uci("e2e4")],
+                },
+                {
+                    "score": chess.engine.PovScore(chess.engine.Cp(-535), chess.WHITE),
+                    "pv": [chess.Move.from_uci("e7e5")],
+                },
+            ]
+
+        def analyse(self, _board, _limit):
+            return self.infos.pop(0)
+
+    raw_loss = win_pct(-85) - win_pct(-535)
+    assert raw_loss < 30
+    assert round(raw_loss, 2) == 30.0
+
+    quality = analyze_move_quality(
+        '[Event "boundary"]\n1. d4 *', "white", FakeEngine(), depth=1,
+    )
+
+    assert quality is not None
+    assert quality["blunder_evidence"] == []
+    assert len(quality["mistake_evidence"]) == 1
+    evidence = quality["mistake_evidence"][0]
+    assert evidence["quality_label"] == "mistake"
+    assert evidence["wp_loss"] == pytest.approx(raw_loss)
+    assert evidence["wp_loss"] < 30
 
 
 def test_summarize_includes_blunders_by_phase():

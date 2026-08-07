@@ -90,7 +90,7 @@ def test_web_app_manifest_targets_public_route_and_has_real_icons():
 
 def test_service_worker_precaches_only_shell_and_lazily_caches_requested_deck_data():
     source = SERVICE_WORKER.read_text()
-    assert 'SHELL_CACHE_VERSION = "v5"' in source
+    assert 'SHELL_CACHE_VERSION = "v6"' in source
     assert 'DATA_CACHE_VERSION = "v3"' in source
     match = re.search(r"const SHELL_ASSETS = (\[.*?\]);", source, re.DOTALL)
     assert match, "service worker must declare an explicit shell asset list"
@@ -125,6 +125,24 @@ def test_service_worker_precaches_only_shell_and_lazily_caches_requested_deck_da
 
 def test_every_public_deck_exposes_a_complete_compact_selection_index():
     catalog = json.loads((PUBLIC_DATA / "opening-puzzle-catalog.json").read_text())
+
+    assert [deck["id"] for deck in catalog["decks"]] == [
+        "caro-kann-black",
+        "colle-white",
+        "london-white",
+        "englund-white",
+        "pirc-black",
+        "modern-black",
+    ]
+    london = next(deck for deck in catalog["decks"] if deck["id"] == "london-white")
+    assert london == {
+        "id": "london-white",
+        "label": "London System — White",
+        "manifestPath": "london-white/manifest.json",
+        "openingFamily": "London System",
+        "orientation": "white",
+        "solverColor": "white",
+    }
 
     for deck in catalog["decks"]:
         deck_root = PUBLIC_DATA / deck["id"]

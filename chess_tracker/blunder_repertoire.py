@@ -1,6 +1,6 @@
 """Classify personal games into the opening trainer's repertoire decks.
 
-Chess.com's opening label is authoritative when it names one of the five
+Chess.com's opening label is authoritative when it names one of the six
 configured trainer families.  Some Queen's/King's Pawn and Indian labels are
 too broad to identify the user's repertoire, so those labels may fall back to
 a deliberately small set of ordered opening-move signatures.
@@ -31,6 +31,7 @@ _SUPPORTED_DECK_IDS = frozenset(
     {
         "caro-kann-black",
         "colle-white",
+        "london-white",
         "englund-white",
         "pirc-black",
         "modern-black",
@@ -51,6 +52,12 @@ _CHESS_COM_LABEL_ALIASES: Mapping[str, tuple[str, ...]] = {
         "Indian Game East Indian Colle System",
         "Colle Zukertort System",
     ),
+    # Chess.com uses "Indian Game East Indian" where Lichess uses
+    # Indian_Defense for these London move orders.
+    "london-white": (
+        "Indian Game East Indian London System",
+        "Indian Game East Indian Accelerated London System",
+    ),
 }
 
 # Only source families that do not identify a competing opening may use the
@@ -70,6 +77,10 @@ _GENERIC_LABEL_ROOTS = (
     "queens pawn game",
     "indian game",
 )
+# These named systems can share an early Bf4 position with the London before
+# their distinguishing Nc3 appears. Their explicit source label must block the
+# generic move fallback even though it begins with "Queen's Pawn Opening".
+_COMPETING_FALLBACK_LABEL_TOKENS = frozenset({"jobava"})
 
 _MOVE_LIMIT = 12
 _ECO_CODE_RE = re.compile(r"^[a-e][0-9]{2}$", re.IGNORECASE)
@@ -222,6 +233,8 @@ def _deck_for_exact_label(label: str) -> str | None:
 
 
 def _is_generic_label(label: str) -> bool:
+    if _COMPETING_FALLBACK_LABEL_TOKENS.intersection(label.split()):
+        return False
     if label in _GENERIC_EXACT_LABELS:
         return True
     return any(
@@ -282,6 +295,26 @@ def _is_colle(moves: tuple[str, ...]) -> bool:
     return standard_colle or zukertort_colle
 
 
+def _is_london(moves: tuple[str, ...]) -> bool:
+    """Recognize only an early, non-Jobava London setup for generic labels."""
+
+    white_moves = moves[0::2]
+    black_moves = moves[1::2]
+    if not white_moves or white_moves[0] != "d2d4":
+        return False
+    if black_moves and black_moves[0] == "e7e5":
+        return False
+    try:
+        bishop_index = white_moves.index("c1f4")
+    except ValueError:
+        return False
+    # Bf4 by White's fourth move is the characteristic London signal. Reject
+    # Queen's Gambit and Jobava move orders rather than guessing from Bf4 alone.
+    if bishop_index > 3:
+        return False
+    return "c2c4" not in white_moves and "b1c3" not in white_moves
+
+
 def _is_englund(moves: tuple[str, ...]) -> bool:
     return _starts_with(moves, ("d2d4", "e7e5"))
 
@@ -310,6 +343,7 @@ def _is_modern(moves: tuple[str, ...]) -> bool:
 _MOVE_FALLBACKS = {
     "caro-kann-black": _is_caro_kann,
     "colle-white": _is_colle,
+    "london-white": _is_london,
     "englund-white": _is_englund,
     "pirc-black": _is_pirc,
     "modern-black": _is_modern,

@@ -17,6 +17,14 @@
       "solverColor": "white"
     },
     {
+      "id": "london-white",
+      "label": "London System — White",
+      "manifestPath": "london-white/manifest.json",
+      "openingFamily": "London System",
+      "orientation": "white",
+      "solverColor": "white"
+    },
+    {
       "id": "englund-white",
       "label": "Englund Gambit — White",
       "manifestPath": "englund-white/manifest.json",

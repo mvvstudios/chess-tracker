@@ -55,6 +55,29 @@ test("real Colle Guided traversal diversifies the low-rating tactical cluster", 
   assert.ok(new Set(firstTwenty.map(entry => entry.tacticalSignature)).size >= 12);
 });
 
+test("real London selection data preserves the six-deck White contract", () => {
+  const manifest = Caro.normalizeManifest(
+    readJson("public/data/london-white/manifest.json"),
+  );
+  const selectionIndex = Caro.normalizeSelectionIndex(
+    readJson("public/data/london-white/selection-index.json"),
+    manifest,
+  );
+
+  assert.ok(selectionIndex);
+  assert.equal(manifest.deckId, "london-white");
+  assert.equal(manifest.solverColor, "white");
+  assert.equal(manifest.orientation, "white");
+  assert.equal(selectionIndex.count, 4200);
+  assert.deepEqual(manifest.openingTagRoots, [
+    "Queens_Pawn_Game_London_System",
+    "Queens_Pawn_Game_Accelerated_London_System",
+    "Indian_Defense_London_System",
+    "Indian_Defense_Accelerated_London_System",
+    "London_System",
+  ]);
+});
+
 test("every canonical Guided deck avoids a first-window motif collapse", () => {
   const catalog = readJson("public/data/opening-puzzle-catalog.json");
   catalog.decks.forEach(deck => {

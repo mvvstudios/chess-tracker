@@ -1545,7 +1545,7 @@ span.severity-red     { background: var(--border-strong); color: var(--text); }
   align-items: center;
   min-height: 56px;
   padding: 0.4rem max(1rem, calc(50vw - 590px));
-  background: rgba(42, 40, 36, 0.98);
+  background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
 .trainer-brand {
@@ -1859,6 +1859,7 @@ button.filter-chip:hover { color: var(--text); }
   grid-template-areas:
     "board task"
     "board feedback"
+    "board controls"
     "board side"
     "board keyboard";
   column-gap: clamp(1.5rem, 3vw, 2.75rem);
@@ -1947,10 +1948,11 @@ button.filter-chip:hover { color: var(--text); }
   box-shadow: inset 3px 0 0 var(--accent);
 }
 .opening-trainer-body .puzzle-queue-controls {
+  grid-area: controls;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.45rem;
-  margin: 0.1rem 0 0.85rem;
+  margin: 0.1rem 0 0;
 }
 .opening-trainer-body .puzzle-queue-controls button,
 .opening-trainer-body .puzzle-uci-entry button,
@@ -2301,9 +2303,26 @@ button.filter-chip:hover { color: var(--text); }
   .trainer-brand-copy span { display: none; }
   .trainer-header-session { display: none; }
   .trainer-header-button { min-height: 42px; padding-inline: 0.45rem; }
-  .trainer-dashboard-link { width: 42px; padding: 0; overflow: hidden; color: transparent; }
-  .trainer-dashboard-link::before { content: "↩"; display: grid; width: 42px; height: 42px; place-items: center; color: var(--muted); font-size: 1rem; }
-  .trainer-main {
+  .trainer-dashboard-link {
+    position: relative;
+    justify-content: center;
+    width: 42px;
+    padding: 0;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 0;
+  }
+  .trainer-dashboard-link::before {
+    content: "";
+    display: block;
+    width: 0.62rem;
+    height: 0.62rem;
+    border-color: currentColor;
+    border-style: solid;
+    border-width: 0 0 2px 2px;
+    transform: rotate(45deg);
+  }
+  .puzzles-body .trainer-main {
     width: 100%;
     padding-top: 0.65rem;
     padding-right: max(0.75rem, env(safe-area-inset-right));
@@ -2316,7 +2335,7 @@ button.filter-chip:hover { color: var(--text); }
   .trainer-onboarding p { font-size: 0.7rem; }
   .trainer-onboarding button { min-height: 40px; padding: 0.35rem 0.55rem; }
   .trainer-study-bar {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.45rem;
     margin-bottom: 0.2rem;
     padding: 0.5rem;
@@ -2324,7 +2343,7 @@ button.filter-chip:hover { color: var(--text); }
   .trainer-study-bar .opening-deck-filter { grid-column: 1 / -1; }
   .trainer-study-control select,
   .trainer-study-control .variation-picker { min-height: 42px; padding-inline: 0.45rem 1.5rem; font-size: 0.76rem; }
-  .training-length-control { grid-column: auto; }
+  .training-length-control { grid-column: 1 / -1; }
   .trainer-study-bar > .trainer-secondary-action { grid-column: 1 / -1; }
   .trainer-session-summary { min-height: 34px; margin: 0; }
   .trainer-session-nav { display: contents; }
@@ -2342,8 +2361,9 @@ button.filter-chip:hover { color: var(--text); }
   .opening-trainer-body .puzzle-workspace {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
-      "task"
       "board"
+      "controls"
+      "task"
       "feedback"
       "side"
       "keyboard";
@@ -2401,19 +2421,23 @@ button.filter-chip:hover { color: var(--text); }
     display: flex;
     flex-direction: column;
   }
-  .opening-trainer-body .trainer-study-bar { order: 1; }
-  .opening-trainer-body .curriculum-journey { order: 2; }
-  .opening-trainer-body #puzzles-unsolved-panel { order: 3; }
+  .opening-trainer-body #puzzles-unsolved-panel,
+  .opening-trainer-body #puzzles-solved-panel { order: 1; }
+  .opening-trainer-body #puzzles-page[data-active-tab="solved"] .puzzle-tabs { order: 0; }
+  .opening-trainer-body .puzzle-page-alert { order: 0; }
+  .opening-trainer-body .trainer-onboarding { order: 2; }
+  .opening-trainer-body .trainer-study-bar { order: 2; }
+  .opening-trainer-body .curriculum-journey { order: 3; }
   .opening-trainer-body .puzzle-tabs { order: 4; }
-  .opening-trainer-body #puzzles-solved-panel { order: 5; }
-  .opening-trainer-body .trainer-session-summary { order: 6; }
+  .opening-trainer-body .trainer-session-summary { order: 5; }
 }
 
 @media (max-width: 410px) {
   .trainer-brand-copy strong { max-width: 8.5rem; }
   .trainer-header-button { font-size: 0.7rem; }
   .opening-trainer-body .puzzle-queue-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .opening-trainer-body .puzzle-queue-controls #puzzle-show { grid-column: 1 / -1; }
+  .opening-trainer-body .puzzle-queue-controls #puzzle-show { grid-column: auto; }
+  .opening-trainer-body .puzzle-queue-controls #puzzle-continue { grid-column: 1 / -1; }
   .session-results { grid-template-columns: minmax(0, 1fr); }
 }
 

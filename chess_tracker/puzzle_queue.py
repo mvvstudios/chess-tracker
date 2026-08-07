@@ -1,4 +1,4 @@
-"""Derive personal blunder-puzzle candidates from imported game analysis.
+"""Derive personal error-puzzle candidates from imported game analysis.
 
 The dashboard has two distinct kinds of puzzle data:
 
@@ -41,7 +41,7 @@ MAX_DIAGNOSTIC_ERRORS = 50
 
 @dataclass(frozen=True)
 class PuzzleCandidate:
-    """A validated puzzle position derived from one personal blunder."""
+    """A validated puzzle position derived from one personal move-quality error."""
 
     puzzle_id: str
     game_id: str
@@ -49,6 +49,7 @@ class PuzzleCandidate:
     game_url: str | None
     username: str
     user_color: ColorName
+    quality_label: str
     orientation: ColorName
     side_to_move: ColorName
     ply: int
@@ -88,12 +89,28 @@ def stable_puzzle_id(username: str, game_id: str, ply: int) -> str:
     return "puzzle-" + sha256(identity.encode("utf-8")).hexdigest()[:24]
 
 
+def _quality_evidence_groups(
+    summary: dict[str, Any] | None,
+) -> list[tuple[str, list[Any]]]:
+    if not isinstance(summary, dict):
+        return []
+    groups: list[tuple[str, list[Any]]] = []
+    for quality_label, key in (
+        ("blunder", "blunder_evidence"),
+        ("mistake", "mistake_evidence"),
+    ):
+        evidence = summary.get(key)
+        if isinstance(evidence, list):
+            groups.append((quality_label, evidence))
+    return groups
+
+
 def build_puzzle_queue(
     games: Iterable[dict[str, Any]],
     analysis_cache: dict[str, Any] | None,
     username: str,
 ) -> dict[str, Any]:
-    """Build validated personal-blunder candidates and coverage diagnostics.
+    """Build validated personal-error candidates and coverage diagnostics.
 
     ``games`` are raw Chess.com game dictionaries. ``analysis_cache`` is the
     URL-keyed cache written by :func:`chess_tracker.analysis.save_quality_cache`.
@@ -114,10 +131,13 @@ def build_puzzle_queue(
         "games_analyzed": 0,
         "games_missing_analysis": 0,
         "games_with_blunders": 0,
+        "games_with_mistakes": 0,
         "blunders_seen": 0,
+        "mistakes_seen": 0,
         "eligible_candidates": 0,
         "duplicate_candidates": 0,
         "incomplete_blunders": 0,
+        "incomplete_mistakes": 0,
         "malformed_games": 0,
         "pv_truncated": 0,
     }
@@ -169,15 +189,16 @@ def build_puzzle_queue(
 
         entry = _analysis_entry(cache, raw_game)
         summary = _summary_from_entry(entry)
-        evidence = summary.get("blunder_evidence") if summary else None
-        if not isinstance(evidence, list):
+        evidence_groups = _quality_evidence_groups(summary)
+        if not evidence_groups:
             coverage["games_missing_analysis"] += 1
             continue
         coverage["games_analyzed"] += 1
 
         summary_side = summary.get("side")
         if summary_side is not None and summary_side != user_color:
-            coverage["incomplete_blunders"] += len(evidence)
+            for quality_label, evidence in evidence_groups:
+                coverage[f"incomplete_{quality_label}s"] += len(evidence)
             _add_error(
                 errors,
                 "analysis_side_mismatch",
@@ -229,42 +250,43 @@ def build_puzzle_queue(
             parsed_game=parsed_game,
         )
 
-        if evidence:
-            coverage["games_with_blunders"] += 1
-
-        for raw_blunder in evidence:
-            coverage["blunders_seen"] += 1
-            candidate, issue, pv_was_truncated = _candidate_from_evidence(
-                raw_blunder=raw_blunder,
-                positions=positions,
-                parsed_game=parsed_game,
-                raw_game=raw_game,
-                username=username,
-                user_color=user_color,
-                game_id=game_id,
-                game_uuid=game_uuid,
-                game_url=game_url,
-                repertoire_deck_id=repertoire_deck_id,
-            )
-            if pv_was_truncated:
-                coverage["pv_truncated"] += 1
-            if issue is not None:
-                coverage["incomplete_blunders"] += 1
-                _add_error(
-                    errors,
-                    issue[0],
-                    issue[1],
+        for quality_label, evidence in evidence_groups:
+            if evidence:
+                coverage[f"games_with_{quality_label}s"] += 1
+            for raw_blunder in evidence:
+                coverage[f"{quality_label}s_seen"] += 1
+                candidate, issue, pv_was_truncated = _candidate_from_evidence(
+                    raw_blunder=raw_blunder,
+                    quality_label=quality_label,
+                    positions=positions,
+                    parsed_game=parsed_game,
+                    raw_game=raw_game,
+                    username=username,
+                    user_color=user_color,
                     game_id=game_id,
+                    game_uuid=game_uuid,
                     game_url=game_url,
-                    ply=_safe_ply(raw_blunder),
+                    repertoire_deck_id=repertoire_deck_id,
                 )
-                continue
-            assert candidate is not None
-            if candidate.puzzle_id in seen_candidate_ids:
-                coverage["duplicate_candidates"] += 1
-                continue
-            seen_candidate_ids.add(candidate.puzzle_id)
-            candidates.append(candidate)
+                if pv_was_truncated:
+                    coverage["pv_truncated"] += 1
+                if issue is not None:
+                    coverage[f"incomplete_{quality_label}s"] += 1
+                    _add_error(
+                        errors,
+                        issue[0],
+                        issue[1],
+                        game_id=game_id,
+                        game_url=game_url,
+                        ply=_safe_ply(raw_blunder),
+                    )
+                    continue
+                assert candidate is not None
+                if candidate.puzzle_id in seen_candidate_ids:
+                    coverage["duplicate_candidates"] += 1
+                    continue
+                seen_candidate_ids.add(candidate.puzzle_id)
+                candidates.append(candidate)
 
     candidates.sort(
         key=lambda candidate: (
@@ -275,6 +297,12 @@ def build_puzzle_queue(
         )
     )
     coverage["eligible_candidates"] = len(candidates)
+    coverage["eligible_blunder_candidates"] = sum(
+        candidate.quality_label == "blunder" for candidate in candidates
+    )
+    coverage["eligible_mistake_candidates"] = sum(
+        candidate.quality_label == "mistake" for candidate in candidates
+    )
     # Concise aliases consumed by the page's empty/loading-state logic. Keep the
     # detailed counters above for diagnostics and backward-compatible tests.
     coverage.update({
@@ -282,8 +310,11 @@ def build_puzzle_queue(
         "analyzed_games": coverage["games_analyzed"],
         "analysis_pending_games": coverage["games_missing_analysis"],
         "blunders_found": coverage["blunders_seen"],
+        "mistakes_found": coverage["mistakes_seen"],
         "eligible_puzzles": coverage["eligible_candidates"],
-        "incomplete_puzzles": coverage["incomplete_blunders"],
+        "incomplete_puzzles": (
+            coverage["incomplete_blunders"] + coverage["incomplete_mistakes"]
+        ),
     })
     return {
         "candidates": [candidate.to_dict() for candidate in candidates],
@@ -305,6 +336,7 @@ def derive_puzzle_candidates(
 def _candidate_from_evidence(
     *,
     raw_blunder: Any,
+    quality_label: str,
     positions: dict[int, tuple[chess.Board, chess.Move]],
     parsed_game: chess.pgn.Game,
     raw_game: dict[str, Any],
@@ -317,6 +349,12 @@ def _candidate_from_evidence(
 ) -> tuple[PuzzleCandidate | None, tuple[str, str] | None, bool]:
     if not isinstance(raw_blunder, dict):
         return None, ("invalid_blunder", "Blunder evidence is not an object."), False
+    raw_quality_label = str(raw_blunder.get("quality_label") or quality_label).strip().lower()
+    if raw_quality_label != quality_label or quality_label not in {"blunder", "mistake"}:
+        return None, (
+            "invalid_quality_label",
+            "Move-quality evidence has an invalid or mismatched severity.",
+        ), False
 
     ply = _safe_ply(raw_blunder)
     if ply is None:
@@ -425,6 +463,7 @@ def _candidate_from_evidence(
         game_url=game_url,
         username=username,
         user_color=user_color,
+        quality_label=quality_label,
         orientation=user_color,
         side_to_move="white" if board.turn == chess.WHITE else "black",
         ply=ply,
@@ -633,7 +672,7 @@ def _summary_from_entry(entry: Any) -> dict[str, Any] | None:
     summary = entry.get("summary")
     if isinstance(summary, dict):
         return summary
-    if "blunder_evidence" in entry:
+    if "blunder_evidence" in entry or "mistake_evidence" in entry:
         return entry
     return None
 

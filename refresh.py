@@ -23,12 +23,16 @@ from chess_tracker.analysis import (
     run_puzzle_line_backfill,
 )
 from chess_tracker.blunder_phases import compute_blunder_phases
-from chess_tracker.blunder_categories import compute_blunder_analysis
+from chess_tracker.blunder_categories import (
+    compute_blunder_analysis,
+    compute_mistake_analysis,
+)
 from chess_tracker.blunder_puzzle_export import (
     MY_BLUNDER_DECK_IDS,
     MY_BLUNDER_PUZZLE_DATA_PATH,
+    PERSONAL_ERROR_DECK_IDS,
     augment_opening_puzzle_catalog,
-    blunder_deck_catalog_entries,
+    personal_error_deck_catalog_entries,
     write_my_blunder_puzzle_export,
 )
 from chess_tracker.render import render_all_pages, DEFAULT_TEMPLATE_DIR
@@ -819,11 +823,12 @@ def publish_my_blunder_trainer_data(
     generated_at: str,
     dashboard_dir: Path = Path("dashboard"),
 ) -> dict:
-    """Publish the personal export and merge its virtual decks into the trainer.
+    """Publish personal error puzzles and merge their virtual trainer decks.
 
     The ordinary opening catalog remains authoritative under ``public/data``.
     Personal descriptors are added only to the generated Pages copy after the
-    strict Lichess datasets have been synchronized.
+    strict Lichess datasets have been synchronized. The historical function
+    name and export filename remain stable for existing callers and clients.
     """
 
     data_dir = _opening_puzzle_dashboard_data_dir(Path(dashboard_dir))
@@ -841,7 +846,7 @@ def publish_my_blunder_trainer_data(
         catalog = _read_json_object(catalog_path, "deployed opening-puzzle catalog")
         catalog = augment_opening_puzzle_catalog(catalog)
     else:
-        entries = blunder_deck_catalog_entries()
+        entries = personal_error_deck_catalog_entries()
         catalog = {
             "schemaVersion": 1,
             "defaultDeckId": MY_BLUNDER_DECK_IDS[0],
@@ -867,7 +872,7 @@ def publish_my_blunder_trainer_data(
     return {
         "path": export_path,
         "candidates": len(envelope["catalog"]["candidates"]),
-        "decks": len(MY_BLUNDER_DECK_IDS),
+        "decks": len(PERSONAL_ERROR_DECK_IDS),
     }
 
 
@@ -1141,6 +1146,7 @@ def main(argv=None) -> int:
         payload["move_quality_by_format"] = None
         payload["move_quality_by_time_control"] = None
         payload["blunder_analysis"] = None
+        payload["mistake_analysis"] = None
         why = "--no-analysis" if args.no_analysis else "no Stockfish found"
         print(f"[4.6/5] Move-quality analysis skipped ({why}).")
     else:
@@ -1152,6 +1158,11 @@ def main(argv=None) -> int:
                                           depth=args.analysis_depth)
         payload["move_quality"] = aggregate_move_quality(summaries)
         payload["blunder_analysis"] = compute_blunder_analysis(
+            summaries,
+            records,
+            eligible_games=len(records),
+        )
+        payload["mistake_analysis"] = compute_mistake_analysis(
             summaries,
             records,
             eligible_games=len(records),
@@ -1226,9 +1237,9 @@ def main(argv=None) -> int:
         # before deriving the static puzzle catalog from the cache.
         save_quality_cache(analysis_cache_path, cache)
 
-    # The canonical queue is derived from the same blunder evidence used by
-    # Blunder Analysis. Every candidate is replayed from its PGN and validated
-    # before it reaches the browser; incomplete records remain out of the queue.
+    # The canonical queue is derived from the same blunder and mistake evidence
+    # used by the dashboard analyses. Every candidate is replayed from its PGN
+    # and validated before it reaches the browser; incomplete records remain out.
     puzzle_catalog = build_puzzle_queue(all_games, cache, args.username)
     if args.no_puzzles:
         puzzle_catalog["candidates"] = []
@@ -1249,7 +1260,7 @@ def main(argv=None) -> int:
 
     coverage = puzzle_catalog.get("coverage", {})
     print(
-        "[4.65/5] Personal blunder puzzles: "
+        "[4.65/5] Personal error puzzles: "
         f"{coverage.get('eligible_puzzles', 0)} ready, "
         f"{coverage.get('incomplete_puzzles', 0)} incomplete."
     )
@@ -1301,7 +1312,7 @@ def main(argv=None) -> int:
         dashboard_dir=dashboard_dir,
     )
     print(
-        "      Personal blunder trainer data: "
+        "      Personal error trainer data: "
         f"{personal_puzzle_sync['candidates']} puzzles across "
         f"{personal_puzzle_sync['decks']} deck(s)."
     )

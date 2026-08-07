@@ -42,12 +42,14 @@ mixes with the personal puzzle queue.
 The adaptive envelope stores:
 
 - the last selected deck, Endless/finite training preference, last selected
-  finite length (5, 10, or 20), and onboarding dismissal;
+  finite length (5, 10, or 20), the selected filter pool for each deck, and
+  onboarding dismissal;
 - review counters and scheduling per deck and puzzle ID;
 - a small snapshot of variation, curriculum group, tactical themes, and
   application difficulty;
 - bounded ephemeral traversal state: at most eight recently used cohorts, a
-  small deck-wide recent-ID ring, and one resumable active run.
+  small deck-wide recent-ID ring, and the active reservation for the current
+  browser visit.
 
 The current store reads and merges the previous
 `chess-tracker:opening-trainer:v1:<subject>` envelope into v2. Existing solved
@@ -66,27 +68,32 @@ and active membership are deliberately omitted from export and cannot be
 replaced by import. This is the supported cross-device path while the product
 remains account-free.
 
-## Endless training and optional finite sessions
+## Focused ten-puzzle sessions and optional Endless training
 
-Normal opening training defaults to **Endless**. It continues serving positions
-until the player stops or changes their study setup, with no artificial finish
-line or session-complete screen. Players who want a bounded goal can choose a
-5-, 10-, or 20-puzzle session from the visible Training length control; those
-finite sessions retain the completion summary and mistake-review loop.
+Normal opening training defaults to a randomized **Focused Mix of 10**. Players
+can choose a 5-, 10-, or 20-puzzle goal, or opt into Endless training when they
+do not want a completion boundary. Finite sessions retain the completion
+summary and missed-puzzle redo loop.
 
 The stored `sessionMode` preference distinguishes Endless from finite training,
 while `sessionSize` remembers the last finite length. An existing v2 envelope
-without `sessionMode` safely defaults to Endless without discarding its saved
-5/10/20 value. Explicit Due and Review Mistakes runs remain finite and do not
-change the player's normal Training length preference.
+without the `trainingDefaultsVersion: 1` marker receives a one-time defaults
+migration: its former auto-persisted Endless value becomes finite while its
+valid 5/10/20 size is preserved. The migration writes the marker back into the
+same additive v2 envelope. Once marked, choosing Endless explicitly is honored
+on later visits. The chosen variation, difficulty, provenance, line coverage,
+theme, and opening-only settings are stored separately per deck, so a new batch
+can preserve its puzzle pool without restoring old membership. Explicit
+**Due** and **Redo missed** runs remain finite and do not change the player's
+normal Training length preference.
 
 Normal training membership is reserved before its puzzle chunks are loaded and
-can be resumed for 24 hours on the same device. The resume token stores at most
-20 IDs plus contiguous completed results; choosing **Start fresh** discards the
-token but does not rewind the cohort cursor. A changed deck, dataset, study
-setup, or Training length cannot resume the old token. A dataset-version
-mismatch clears only ephemeral ordering and active-run state, never the solved
-archive or adaptive reviews.
+every cold page launch reserves a fresh batch. The persisted cohort cursor and
+recent-ID ring continue forward, so an abandoned batch is not silently resumed
+or immediately repeated. A page restored from the browser's back-forward cache
+keeps its in-memory board and live session. A changed dataset clears only
+ephemeral ordering and active-run state, never the solved archive or adaptive
+reviews.
 
 Durable learning is recorded per puzzle as each result is finalized. A result
 is accepted once and records:
@@ -99,12 +106,12 @@ is accepted once and records:
 An unassisted solve requires a completed line on the first try with no hint,
 skip, or revealed solution. Finite-session summaries derive completed puzzles,
 first-try accuracy, unassisted solves, hints, reveals, skips, weak variations,
-weak themes, and the IDs eligible for “Review mistakes.” Starting another
-finite session creates a new bounded set; it does not reset permanent solved
-progress. If a player changes deck, filters, mode, or Training length after
-engaging with a position, the unfinished encounter is recorded as a supportive
-review lapse before the active membership is replaced. An untouched position
-is not penalized.
+weak themes, and the IDs eligible for **Redo missed**. Starting another finite
+session creates a new bounded set; it does not reset permanent solved progress.
+If a player changes deck, filters, mode, or Training length after engaging with
+a position, the unfinished encounter is recorded as a supportive review lapse
+before the active membership is replaced. An untouched position is not
+penalized.
 
 ## Varied, bounded traversal
 
@@ -118,10 +125,12 @@ cohort.
 Focused Mix keeps a persisted seeded bag per deck, dataset version, and filter
 signature. Session length is deliberately absent from that identity, so
 consecutive 5-, 10-, and 20-puzzle starts consume forward through the same bag
-instead of receiving prefixes of one daily shuffle. Reservation advances the
-cursor, including when **Start fresh** replaces an untouched run. A bounded
-deck-wide recent ring softens overlap when the player changes filters. Once a
-finite cohort is exhausted, its next epoch reshuffles deterministically.
+instead of receiving prefixes of one shuffle. Each cohort receives a random
+seed and advances deterministically from there; fallback queues receive a new
+random seed per batch and keep it stable for that batch. Reservation advances
+the cursor before loading. A bounded deck-wide recent ring softens overlap when
+the player changes filters. Once a finite cohort is exhausted, its next epoch
+reshuffles deterministically.
 
 Guided uses the same no-repeat cursor with a curriculum-specific ordering. It
 progresses by difficulty and bounded rating windows, shuffles under the
@@ -129,11 +138,13 @@ cohort's seed, and applies soft primary-theme and tactical-signature caps over
 each recent window. If a genuinely narrow cohort cannot satisfy a cap, a
 second pass relaxes it rather than hiding valid opening motifs.
 
-The strict no-repeat guarantee applies to eligible New puzzles. Due reviews
-remain intentionally eligible ahead of that lane and may recur according to
-the adaptive schedule. **All variations** is the default cohort. Variation is
-a primary study control: short deck lists use a native select, while longer
-lists open the existing searchable picker.
+The strict no-repeat guarantee applies to eligible New puzzles. Normal batches
+contain only that New lane; Due reviews and unresolved misses are opened
+explicitly, never injected ahead of a fresh mix. Review lanes are deck-scoped,
+ignore the normal filters, are capped, and do not advance the New-puzzle cohort.
+**All variations** is the default cohort. Variation is a primary study control:
+short deck lists use a native select, while longer lists open the existing
+searchable picker.
 
 ## Adaptive review model
 
@@ -150,8 +161,12 @@ Review classifications are local and lightweight:
 Clean, unassisted solves advance intervals through 1, 3, 7, 14, 30, and 60
 days. Any incorrect move, hint, skip, reveal, or incomplete result resets the
 clean streak and returns the puzzle in approximately ten minutes. These
-results also feed “Review mistakes.” Review state is supportive scheduling,
-not a replacement for the permanent solved archive.
+results also enter the durable **Redo missed** queue. A miss remains unresolved
+while its review has a `mistakeAt` timestamp and no later clean solve
+(`correctStreak` is zero); a clean, unassisted redo removes it from that queue
+without erasing its historical mistake timestamp. The count-bearing Redo
+missed action is deck-scoped and capped at 20 puzzles per run. Review state is
+supportive scheduling, not a replacement for the permanent solved archive.
 
 ## First-party product events
 

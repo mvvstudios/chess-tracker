@@ -89,6 +89,22 @@ _DECKS: Final[tuple[OpeningPuzzleDeck, ...]] = (
         manifest_path="colle-white/manifest.json",
     ),
     OpeningPuzzleDeck(
+        id="london-white",
+        display_name="London System — White",
+        opening_family="London System",
+        solver_color="white",
+        orientation="white",
+        opening_tag_roots=(
+            "Queens_Pawn_Game_London_System",
+            "Queens_Pawn_Game_Accelerated_London_System",
+            "Indian_Defense_London_System",
+            "Indian_Defense_Accelerated_London_System",
+            "London_System",
+        ),
+        output_path=Path("public/data/london-white"),
+        manifest_path="london-white/manifest.json",
+    ),
+    OpeningPuzzleDeck(
         id="englund-white",
         display_name="Englund Gambit — White",
         opening_family="Englund Gambit",

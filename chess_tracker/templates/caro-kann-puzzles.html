@@ -37,7 +37,7 @@
     </a>
     <div class="trainer-header-session" aria-live="polite">
       <span id="trainer-header-deck">Opening deck</span>
-      <strong id="trainer-header-progress">Endless</strong>
+      <strong id="trainer-header-progress">10 puzzles</strong>
     </div>
     <nav class="trainer-header-actions" aria-label="Trainer navigation">
       <button id="deck-library-open" class="trainer-header-button" type="button">Decks</button>
@@ -88,9 +88,9 @@
         <label class="trainer-study-control training-length-control">
           <span>Training length</span>
           <select id="training-length" name="trainingLength" aria-describedby="training-length-help">
-            <option value="endless" selected>Endless</option>
+            <option value="endless">Endless</option>
             <option value="5">5 puzzles</option>
-            <option value="10">10 puzzles</option>
+            <option value="10" selected>10 puzzles</option>
             <option value="20">20 puzzles</option>
           </select>
         </label>
@@ -129,7 +129,7 @@
           <div id="active-filter-chips" class="active-filter-chips" aria-label="Active filters"></div>
           <div class="trainer-review-actions">
             <button id="reviews-due-button" class="trainer-text-action" type="button" disabled>Reviews due: 0</button>
-            <button id="review-mistakes-button" class="trainer-text-action" type="button" hidden>Review mistakes</button>
+            <button id="review-mistakes-button" class="trainer-text-action" type="button" hidden>Redo missed</button>
           </div>
         </div>
       </div>
@@ -142,16 +142,6 @@
         </div>
 
         <div id="puzzle-workspace" class="puzzle-workspace" hidden>
-          <div class="puzzle-task">
-            <div class="puzzle-session-progress">
-              <span id="puzzle-queue-position">Puzzle 1</span>
-              <span id="puzzle-review-state" class="puzzle-review-state">New</span>
-            </div>
-            <div id="puzzle-progress-track" class="puzzle-progress-track" aria-hidden="true" hidden><span id="puzzle-progress-fill"></span></div>
-            <h2 id="puzzle-prompt" class="puzzle-prompt" tabindex="-1">Find the best continuation</h2>
-            <p id="puzzle-side-to-move" class="puzzle-side-to-move">Black to move · 1 of 2</p>
-          </div>
-
           <div class="puzzle-board-column">
             <div id="puzzle-board" class="puzzle-board puzzle-queue-board"
                  role="img" aria-label="Interactive opening puzzle board"
@@ -166,18 +156,28 @@
             </fieldset>
           </div>
 
+          <div class="puzzle-controls puzzle-queue-controls" role="group" aria-label="Puzzle controls">
+            <button id="puzzle-continue" class="puzzle-primary-action" type="button" hidden>Next puzzle</button>
+            <button id="puzzle-hint" type="button">Hint</button>
+            <button id="puzzle-skip" type="button">Skip</button>
+            <button id="puzzle-reset" type="button">Reset</button>
+            <button id="puzzle-show" class="trainer-tertiary-action" type="button">Reveal solution</button>
+          </div>
+
+          <div class="puzzle-task">
+            <div class="puzzle-session-progress">
+              <span id="puzzle-queue-position">Puzzle 1</span>
+              <span id="puzzle-review-state" class="puzzle-review-state">New</span>
+            </div>
+            <div id="puzzle-progress-track" class="puzzle-progress-track" aria-hidden="true" hidden><span id="puzzle-progress-fill"></span></div>
+            <h2 id="puzzle-prompt" class="puzzle-prompt" tabindex="-1">Find the best continuation</h2>
+            <p id="puzzle-side-to-move" class="puzzle-side-to-move">Black to move · 1 of 2</p>
+          </div>
+
           <div id="puzzle-feedback" class="puzzle-feedback puzzle-queue-feedback" role="status"
                aria-live="polite" aria-atomic="true">Make the best move for the displayed side.</div>
 
           <div class="puzzle-side puzzle-queue-side">
-            <div class="puzzle-controls puzzle-queue-controls" role="group" aria-label="Puzzle controls">
-              <button id="puzzle-continue" class="puzzle-primary-action" type="button" hidden>Next puzzle</button>
-              <button id="puzzle-hint" type="button">Hint</button>
-              <button id="puzzle-skip" type="button">Skip</button>
-              <button id="puzzle-reset" type="button">Reset</button>
-              <button id="puzzle-show" class="trainer-tertiary-action" type="button">Reveal solution</button>
-            </div>
-
             <section class="puzzle-context" aria-labelledby="puzzle-context-title">
               <h3 id="puzzle-context-title">After the puzzle</h3>
               <div id="puzzle-context-body"></div>
@@ -206,7 +206,7 @@
           <div id="session-results" class="session-results"></div>
           <div id="session-weak-spots" class="session-weak-spots"></div>
           <div class="session-complete-actions">
-            <button id="session-review-mistakes" class="puzzle-primary-action" type="button">Review mistakes</button>
+            <button id="session-review-mistakes" class="puzzle-primary-action" type="button">Redo missed</button>
             <button id="session-start-another" class="trainer-secondary-action" type="button">Start another session</button>
           </div>
         </section>

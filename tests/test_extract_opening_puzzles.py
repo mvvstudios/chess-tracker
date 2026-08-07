@@ -168,6 +168,11 @@ def test_white_mate_in_one_preserves_every_mating_move_and_exact_fen():
         ("colle-white", "Queens_Pawn_Game_Colle_System"),
         ("colle-white", "Indian_Defense_Colle_System_Kings_Indian_Variation"),
         ("colle-white", "Colle_System_Pterodactyl_Variation"),
+        ("london-white", "Queens_Pawn_Game_London_System"),
+        ("london-white", "Queens_Pawn_Game_Accelerated_London_System"),
+        ("london-white", "Indian_Defense_London_System"),
+        ("london-white", "Indian_Defense_Accelerated_London_System"),
+        ("london-white", "London_System_Poisoned_Pawn_Variation"),
         ("englund-white", "Englund_Gambit"),
         ("englund-white", "Englund_Gambit_Declined"),
         ("pirc-black", "Pirc_Defense_Austrian_Attack"),
@@ -187,6 +192,9 @@ def test_authoritative_exact_and_descendant_tags_are_accepted(
     [
         ("colle-white", "Queens_Pawn_Game_Zukertort_Variation"),
         ("colle-white", "Rubinstein_Opening"),
+        ("london-white", "Grob_Opening_London_Defense"),
+        ("london-white", "Queens_Pawn_Game_Jobava_London_System"),
+        ("london-white", "Queens_Pawn_Game_Rapport_Jobava_System"),
         ("englund-white", "Queens_Pawn_Game"),
         ("pirc-black", "Rat_Defense"),
         ("pirc-black", "Modern_Defense"),
@@ -220,6 +228,7 @@ def test_most_specific_tag_and_matched_root_are_deterministic():
 
 def test_deck_specific_variation_labels_flatten_configured_roots():
     colle = OPENING_PUZZLE_DECKS["colle-white"]
+    london = OPENING_PUZZLE_DECKS["london-white"]
     modern = OPENING_PUZZLE_DECKS["modern-black"]
     assert variation_display_name(
         "Indian_Defense_Colle_System_Kings_Indian_Variation",
@@ -227,18 +236,24 @@ def test_deck_specific_variation_labels_flatten_configured_roots():
         colle,
     ) == "Colle System: Kings Indian Variation"
     assert variation_display_name(
+        "London_System_Poisoned_Pawn_Variation",
+        "London_System",
+        london,
+    ) == "London System: Poisoned Pawn Variation"
+    assert variation_display_name(
         "Queens_Pawn_Game_Modern_Defense",
         "Queens_Pawn_Game_Modern_Defense",
         modern,
     ) == "Modern Defense: Queen’s Pawn Move Order"
 
 
-def test_one_scan_routes_records_independently_to_all_five_decks(tmp_path: Path):
+def test_one_scan_routes_records_independently_to_all_six_decks(tmp_path: Path):
     root = tmp_path / "data"
     result = _run(root)
     expected_valid = {
         "caro-kann-black": 2,
         "colle-white": 1,
+        "london-white": 0,
         "englund-white": 1,
         "pirc-black": 2,
         "modern-black": 2,

@@ -234,6 +234,7 @@ function promotionCandidate() {
 }
 
 function createHarness(candidate, { coarsePointer = false } = {}) {
+  const candidates = Array.isArray(candidate) ? candidate : [candidate];
   const elements = Object.fromEntries(ELEMENT_IDS.map(id => [id, new FakeElement(id)]));
   elements["puzzle-uci-form"].submitButton = new FakeElement("uci-submit");
   elements["puzzle-promotion-options"].firstPromotionButton = new FakeElement("first-promotion");
@@ -273,7 +274,7 @@ function createHarness(candidate, { coarsePointer = false } = {}) {
   context.window.DATA = {
     username: "me",
     puzzle_catalog: {
-      candidates: [candidate],
+      candidates,
       coverage: { games_seen: 1, games_for_user: 1, games_analyzed: 1 },
       errors: [],
     },
@@ -316,10 +317,25 @@ function createHarness(candidate, { coarsePointer = false } = {}) {
     },
     progress() {
       const raw = [...storage.values.values()][0];
-      return raw ? JSON.parse(raw).records[candidate.puzzle_id] : null;
+      const first = candidates[0];
+      return raw ? JSON.parse(raw).records[first.puzzle_id] : null;
     },
   };
 }
+
+test("the legacy My Blunder Puzzles queue excludes shared mistake candidates", () => {
+  const blunder = blackContinuationCandidate();
+  const mistake = {
+    ...blackContinuationCandidate(),
+    puzzle_id: "mistake-only",
+    quality_label: "mistake",
+    cp_loss: 3000,
+  };
+  const harness = createHarness([mistake, blunder]);
+
+  assert.match(harness.elements["puzzle-progress-summary"].textContent, /1 total/);
+  assert.equal(harness.board.config.fen, blunder.fen_before);
+});
 
 test("black king continuation auto-replies and solves only on the second user move", () => {
   const harness = createHarness(blackContinuationCandidate());

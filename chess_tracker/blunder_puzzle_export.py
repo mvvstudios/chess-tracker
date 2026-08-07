@@ -1,4 +1,4 @@
-"""Data contracts for exposing personal blunders in the opening trainer."""
+"""Data contracts for exposing personal move-quality errors in the trainer."""
 
 from __future__ import annotations
 
@@ -25,6 +25,7 @@ def _descriptor(
     label: str,
     solver_color: str,
     repertoire_deck_id: str | None,
+    quality_label: str = "blunder",
 ) -> Mapping[str, object]:
     return MappingProxyType(
         {
@@ -35,6 +36,7 @@ def _descriptor(
             "dataPath": MY_BLUNDER_PUZZLE_DATA_PATH,
             "progressScope": PERSONAL_BLUNDER_PROGRESS_SCOPE,
             "repertoireDeckId": repertoire_deck_id,
+            "qualityLabel": quality_label,
             "solverColor": solver_color,
             "orientation": solver_color,
         }
@@ -73,10 +75,57 @@ MY_BLUNDER_DECK_DESCRIPTORS: Final[tuple[Mapping[str, object], ...]] = (
         "black",
         "caro-kann-black",
     ),
+    _descriptor(
+        "my-blunders-london",
+        "My Blunders — London System",
+        "white",
+        "london-white",
+    ),
 )
 
 MY_BLUNDER_DECK_IDS: Final[tuple[str, ...]] = tuple(
     str(descriptor["id"]) for descriptor in MY_BLUNDER_DECK_DESCRIPTORS
+)
+
+MY_MISTAKE_DECK_DESCRIPTORS: Final[tuple[Mapping[str, object], ...]] = (
+    _descriptor("my-mistakes-all", "My Mistakes — ALL", "mixed", None, "mistake"),
+    _descriptor(
+        "my-mistakes-colle", "My Mistakes — Colle System",
+        "white", "colle-white", "mistake",
+    ),
+    _descriptor(
+        "my-mistakes-pirc", "My Mistakes — Pirc Defense",
+        "black", "pirc-black", "mistake",
+    ),
+    _descriptor(
+        "my-mistakes-englund", "My Mistakes — Englund Gambit",
+        "white", "englund-white", "mistake",
+    ),
+    _descriptor(
+        "my-mistakes-modern", "My Mistakes — Modern Defense",
+        "black", "modern-black", "mistake",
+    ),
+    _descriptor(
+        "my-mistakes-caro-kann", "My Mistakes — Caro-Kann Defense",
+        "black", "caro-kann-black", "mistake",
+    ),
+    _descriptor(
+        "my-mistakes-london", "My Mistakes — London System",
+        "white", "london-white", "mistake",
+    ),
+)
+
+MY_MISTAKE_DECK_IDS: Final[tuple[str, ...]] = tuple(
+    str(descriptor["id"]) for descriptor in MY_MISTAKE_DECK_DESCRIPTORS
+)
+
+PERSONAL_ERROR_DECK_DESCRIPTORS: Final[tuple[Mapping[str, object], ...]] = (
+    *MY_BLUNDER_DECK_DESCRIPTORS,
+    *MY_MISTAKE_DECK_DESCRIPTORS,
+)
+
+PERSONAL_ERROR_DECK_IDS: Final[tuple[str, ...]] = tuple(
+    str(descriptor["id"]) for descriptor in PERSONAL_ERROR_DECK_DESCRIPTORS
 )
 
 
@@ -84,6 +133,12 @@ def blunder_deck_catalog_entries() -> list[dict[str, object]]:
     """Return mutable, independent copies of the canonical deck descriptors."""
 
     return [dict(descriptor) for descriptor in MY_BLUNDER_DECK_DESCRIPTORS]
+
+
+def personal_error_deck_catalog_entries() -> list[dict[str, object]]:
+    """Return every personal Blunder and Mistake deck descriptor."""
+
+    return [dict(descriptor) for descriptor in PERSONAL_ERROR_DECK_DESCRIPTORS]
 
 
 def _validate_puzzle_catalog(puzzle_catalog: Mapping[str, object]) -> None:
@@ -218,12 +273,16 @@ def _validate_personal_entries(
             raise ValueError(
                 f"personal deck {deck_id!r} has an invalid repertoireDeckId"
             )
+        if entry.get("qualityLabel") not in {"blunder", "mistake"}:
+            raise ValueError(
+                f"personal deck {deck_id!r} has an invalid qualityLabel"
+            )
     return validated
 
 
 def augment_opening_puzzle_catalog(
     catalog: Mapping[str, object],
-    entries: Iterable[Mapping[str, object]] = MY_BLUNDER_DECK_DESCRIPTORS,
+    entries: Iterable[Mapping[str, object]] = PERSONAL_ERROR_DECK_DESCRIPTORS,
 ) -> dict[str, object]:
     """Add or replace personal decks without disturbing ordinary deck entries."""
 

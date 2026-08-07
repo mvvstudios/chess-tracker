@@ -19,7 +19,8 @@
   const PAGE_TITLE = "Chess Opening Puzzle Trainer";
   const DEFAULT_SESSION_SIZE = 10;
   const SESSION_SIZES = [5, 10, 20];
-  const DEFAULT_SESSION_MODE = "endless";
+  const DEFAULT_SESSION_MODE = "finite";
+  const TRAINING_DEFAULTS_VERSION = 1;
   const ENDLESS_BATCH_SIZE = 20;
   const DATA_CACHE = "chess-opening-trainer-data-v3";
   const fallbackEscape = value => String(value == null ? "" : value).replace(
@@ -192,6 +193,8 @@
     customizeSnapshot: null,
     resumedActive: false,
     activeSelectionToken: null,
+    batchSeed: "",
+    batchSequence: 0,
   };
 
   bindEvents();
@@ -258,8 +261,11 @@
   }
 
   function restorePreferences() {
-    state.sessionMode = preference("sessionMode", DEFAULT_SESSION_MODE) === "finite"
-      ? "finite" : DEFAULT_SESSION_MODE;
+    const storedMode = preference("sessionMode", DEFAULT_SESSION_MODE);
+    const defaultsVersion = Number(preference("trainingDefaultsVersion", 0));
+    state.sessionMode = storedMode === "endless"
+      && Number.isFinite(defaultsVersion)
+      && defaultsVersion >= TRAINING_DEFAULTS_VERSION ? "endless" : "finite";
     const size = Number(preference("sessionSize", DEFAULT_SESSION_SIZE));
     state.sessionSize = SESSION_SIZES.includes(size) ? size : DEFAULT_SESSION_SIZE;
     if (elements.trainingLength) {
@@ -296,26 +302,30 @@
     }
   }
 
-  function restorableActiveSelection() {
-    if (!state.selectionIndex || !state.reviewStore
-        || typeof state.reviewStore.getSelectionState !== "function") return null;
+  function storedFilterPool() {
+    if (!state.reviewStore || !state.deck) return null;
     try {
+      if (typeof state.reviewStore.getFilterPool === "function") {
+        const saved = state.reviewStore.getFilterPool(state.deck.id);
+        if (saved) return saved;
+      }
+      if (!state.selectionIndex
+          || typeof state.reviewStore.getSelectionState !== "function") return null;
       const selection = state.reviewStore.getSelectionState() || {};
       const active = selection.active;
       if (!active || active.deckId !== state.deck.id
           || active.datasetVersion !== state.selectionIndex.datasetVersion
-          || Date.parse(active.expiresAt || "") <= Date.now()
-          || !Array.isArray(active.puzzleIds) || !active.puzzleIds.length
-          || Number(active.nextIndex || 0) >= active.puzzleIds.length) return null;
-      return active;
+          || !active.filters) return null;
+      // One-time compatibility bridge: older v2 envelopes kept the selected
+      // pool only inside auto-resumable membership. Reuse the pool, not the run.
+      return active.filters;
     } catch (_error) {
       return null;
     }
   }
 
-  function restoreActiveTrainingSetup(active) {
-    if (!active) return false;
-    const filters = active.filters || {};
+  function restoreFilterPool() {
+    const filters = storedFilterPool() || {};
     const assignSelect = (select, value, fallback) => {
       if (!select) return;
       const requested = String(value == null ? fallback : value);
@@ -330,19 +340,22 @@
     assignSelect(elements.filterTheme, filters.theme, "all");
     if (elements.filterOpening) elements.filterOpening.checked = filters.openingOnly === true;
     state.curriculumGroup = filters.curriculumGroup || "";
-    if (active.trainingLength === "endless") {
-      state.sessionMode = "endless";
-      if (elements.trainingLength) elements.trainingLength.value = "endless";
-    } else {
-      const size = Number(active.size || active.puzzleIds.length);
-      if (SESSION_SIZES.includes(size)) {
-        state.sessionMode = "finite";
-        state.sessionSize = size;
-        if (elements.trainingLength) elements.trainingLength.value = String(size);
-      }
-    }
     renderChoiceLists();
+    persistFilterPool();
     return true;
+  }
+
+  function persistFilterPool() {
+    if (!state.reviewStore || !state.deck
+        || typeof state.reviewStore.setFilterPool !== "function") return false;
+    try {
+      state.reviewStore.setFilterPool(state.deck.id, currentFilters());
+      return true;
+    } catch (error) {
+      state.transientWarning = "Your selected puzzle pool couldn’t be saved on this device.";
+      console.error("Could not save trainer filter pool", error);
+      return false;
+    }
   }
 
   function showOnboardingIfNeeded() {
@@ -556,6 +569,7 @@
     state.firstMoveTracked = false;
     state.resumedActive = false;
     state.activeSelectionToken = null;
+    state.batchSeed = "";
     if (elements.filterVariation) elements.filterVariation.value = "all";
   }
 
@@ -598,6 +612,7 @@
     const rawCandidates = envelope && envelope.catalog
       && Array.isArray(envelope.catalog.candidates) ? envelope.catalog.candidates : [];
     rawCandidates.forEach(rawCandidate => {
+      if (!personalRawCandidateBelongsToDeck(rawCandidate, deck)) return;
       const candidate = Caro.adaptPersonalBlunderRecord(rawCandidate, deck);
       const id = puzzleId(candidate);
       if (!candidate || !id || ids.has(id)) return;
@@ -612,8 +627,12 @@
     const category = String(candidate.repertoire_deck_id
       || candidate.repertoireDeckId || "").trim().toLowerCase();
     const color = String(candidate.user_color || "").trim().toLowerCase();
+    const quality = String(candidate.quality_label
+      || candidate.qualityLabel || "blunder").trim().toLowerCase();
+    const requestedQuality = String(deck.qualityLabel || "blunder").trim().toLowerCase();
     return (!deck.repertoireDeckId || deck.repertoireDeckId === category)
-      && (deck.solverColor === "mixed" || deck.solverColor === color);
+      && (deck.solverColor === "mixed" || deck.solverColor === color)
+      && quality === requestedQuality;
   }
 
   function countCandidateValues(candidates, getter) {
@@ -634,7 +653,9 @@
       const rating = candidate.rating !== null && candidate.rating !== ""
         && Number.isFinite(Number(candidate.rating)) ? Number(candidate.rating) : "";
       return [
-        puzzleId(candidate), candidate.variation || "My Blunders", candidate.difficulty || "",
+        puzzleId(candidate), candidate.variation || deck.openingFamily || "My Blunders",
+        candidate.qualityLabel || candidate.quality_label || deck.qualityLabel || "blunder",
+        candidate.difficulty || "",
         candidate.provenance || "standard", themes.join("\x1d"), primaryTheme,
         Math.max(1, Number(candidate.solutionLength) || 1),
         String(candidate.best_move_uci || "").toLowerCase(), rating,
@@ -664,7 +685,7 @@
         id: puzzleId(candidate),
         chunkIndex: 0,
         offset,
-        variation: candidate.variation || "My Blunders",
+        variation: candidate.variation || deck.openingFamily || "My Blunders",
         difficulty: candidate.difficulty || "",
         provenance: candidate.provenance || "standard",
         themes,
@@ -729,8 +750,9 @@
     state.store = createDeckProgressStore(deck);
     updateDeckChrome(false);
     populateFilterOptions();
+    restoreFilterPool();
     rebuildPartition(true);
-    const started = await startPreferredSession({ preserveTab: true, resume: false });
+    const started = await startPreferredSession({ preserveTab: true, fresh: true });
     if (!started) renderAll();
     return true;
   }
@@ -805,8 +827,7 @@
       await loadSelectionIndex(generation);
       if (generation !== state.loadGeneration) return false;
       populateFilterOptions();
-      const resumable = restorableActiveSelection();
-      restoreActiveTrainingSetup(resumable);
+      restoreFilterPool();
       if (!state.selectionIndex) {
         await loadNextChunk(false, generation);
         if (generation !== state.loadGeneration) return false;
@@ -815,7 +836,7 @@
       if (!state.selectionIndex && !state.unsolved.length && hasMoreChunks()) {
         await ensureUnsolvedCandidates(1, generation);
       }
-      const started = await startPreferredSession({ preserveTab: true, resume: true });
+      const started = await startPreferredSession({ preserveTab: true, fresh: true });
       if (!started && !state.candidates.length && (state.chunkErrors.length || state.invalidCount)) {
         trackEvent("load_failure", { stage: "positions", deckId: deck.id });
         showFatal(`No ${deck.openingFamily} positions could be prepared. Check your connection and retry.`, () => switchDeck(deck.id, false));
@@ -1163,7 +1184,7 @@
     if (filters.mode === "curriculum") {
       ordered = Caro.curriculumOrder(ordered);
     } else if (typeof Domain.mixCandidates === "function") {
-      ordered = Domain.mixCandidates(ordered, dailyQueueSeed(signature));
+      ordered = Domain.mixCandidates(ordered, batchQueueSeed(signature));
     }
     const availableIds = new Set(ordered.map(puzzleId));
     if (!state.session) {
@@ -1247,12 +1268,16 @@
     }
   }
 
-  function storedMistakeIds(limit) {
-    if (!state.reviewStore || !state.deck || typeof state.reviewStore.mistakeIds !== "function") {
+  function unresolvedMissIds(limit) {
+    if (!state.reviewStore || !state.deck
+        || typeof state.reviewStore.unresolvedMistakeIds !== "function") {
       return [];
     }
     try {
-      return state.reviewStore.mistakeIds(state.deck.id, { limit: Math.max(1, Number(limit) || 20) })
+      const requested = Number(limit);
+      const query = Number.isFinite(requested) && requested > 0
+        ? { limit: Math.floor(requested) } : {};
+      return state.reviewStore.unresolvedMistakeIds(state.deck.id, query)
         .map(String).filter(id => !state.unavailableReviewIds.has(id));
     } catch (_error) {
       return [];
@@ -1284,10 +1309,9 @@
       if (requested) return requested.has(id);
       if (solvedIds.has(id)) return false;
       if (!state.reviewStore) return true;
-      const review = reviewClass(candidate);
-      // A recorded Learning/Mastered item stays spaced until its dueAt time.
-      // New unsolved positions and genuinely Due reviews make up the queue.
-      return review === "Due" || review === "New";
+      // Normal batches are genuinely fresh. Encountered positions live in
+      // the explicit Due and Redo missed lanes instead of silently leading a mix.
+      return reviewClass(candidate) === "New";
     });
     const priority = { Due: 0, Learning: 1, New: 2, Mastered: 3 };
     return candidates.slice().sort((left, right) => {
@@ -1307,7 +1331,7 @@
         - (requestedOrder.get(puzzleId(right)) || 0));
     } else if (filters.mode === "curriculum") ordered = Caro.curriculumOrder(ordered);
     else if (typeof Domain.mixCandidates === "function") {
-      ordered = Domain.mixCandidates(ordered, dailyQueueSeed(filtersSignature(filters)));
+      ordered = Domain.mixCandidates(ordered, batchQueueSeed(filtersSignature(filters)));
       const priority = { Due: 0, Learning: 1, New: 2, Mastered: 3 };
       ordered.sort((left, right) => priority[reviewClass(left)] - priority[reviewClass(right)]);
     }
@@ -1390,22 +1414,8 @@
       const record = state.reviewRecords[id];
       const classification = Trainer && typeof Trainer.classifyReview === "function"
         ? Trainer.classifyReview(record, at) : record ? reviewClass({ id }) : "New";
-      return solved.has(id) || classification === "Learning" || classification === "Mastered";
+      return solved.has(id) || classification !== "New";
     });
-  }
-
-  function indexedDueIds(at) {
-    if (!state.selectionIndex || !state.reviewStore
-        || typeof state.reviewStore.dueReviews !== "function") return [];
-    if (isPersonalBlunderDeck(state.deck)) return [];
-    try {
-      const solved = storedSolvedIds();
-      return state.reviewStore.dueReviews(state.deck.id, at)
-        .map(review => String(review.id || review.puzzleId || review))
-        .filter(id => state.selectionEntriesById.has(id) && !solved.has(id));
-    } catch (_error) {
-      return [];
-    }
   }
 
   async function reserveIndexedSession(desired, requestedMode, settings) {
@@ -1421,7 +1431,6 @@
         resume: settings.resume === true,
         fresh: settings.fresh === true || !settings.resume && !settings.rollover,
         excludedIds: indexedSelectionExclusions(at),
-        priorityIds: indexedDueIds(at),
       },
       now: at,
     });
@@ -1469,9 +1478,11 @@
     const rawRequestedSize = Number(settings.size);
     const requestedSize = SESSION_SIZES.includes(rawRequestedSize)
       ? rawRequestedSize : state.sessionSize;
+    if (!reviewSession) state.batchSeed = createBatchSeed();
     if (!reviewSession && !settings.rollover) {
       finalizeAbandonedPresentation("session_restarted");
       state.sessionMode = requestedMode;
+      setPreference("trainingDefaultsVersion", TRAINING_DEFAULTS_VERSION);
       setPreference("sessionMode", state.sessionMode);
       if (requestedMode === "finite") state.sessionSize = requestedSize;
       setPreference("sessionSize", state.sessionSize);
@@ -1820,12 +1831,19 @@
         + `${themes.length ? `<p>Themes: ${themes.map(item => `${escapeHtml(formatTheme(item.label))} (${item.count})`).join(", ")}</p>` : ""}`
       : "<p>No weak pattern stood out in this session. Keep the spacing and come back fresh.</p>";
     state.lastMistakeIds = summary.mistakeIds || [];
-    if (elements.sessionReviewMistakes) elements.sessionReviewMistakes.hidden = !state.lastMistakeIds.length;
+    if (elements.sessionReviewMistakes) {
+      elements.sessionReviewMistakes.hidden = !state.lastMistakeIds.length;
+      elements.sessionReviewMistakes.textContent = "Redo missed";
+    }
   }
 
   async function startMistakeReview() {
-    let ids = state.lastMistakeIds.slice();
-    if (!ids.length) ids = storedMistakeIds(20);
+    const stored = unresolvedMissIds();
+    const unresolved = new Set(stored);
+    const ids = state.lastMistakeIds.map(String).filter(id => unresolved.has(id));
+    stored.forEach(id => {
+      if (!ids.includes(id) && ids.length < 20) ids.push(id);
+    });
     if (!ids.length) return false;
     trackEvent("review_mistakes_selected", { count: ids.length });
     return startSession({ size: Math.min(20, ids.length), reviewIds: ids });
@@ -1852,9 +1870,23 @@
       : Math.min(completed + 1, target);
   }
 
-  function dailyQueueSeed(signature) {
-    const day = new Date().toISOString().slice(0, 10);
-    return `${state.deck ? state.deck.id : LEGACY_STORAGE_NAMESPACE}:${day}:${signature}`;
+  function createBatchSeed() {
+    state.batchSequence += 1;
+    let random = "";
+    try {
+      if (window.crypto && typeof window.crypto.randomUUID === "function") {
+        random = window.crypto.randomUUID();
+      }
+    } catch (_error) {
+      random = "";
+    }
+    if (!random) random = `${Date.now().toString(36)}:${Math.random().toString(36).slice(2)}`;
+    return `${random}:${state.loadGeneration}:${state.batchSequence}`;
+  }
+
+  function batchQueueSeed(signature) {
+    if (!state.batchSeed) state.batchSeed = createBatchSeed();
+    return `${state.deck ? state.deck.id : LEGACY_STORAGE_NAMESPACE}:${state.batchSeed}:${signature}`;
   }
 
   function unwrapCandidates(items) {
@@ -1948,7 +1980,7 @@
         || Boolean(state.reviewModeIds) || state.resumedActive;
     }
     if (elements.sessionStartFresh) {
-      elements.sessionStartFresh.hidden = !state.resumedActive || Boolean(state.reviewModeIds);
+      elements.sessionStartFresh.hidden = true;
     }
     if (elements.reviewsDue) {
       const due = reviewDueCount();
@@ -1956,7 +1988,10 @@
       elements.reviewsDue.disabled = due === 0;
     }
     if (elements.reviewMistakes) {
-      elements.reviewMistakes.hidden = !state.lastMistakeIds.length && !storedMistakeIds(1).length;
+      const missed = unresolvedMissIds().length;
+      elements.reviewMistakes.hidden = false;
+      elements.reviewMistakes.disabled = missed === 0;
+      elements.reviewMistakes.textContent = `Redo missed: ${missed}`;
     }
   }
 
@@ -3374,6 +3409,7 @@
   function activateTab(name, focusTab) {
     const solved = name === "solved";
     state.activeTab = solved ? "solved" : "unsolved";
+    page.dataset.activeTab = state.activeTab;
     elements.unsolvedTab.classList.toggle("active", !solved);
     elements.solvedTab.classList.toggle("active", solved);
     elements.unsolvedTab.setAttribute("aria-selected", String(!solved));
@@ -3411,6 +3447,8 @@
     if (elements.filterMode && elements.filterMode.value !== "curriculum") {
       state.curriculumGroup = "";
     }
+    persistFilterPool();
+    state.batchSeed = createBatchSeed();
     rebuildPartition(true);
     if (!state.selectionIndex && !state.unsolved.length && hasMoreChunks()) {
       await ensureUnsolvedCandidates();
@@ -3500,7 +3538,7 @@
     if (elements.reviewMistakes) elements.reviewMistakes.addEventListener("click", () => { void startMistakeReview(); });
     if (elements.sessionReviewMistakes) elements.sessionReviewMistakes.addEventListener("click", () => { void startMistakeReview(); });
     if (elements.sessionStartAnother) elements.sessionStartAnother.addEventListener("click", () => {
-      void startPreferredSession(state.reviewModeIds ? { resume: true } : { fresh: true });
+      void startPreferredSession({ fresh: true });
     });
     if (elements.curriculumGroups) elements.curriculumGroups.addEventListener("click", event => {
       const button = event.target.closest && event.target.closest("button[data-curriculum-group]");

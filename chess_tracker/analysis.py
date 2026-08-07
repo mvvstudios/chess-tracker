@@ -49,7 +49,7 @@ ACPL_CLAMP_CP = 1_000
 
 # Bump when cached per-game analysis summaries no longer contain enough fields
 # for current dashboard features.
-ANALYSIS_CACHE_VERSION = 3
+ANALYSIS_CACHE_VERSION = 4
 
 # Lichess win-probability constant (logistic steepness over centipawns).
 _WIN_K = 0.00368208
@@ -363,6 +363,7 @@ def analyze_move_quality(
     board = game.board()
     moves: list[MoveEval] = []
     blunder_evidence: list[dict] = []
+    mistake_evidence: list[dict] = []
     node: chess.pgn.GameNode | None = game
 
     for move in game.mainline_moves():
@@ -401,7 +402,7 @@ def analyze_move_quality(
             cp_after=cp_after, phase=phase,
         )
         moves.append(move_eval)
-        if move_eval.label == "blunder":
+        if move_eval.label in {"blunder", "mistake"}:
             categories = classify_blunder_categories(
                 fullmove=fullmove,
                 phase=phase,
@@ -413,7 +414,8 @@ def analyze_move_quality(
                 opponent_best_reply_captures_material=opponent_reply_capture_value > 0,
                 forced_mate_after=_forced_mate_against(info_after["score"], my_color),
             )
-            blunder_evidence.append({
+            evidence = {
+                "quality_label": move_eval.label,
                 "ply": ply,
                 "fullmove": fullmove,
                 "side": side,
@@ -422,7 +424,10 @@ def analyze_move_quality(
                 "cp_before": cp_before,
                 "cp_after": cp_after,
                 "cp_loss": move_eval.cp_loss,
-                "wp_loss": round(move_eval.wp_loss, 2),
+                # Preserve the value used by ``classify``.  Rounding here can
+                # turn a value just below the 30-point blunder boundary into
+                # 30.0 while its label correctly remains ``mistake``.
+                "wp_loss": move_eval.wp_loss,
                 "played_move_uci": move.uci(),
                 "played_move_san": played_san,
                 "best_move_uci": best_move.uci() if best_move else None,
@@ -443,13 +448,18 @@ def analyze_move_quality(
                 ),
                 "fen_before": fen_before,
                 "categories": categories,
-            })
+            }
+            if move_eval.label == "blunder":
+                blunder_evidence.append(evidence)
+            else:
+                mistake_evidence.append(evidence)
         node = next_node
 
     summary = summarize(moves)
     summary["side"] = side
     summary["analysis_version"] = ANALYSIS_CACHE_VERSION
     summary["blunder_evidence"] = blunder_evidence
+    summary["mistake_evidence"] = mistake_evidence
     return summary
 
 
@@ -576,8 +586,14 @@ def backfill_puzzle_lines(
         if not isinstance(entry, dict):
             continue
         summary = entry.get("summary") if isinstance(entry.get("summary"), dict) else entry
-        evidence_items = summary.get("blunder_evidence") if isinstance(summary, dict) else None
-        if not isinstance(evidence_items, list):
+        if not isinstance(summary, dict):
+            continue
+        evidence_items: list[Any] = []
+        for evidence_key in ("blunder_evidence", "mistake_evidence"):
+            values = summary.get(evidence_key)
+            if isinstance(values, list):
+                evidence_items.extend(values)
+        if not evidence_items:
             continue
         game_url = str(summary.get("game_url") or cache_key)
         if not current_game_keys.intersection((str(cache_key), game_url)):
@@ -696,6 +712,33 @@ def run_puzzle_line_backfill(
         )
 
 
+def _has_ambiguous_rounded_mistake(summary: Any) -> bool:
+    """Whether cached evidence may have crossed the Mistake/Blunder boundary.
+
+    Cache v4 originally rounded evidence loss to two decimals after assigning
+    its label.  Only Mistakes serialized at or above the 30-point boundary are
+    ambiguous; safe v4 entries remain reusable so this repair does not trigger
+    a full engine-cache rebuild.
+    """
+    if not isinstance(summary, dict):
+        return False
+    evidence_items = summary.get("mistake_evidence")
+    if not isinstance(evidence_items, list):
+        return False
+    for evidence in evidence_items:
+        if not isinstance(evidence, dict):
+            continue
+        value = evidence.get("wp_loss")
+        if value is None or isinstance(value, bool):
+            continue
+        try:
+            if float(value) >= BLUNDER:
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
+
+
 def attach_move_quality(games, side_by_url, cache, *, depth, analyze_fn) -> list[dict]:
     """Return per-game summaries, reusing/updating ``cache`` (url -> entry).
 
@@ -717,6 +760,7 @@ def attach_move_quality(games, side_by_url, cache, *, depth, analyze_fn) -> list
             entry
             and entry.get("depth") == depth
             and entry.get("version") == ANALYSIS_CACHE_VERSION
+            and not _has_ambiguous_rounded_mistake(entry.get("summary"))
         ):
             summaries.append(entry["summary"])
             continue
@@ -823,9 +867,23 @@ def load_quality_cache(path) -> dict:
     if not p.exists():
         return {}
     try:
-        return json.loads(p.read_text())
+        payload = json.loads(p.read_text())
     except (json.JSONDecodeError, OSError):
         return {}
+    if not isinstance(payload, dict):
+        return {}
+    return {
+        cache_key: entry
+        for cache_key, entry in payload.items()
+        if not (
+            isinstance(entry, dict)
+            and _has_ambiguous_rounded_mistake(
+                entry.get("summary")
+                if isinstance(entry.get("summary"), dict)
+                else entry
+            )
+        )
+    }
 
 
 def save_quality_cache(path, cache: dict) -> None:

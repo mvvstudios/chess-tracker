@@ -1,6 +1,6 @@
 # Opening puzzle decks
 
-The opening trainer is a static collection of five narrow tactical decks made
+The opening trainer is a static collection of six narrow tactical decks made
 from the [official Lichess puzzle database](https://database.lichess.org/#puzzles),
 which Lichess releases under
 [CC0](https://creativecommons.org/publicdomain/zero/1.0/). The original
@@ -8,12 +8,13 @@ which Lichess releases under
 manifests, compact selection indexes, and balanced browser chunks are versioned
 for GitHub Pages.
 
-The five canonical decks are:
+The six canonical decks are:
 
 | Deck ID | Display name | Solver | Board |
 | --- | --- | --- | --- |
 | `caro-kann-black` | Caro-Kann Defense — Black | Black | Black orientation |
 | `colle-white` | Colle System — White | White | White orientation |
+| `london-white` | London System — White | White | White orientation |
 | `englund-white` | Englund Gambit — White | White | White orientation |
 | `pirc-black` | Pirc Defense — Black | Black | Black orientation |
 | `modern-black` | Modern Defense — Black | Black | Black orientation |
@@ -74,6 +75,7 @@ and `matchedTagRoot` records which configured root accepted it.
 | --- | --- |
 | Caro-Kann | `Caro-Kann_Defense` |
 | Colle | `Queens_Pawn_Game_Colle_System`, `Indian_Defense_Colle_System`, `Colle_System` |
+| London | `Queens_Pawn_Game_London_System`, `Queens_Pawn_Game_Accelerated_London_System`, `Indian_Defense_London_System`, `Indian_Defense_Accelerated_London_System`, `London_System` |
 | Englund | `Englund_Gambit` |
 | Pirc | `Pirc_Defense` |
 | Modern | `Modern_Defense`, `Queens_Pawn_Game_Modern_Defense` |
@@ -84,6 +86,13 @@ System` family, but the original root and primary tag remain auditable in each
 record. Generic Queen's Pawn positions and related Zukertort, Rubinstein,
 London, Torre, Marienbad, Rapport-Jobava, and Yusupov-Rubinstein systems are not
 inferred to be Colle positions.
+
+London combines Lichess's standard and Accelerated London roots across its
+Queen's Pawn, Indian Defense, and top-level London families. The five explicit
+roots produced 15,560 legal White-to-solve records in the canonical source;
+quality filtering and per-variation balancing retained 4,200 browser puzzles.
+Generic Queen's Pawn positions, Rapport-Jobava/Jobava move orders, and the
+unrelated `Grob_Opening_London_Defense` are not inferred to be London puzzles.
 
 The Englund deck accepts the exact `Englund_Gambit` family, including declined
 descendants, but not generic Queen's Pawn positions, Blackmar-Diemer, Budapest,
@@ -183,7 +192,7 @@ curl -L https://database.lichess.org/lichess_db_puzzle.csv.zst \
   -o data/lichess_db_puzzle.csv.zst
 ```
 
-Build all five canonical datasets in one streaming scan and generate the
+Build all six canonical datasets in one streaming scan and generate the
 catalog:
 
 ```bash
@@ -207,6 +216,7 @@ uv run python scripts/extract_opening_puzzles.py \
 
 uv run python scripts/extract_opening_puzzles.py \
   --input data/lichess_db_puzzle.csv.zst \
+  --deck london-white \
   --deck englund-white \
   --deck pirc-black \
   --deck modern-black
@@ -216,9 +226,9 @@ A fresh subset build writes an internally complete catalog containing only the
 selected decks. When rebuilding a subset inside an existing output root, valid
 unselected schema-2 deck outputs remain in the catalog; incomplete or stale
 outputs are not referenced. The canonical `--deck all` build writes the
-required five-deck catalog and keeps Caro-Kann as its default.
+required six-deck catalog and keeps Caro-Kann as its default.
 
-Validate all five perspectives and legal continuations without publishing:
+Validate all six perspectives and legal continuations without publishing:
 
 ```bash
 uv run python scripts/extract_opening_puzzles.py \
@@ -276,6 +286,7 @@ public/data/
 ├── opening-puzzle-catalog.json
 ├── caro-kann-black/
 ├── colle-white/
+├── london-white/
 ├── englund-white/
 ├── pirc-black/
 └── modern-black/
@@ -331,7 +342,7 @@ and disappear if site storage is cleared.
 Lichess supplies `OpeningTags` only to puzzles that begin before move 20. Exact
 tag extraction therefore does **not** contain every later tactic from games
 that began in one of these openings. The strict source rule is intentional and
-keeps all five datasets reproducible and auditable.
+keeps all six datasets reproducible and auditable.
 
 A later, separate pipeline could classify source PGNs by exact move sequence,
 generate Stockfish positions, label them with distinct provenance, and

@@ -25,6 +25,17 @@ def _game(moves: str, opening: str | None = None) -> dict[str, str]:
         ("Caro-Kann-Defense-Advance-Variation-3...c5", "black", "caro-kann-black"),
         ("Colle-System-3...e6-4.Bd3", "white", "colle-white"),
         ("Indian-Game-East-Indian-Colle-System-4...O-O", "white", "colle-white"),
+        ("London-System-3...Bf5-4.e3", "white", "london-white"),
+        (
+            "Queens-Pawn-Opening-Accelerated-London-System-2...Nf6-3.e3",
+            "white",
+            "london-white",
+        ),
+        (
+            "Indian-Game-East-Indian-London-System-3...Bg7-4.e3",
+            "white",
+            "london-white",
+        ),
         ("Englund-Gambit-Declined", "white", "englund-white"),
         ("Pirc-Defense-Classical-Variation-4...Bg7", "black", "pirc-black"),
         ("Modern-Defense-Standard-Two-Knights-Variation", "black", "modern-black"),
@@ -39,12 +50,14 @@ def test_supported_ids_and_colors_come_from_the_opening_deck_registry():
     assert BLUNDER_REPERTOIRE_DECK_IDS == (
         "caro-kann-black",
         "colle-white",
+        "london-white",
         "englund-white",
         "pirc-black",
         "modern-black",
     )
     assert [OPENING_PUZZLE_DECKS[deck_id].solver_color for deck_id in BLUNDER_REPERTOIRE_DECK_IDS] == [
         "black",
+        "white",
         "white",
         "white",
         "black",
@@ -57,6 +70,7 @@ def test_supported_ids_and_colors_come_from_the_opening_deck_registry():
     [
         ("Caro-Kann-Defense", "white"),
         ("Colle-System", "black"),
+        ("London-System", "black"),
         ("Englund-Gambit", "black"),
         ("Pirc-Defense", "white"),
         ("Modern-Defense", "white"),
@@ -81,11 +95,22 @@ def test_pirc_modern_hybrid_label_uses_anchored_leading_family():
         "Nimzowitsch-Larsen-Attack-Modern-Variation",
         "Reti-Opening-Pirc-Invitation",
         "Caro-Kann-Defensive-System",
-        "Indian-Game-East-Indian-London-System",
     ],
 )
 def test_unrelated_middle_substrings_and_near_names_do_not_match(opening):
     assert classify_blunder_repertoire(_game("1. e4 e5", opening), "black") is None
+
+
+@pytest.mark.parametrize(
+    "opening",
+    [
+        "Grob-Opening-London-Defense",
+        "Jobava-London-System",
+        "Rapport-Jobava-System",
+    ],
+)
+def test_unrelated_london_names_do_not_match_as_white(opening):
+    assert classify_blunder_repertoire(_game("1. d4 d5", opening), "white") is None
 
 
 @pytest.mark.parametrize(
@@ -110,6 +135,19 @@ def test_unrelated_middle_substrings_and_near_names_do_not_match(opening):
             "colle-white",
         ),
         (
+            _game(
+                "1. d4 d5 2. Nf3 Nf6 3. Bf4 e6 4. e3 Bd6",
+                "Queens-Pawn-Opening-Zukertort-Chigorin-Variation",
+            ),
+            "white",
+            "london-white",
+        ),
+        (
+            _game("1. d4 d5 2. Bf4 Nf6", "Queens-Pawn-Opening"),
+            "white",
+            "london-white",
+        ),
+        (
             _game("1. e4 d6 2. d4 Nf6 3. Nc3 g6", "Undefined"),
             "black",
             "pirc-black",
@@ -130,12 +168,47 @@ def test_generic_labels_use_narrow_ordered_move_fallbacks(game, color, expected)
     assert classify_blunder_repertoire(game, color) == expected
 
 
-def test_generic_zukertort_label_does_not_turn_a_london_into_colle():
+def test_generic_zukertort_label_separates_london_from_colle():
     game = _game(
         "1. d4 d5 2. Nf3 Nf6 3. Bf4 e6 4. e3 Bd6 5. b3 O-O 6. Bd3 c5",
         "Queens-Pawn-Opening-Zukertort-Chigorin-Variation",
     )
-    assert classify_blunder_repertoire(game, "white") is None
+    assert classify_blunder_repertoire(game, "white") == "london-white"
+
+
+@pytest.mark.parametrize(
+    ("moves", "opening"),
+    [
+        (
+            "1. d4 d5 2. Nc3 Nf6 3. Bf4 e6 4. e3",
+            "Queens-Pawn-Opening-Jobava-London-System",
+        ),
+        (
+            "1. d4 d5 2. Bf4 Nf6 3. Nc3 e6 4. e3",
+            "Queens-Pawn-Opening-Jobava-London-System",
+        ),
+        (
+            "1. d4 d5 2. Bf4 Nf6",
+            "Queens-Pawn-Opening-Jobava-London-System",
+        ),
+        (
+            "1. d4 d5 2. Bf4 Nf6",
+            "Queens-Pawn-Opening-Rapport-Jobava-System",
+        ),
+        (
+            "1. d4 d5 2. c4 e6 3. Nc3 Nf6 4. Bf4",
+            "Queens-Pawn-Opening",
+        ),
+        (
+            "1. d4 d5 2. Nf3 Nf6 3. e3 e6 4. Bd3 Bd6 5. Bf4",
+            "Queens-Pawn-Opening",
+        ),
+    ],
+)
+def test_generic_london_fallback_rejects_jobava_queens_gambit_and_late_bf4(
+    moves, opening
+):
+    assert classify_blunder_repertoire(_game(moves, opening), "white") is None
 
 
 def test_specific_unrelated_label_blocks_move_fallback():

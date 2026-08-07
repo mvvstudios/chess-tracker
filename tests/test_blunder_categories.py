@@ -1,4 +1,7 @@
-from chess_tracker.blunder_categories import compute_blunder_analysis
+from chess_tracker.blunder_categories import (
+    compute_blunder_analysis,
+    compute_mistake_analysis,
+)
 from chess_tracker.pgn import GameRecord
 
 
@@ -227,3 +230,29 @@ def test_compute_blunder_analysis_examples_are_worst_first_and_capped():
     assert {e["opening"] for e in examples} == {"Italian Game", "Sicilian Defense"}
     assert len(result["blunders"]) == 4
     assert result["impact_rows"][0]["total_cp_loss"] >= result["impact_rows"][1]["total_cp_loss"]
+
+
+def test_compute_mistake_analysis_uses_separate_evidence_with_same_tree_contract():
+    summary = _summary()
+    summary["mistake_evidence"] = [{
+        "quality_label": "mistake",
+        "fullmove": 9,
+        "side": "white",
+        "phase": "middlegame",
+        "phase_bucket": "early_middlegame",
+        "cp_loss": 260,
+        "played_move_san": "a3",
+        "best_move_san": "Bxf7+",
+        "fen_before": "8/8/8/8/8/8/8/8 w - - 0 1",
+        "categories": ["missed_capture_or_recapture", "early_middlegame_blunder"],
+    }]
+
+    result = compute_mistake_analysis([summary], [_record()], eligible_games=3)
+
+    assert result["quality_label"] == "mistake"
+    assert result["item_label_plural"] == "Mistakes"
+    assert result["engine_coverage"]["items_analyzed"] == 1
+    assert result["engine_coverage"]["clear_items"] == 1
+    assert result["mistakes"][0]["id"] == "mistake-1"
+    assert result["mistakes"][0]["quality_label"] == "mistake"
+    assert result["impact_rows"][0]["_children"][0]["_children"][0]["blunder_id"] == "mistake-1"

@@ -9,6 +9,7 @@ STYLES = (ROOT / "dashboard/styles.css").read_text()
 CONTROLLER = (ROOT / "dashboard/caro-kann-puzzles.js").read_text()
 TRAINER_STYLES = STYLES.index(".trainer-header {")
 TRAINER_MOBILE = STYLES.index("@media (max-width: 760px) {", TRAINER_STYLES)
+TRAINER_NARROW = STYLES.index("@media (max-width: 410px)", TRAINER_MOBILE)
 
 
 def css_declarations(selector, *, start=0):
@@ -42,17 +43,27 @@ def test_public_trainer_has_a_compact_dedicated_shell_without_personal_chrome():
     phone_header = css_declarations(".trainer-header", start=TRAINER_MOBILE)
     assert "min-height: 56px" in desktop_header
     assert "position: sticky" in desktop_header
+    assert "background: var(--surface)" in desktop_header
     assert "54px + env(safe-area-inset-top)" in phone_header
 
+    dashboard_glyph = css_declarations(
+        ".trainer-dashboard-link::before", start=TRAINER_MOBILE
+    )
+    assert 'content: ""' in dashboard_glyph
+    assert "border-width: 0 0 2px 2px" in dashboard_glyph
+    assert "transform: rotate(45deg)" in dashboard_glyph
+    assert "↩" not in STYLES[TRAINER_MOBILE:]
 
-def test_primary_phone_flow_is_task_board_feedback_actions_then_customize():
+
+def test_primary_phone_flow_is_board_actions_task_feedback_context_then_customize():
     task = TEMPLATE.index('class="puzzle-task"')
     board = TEMPLATE.index('id="puzzle-board"')
     feedback = TEMPLATE.index('id="puzzle-feedback"')
     controls = TEMPLATE.index('class="puzzle-controls puzzle-queue-controls"')
+    context = TEMPLATE.index('class="puzzle-context"')
     keyboard = TEMPLATE.index('id="puzzle-uci-disclosure"')
     customize = TEMPLATE.index('id="caro-puzzle-filters" class="customize-panel"')
-    assert task < board < feedback < controls < keyboard < customize
+    assert board < controls < task < feedback < context < keyboard < customize
 
     assert 'id="puzzle-board-help" class="visually-hidden"' in TEMPLATE
     assert 'role="group" aria-label="Puzzle controls"' in TEMPLATE
@@ -66,30 +77,33 @@ def test_primary_phone_flow_is_task_board_feedback_actions_then_customize():
     assert 'id="training-length"' in TEMPLATE
 
 
-def test_training_length_defaults_to_endless_and_keeps_finite_sessions_optional():
+def test_training_length_defaults_to_ten_and_keeps_endless_optional():
     length_start = TEMPLATE.index('id="training-length"')
     length_end = TEMPLATE.index("</select>", length_start)
     length_control = TEMPLATE[length_start:length_end]
 
     assert 'name="trainingLength"' in length_control
     assert 'aria-describedby="training-length-help"' in length_control
-    assert '<option value="endless" selected>Endless</option>' in length_control
+    assert '<option value="endless">Endless</option>' in length_control
     assert '<option value="5">5 puzzles</option>' in length_control
-    assert '<option value="10">10 puzzles</option>' in length_control
+    assert '<option value="10" selected>10 puzzles</option>' in length_control
     assert '<option value="20">20 puzzles</option>' in length_control
     assert 'name="sessionSize"' not in TEMPLATE
     assert 'id="training-length-help" class="visually-hidden"' in TEMPLATE
-    assert 'id="trainer-header-progress">Endless</strong>' in TEMPLATE
+    assert 'id="trainer-header-progress">10 puzzles</strong>' in TEMPLATE
     assert 'id="puzzle-queue-position">Puzzle 1</span>' in TEMPLATE
     assert 'id="puzzle-progress-track"' in TEMPLATE
     assert 'aria-hidden="true" hidden' in TEMPLATE
     assert 'id="session-restart" class="trainer-secondary-action" type="button" hidden>Restart session</button>' in TEMPLATE
     assert 'id="session-start-fresh" class="trainer-secondary-action" type="button" hidden>Start fresh</button>' in TEMPLATE
+    assert 'id="review-mistakes-button" class="trainer-text-action" type="button" hidden>Redo missed</button>' in TEMPLATE
+    assert 'id="session-review-mistakes" class="puzzle-primary-action" type="button">Redo missed</button>' in TEMPLATE
+    assert ">Review mistakes<" not in TEMPLATE
 
     mobile_study_bar = css_declarations(".trainer-study-bar", start=TRAINER_MOBILE)
-    assert "repeat(3, minmax(0, 1fr))" in mobile_study_bar
+    assert "repeat(2, minmax(0, 1fr))" in mobile_study_bar
     assert ".trainer-study-bar .opening-deck-filter { grid-column: 1 / -1; }" in STYLES[TRAINER_MOBILE:]
-    assert ".training-length-control { grid-column: auto; }" in STYLES[TRAINER_MOBILE:]
+    assert ".training-length-control { grid-column: 1 / -1; }" in STYLES[TRAINER_MOBILE:]
     assert ".trainer-study-bar > .trainer-secondary-action { grid-column: 1 / -1; }" in STYLES[TRAINER_MOBILE:]
     assert ".session-size-options" not in STYLES[TRAINER_STYLES:]
 
@@ -107,6 +121,7 @@ def test_desktop_board_is_primary_and_phone_board_is_square_full_width_overflow_
         ".opening-trainer-body .puzzle-queue-board", start=TRAINER_STYLES
     )
     assert "minmax(460px, 520px)" in desktop_workspace
+    assert '"board controls"' in desktop_workspace
     assert "width: min(520px, 100%)" in desktop_board
     assert "aspect-ratio: 1" in desktop_board
 
@@ -116,12 +131,14 @@ def test_desktop_board_is_primary_and_phone_board_is_square_full_width_overflow_
     phone_board = css_declarations(
         ".opening-trainer-body .puzzle-queue-board", start=TRAINER_MOBILE
     )
-    assert '"task"' in phone_workspace
     assert '"board"' in phone_workspace
+    assert '"controls"' in phone_workspace
+    assert '"task"' in phone_workspace
     assert '"feedback"' in phone_workspace
     assert '"side"' in phone_workspace
-    assert phone_workspace.index('"task"') < phone_workspace.index('"board"')
-    assert phone_workspace.index('"board"') < phone_workspace.index('"feedback"')
+    assert phone_workspace.index('"board"') < phone_workspace.index('"controls"')
+    assert phone_workspace.index('"controls"') < phone_workspace.index('"task"')
+    assert phone_workspace.index('"task"') < phone_workspace.index('"feedback"')
     assert phone_workspace.index('"feedback"') < phone_workspace.index('"side"')
     assert "width: 100%" in phone_board
     assert "max-width: 100%" in phone_board
@@ -136,9 +153,18 @@ def test_desktop_board_is_primary_and_phone_board_is_square_full_width_overflow_
     mobile_order_rules = STYLES[
         mobile_order : STYLES.index("@media (max-width: 410px)", mobile_order)
     ]
-    assert "#puzzles-unsolved-panel { order: 3; }" in mobile_order_rules
+    assert "#puzzles-solved-panel { order: 1; }" in mobile_order_rules
+    assert '#puzzles-page[data-active-tab="solved"] .puzzle-tabs { order: 0; }' in mobile_order_rules
+    assert ".puzzle-page-alert { order: 0; }" in mobile_order_rules
+    assert ".trainer-onboarding { order: 2; }" in mobile_order_rules
+    assert ".trainer-study-bar { order: 2; }" in mobile_order_rules
     assert ".puzzle-tabs { order: 4; }" in mobile_order_rules
-    assert ".trainer-session-summary { order: 6; }" in mobile_order_rules
+    assert ".trainer-session-summary { order: 5; }" in mobile_order_rules
+
+    phone_main = css_declarations(".puzzles-body .trainer-main", start=TRAINER_MOBILE)
+    assert "width: 100%" in phone_main
+    assert "max(0.75rem, env(safe-area-inset-right))" in phone_main
+    assert "max(0.75rem, env(safe-area-inset-left))" in phone_main
 
     desktop_nav = css_declarations(".trainer-session-nav", start=TRAINER_STYLES)
     assert "grid-template-columns: auto minmax(0, 1fr)" in desktop_nav
@@ -196,6 +222,21 @@ def test_trainer_focus_live_regions_touch_targets_and_reduced_motion_are_preserv
         ".opening-trainer-body .puzzle-queue-controls button", start=TRAINER_MOBILE
     )
     assert "min-height: 46px" in phone_controls
+
+    narrow_controls = css_declarations(
+        ".opening-trainer-body .puzzle-queue-controls", start=TRAINER_NARROW
+    )
+    narrow_reveal = css_declarations(
+        ".opening-trainer-body .puzzle-queue-controls #puzzle-show",
+        start=TRAINER_NARROW,
+    )
+    narrow_next = css_declarations(
+        ".opening-trainer-body .puzzle-queue-controls #puzzle-continue",
+        start=TRAINER_NARROW,
+    )
+    assert "repeat(2, minmax(0, 1fr))" in narrow_controls
+    assert "grid-column: auto" in narrow_reveal
+    assert "grid-column: 1 / -1" in narrow_next
 
     reduced = STYLES.index("@media (prefers-reduced-motion: reduce)", TRAINER_MOBILE)
     progress = css_declarations(".puzzle-progress-track span", start=reduced)

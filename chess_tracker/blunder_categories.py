@@ -225,14 +225,20 @@ def _record_meta(record) -> dict:
     }
 
 
-def _summary_blunders(summary: dict, record_by_url: dict[str, object]) -> list[dict]:
+def _summary_evidence(
+    summary: dict,
+    record_by_url: dict[str, object],
+    evidence_key: str,
+    quality_label: str,
+) -> list[dict]:
     url = summary.get("game_url")
     record = record_by_url.get(url) if url else None
     meta = _record_meta(record) if record else {}
     out = []
-    for blunder in summary.get("blunder_evidence", []) or []:
+    for blunder in summary.get(evidence_key, []) or []:
         item = {
             **blunder,
+            "quality_label": blunder.get("quality_label") or quality_label,
             "game_url": url,
             "opening": meta.get("opening"),
             "family": meta.get("family"),
@@ -248,6 +254,17 @@ def _summary_blunders(summary: dict, record_by_url: dict[str, object]) -> list[d
         }
         out.append(item)
     return out
+
+
+def _summary_blunders(summary: dict, record_by_url: dict[str, object]) -> list[dict]:
+    """Backward-compatible adapter for callers and fixtures using v3 evidence."""
+
+    return _summary_evidence(
+        summary,
+        record_by_url,
+        "blunder_evidence",
+        "blunder",
+    )
 
 
 def _impact_rows(pool: list[dict]) -> list[dict]:
@@ -404,15 +421,17 @@ def _impact_rows(pool: list[dict]) -> list[dict]:
     return impact_rows
 
 
-def compute_blunder_analysis(
+def _compute_quality_analysis(
     summaries: list[dict],
     records: list[object],
     *,
     eligible_games: int,
+    evidence_key: str,
+    quality_label: str,
     max_examples: int = 12,
     max_openings: int = 10,
 ) -> dict:
-    """Return compact category/phase/opening/example tables for blunders.html."""
+    """Return one severity's category/phase/opening/example dashboard payload."""
     analyzed = [s for s in summaries if s and s.get("moves_analyzed")]
     record_by_url = {
         getattr(record, "url", ""): record
@@ -422,7 +441,9 @@ def compute_blunder_analysis(
 
     blunders: list[dict] = []
     for summary in analyzed:
-        blunders.extend(_summary_blunders(summary, record_by_url))
+        blunders.extend(
+            _summary_evidence(summary, record_by_url, evidence_key, quality_label)
+        )
 
     total_blunders = len(blunders)
     categorized_blunders = sum(1 for b in blunders if b.get("categories"))
@@ -445,7 +466,7 @@ def compute_blunder_analysis(
             move_prefix += ".."
         category_keys = blunder.get("categories") or []
         primary = category_keys[0] if category_keys else None
-        blunder["id"] = f"blunder-{idx}"
+        blunder["id"] = f"{quality_label}-{idx}"
         blunder["scramble"] = _is_scramble(blunder)
         blunder["move_label"] = (
             f"{move_prefix} "
@@ -532,25 +553,83 @@ def compute_blunder_analysis(
     impact_rows = _impact_rows(clear_pool)
     scramble_impact_rows = _impact_rows(scramble_pool)
 
-    return {
-        "cache_version": ANALYSIS_CACHE_VERSION,
-        "engine_coverage": {
-            "analyzed_games": len(analyzed),
-            "eligible_games": eligible_games,
+    coverage = {
+        "analyzed_games": len(analyzed),
+        "eligible_games": eligible_games,
+        "games_with_items": len(games_with_blunders),
+        "items_analyzed": total_blunders,
+        "categorized_items": categorized_blunders,
+        "uncategorized_items": total_blunders - categorized_blunders,
+        "clear_items": len(clear_pool),
+        "scramble_items": len(scramble_pool),
+    }
+    if quality_label == "blunder":
+        coverage.update({
             "games_with_blunders": len(games_with_blunders),
             "blunders_analyzed": total_blunders,
             "categorized_blunders": categorized_blunders,
             "uncategorized_blunders": total_blunders - categorized_blunders,
             "clear_blunders": len(clear_pool),
             "scramble_blunders": len(scramble_pool),
-        },
+        })
+
+    result = {
+        "cache_version": ANALYSIS_CACHE_VERSION,
+        "quality_label": quality_label,
+        "item_label": quality_label.title(),
+        "item_label_plural": f"{quality_label.title()}s",
+        "engine_coverage": coverage,
         "category_labels": CATEGORY_LABELS,
         "category_descriptions": CATEGORY_DESCRIPTIONS,
         "categories": categories,
         "phase_breakdown": phase_breakdown,
         "affected_openings": affected_openings[:max_openings],
-        "blunders": blunders_sorted,
+        "items": blunders_sorted,
         "impact_rows": impact_rows,
         "scramble_impact_rows": scramble_impact_rows,
         "examples": examples,
     }
+    result[f"{quality_label}s"] = blunders_sorted
+    return result
+
+
+def compute_blunder_analysis(
+    summaries: list[dict],
+    records: list[object],
+    *,
+    eligible_games: int,
+    max_examples: int = 12,
+    max_openings: int = 10,
+) -> dict:
+    """Return compact category/phase/opening/example tables for blunders.html."""
+
+    return _compute_quality_analysis(
+        summaries,
+        records,
+        eligible_games=eligible_games,
+        evidence_key="blunder_evidence",
+        quality_label="blunder",
+        max_examples=max_examples,
+        max_openings=max_openings,
+    )
+
+
+def compute_mistake_analysis(
+    summaries: list[dict],
+    records: list[object],
+    *,
+    eligible_games: int,
+    max_examples: int = 12,
+    max_openings: int = 10,
+) -> dict:
+    """Return the same review payload for engine-classified mistakes."""
+
+    return _compute_quality_analysis(
+        summaries,
+        records,
+        eligible_games=eligible_games,
+        evidence_key="mistake_evidence",
+        quality_label="mistake",
+        max_examples=max_examples,
+        max_openings=max_openings,
+    )

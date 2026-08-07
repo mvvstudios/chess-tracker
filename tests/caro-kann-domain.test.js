@@ -98,6 +98,7 @@ function personalBlunderDeck(overrides = {}) {
     sourceKind: "personal-blunders",
     dataPath: "my-blunder-puzzles.json",
     progressScope: "personal",
+    qualityLabel: "blunder",
     solverColor: "mixed",
     orientation: "mixed",
     ...overrides,
@@ -389,6 +390,7 @@ test("personal blunder decks accept the dedicated source contract and mixed pers
   assert.equal(normalized.sourceKind, "personal-blunders");
   assert.equal(normalized.dataPath, "my-blunder-puzzles.json");
   assert.equal(normalized.progressScope, "personal");
+  assert.equal(normalized.qualityLabel, "blunder");
   assert.equal(normalized.solverColor, "mixed");
   assert.equal(normalized.orientation, "mixed");
   assert.equal(normalized.manifestPath, "");
@@ -398,6 +400,7 @@ test("personal blunder decks accept the dedicated source contract and mixed pers
   assert.equal(Caro.normalizeDeck(personalBlunderDeck({ dataPath: "../my-blunder-puzzles.json" })), null);
   assert.equal(Caro.normalizeDeck(personalBlunderDeck({ progressScope: "deck" })), null);
   assert.equal(Caro.normalizeDeck(personalBlunderDeck({ orientation: "black" })), null);
+  assert.equal(Caro.normalizeDeck(personalBlunderDeck({ qualityLabel: "inaccuracy" })), null);
   assert.equal(Caro.normalizeDeck({
     id: "mixed-opening",
     solverColor: "mixed",
@@ -416,6 +419,7 @@ test("personal blunder adaptation accepts validated White and Black records", ()
   assert.equal(white.solverColor, "white");
   assert.equal(white.orientation, "white");
   assert.equal(white.source, "chess.com");
+  assert.equal(white.qualityLabel, "blunder");
   assert.equal(white.variation, "Colle System");
   assert.equal(PuzzleDomain.solutionSteps(white).length, 1);
 
@@ -459,6 +463,43 @@ test("personal blunder adaptation rejects mismatched FENs, first steps, and repe
     repertoire_deck_id: "englund-white",
   }, colleDeck), null);
   assert.equal(Caro.adaptPersonalBlunderRecord(personalBlunderRecord("black"), colleDeck), null);
+});
+
+test("personal mistake decks accept only mistake evidence", () => {
+  const deck = personalBlunderDeck({
+    id: "my-mistakes-colle",
+    label: "My Mistakes — Colle System",
+    openingFamily: "My Mistakes — Colle System",
+    qualityLabel: "mistake",
+    solverColor: "white",
+    orientation: "white",
+    repertoireDeckId: "colle-white",
+  });
+  const normalized = Caro.normalizeDeck(deck);
+  assert.ok(normalized);
+  assert.equal(normalized.qualityLabel, "mistake");
+
+  const mistake = Caro.adaptPersonalBlunderRecord(
+    personalBlunderRecord("white", {
+      quality_label: "mistake",
+      categories: ["personalMistake"],
+    }),
+    deck,
+  );
+  assert.ok(mistake);
+  assert.equal(mistake.quality_label, "mistake");
+  assert.equal(mistake.primaryTacticalTheme, "personalMistake");
+  assert.equal(
+    Caro.adaptPersonalBlunderRecord(personalBlunderRecord("white"), deck),
+    null,
+  );
+  assert.equal(
+    Caro.adaptPersonalBlunderRecord(
+      personalBlunderRecord("white", { quality_label: "inaccuracy" }),
+      deck,
+    ),
+    null,
+  );
 });
 
 test("catalog accepts compact entries without roots and rejects unsafe manifest paths", () => {

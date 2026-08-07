@@ -99,16 +99,23 @@ def _default_solution_pv(board: chess.Board, best_move: chess.Move) -> list[str]
     return pv
 
 
-def _cache(game: dict, evidence: list[dict], *, side: str) -> dict:
+def _cache(
+    game: dict,
+    evidence: list[dict],
+    *,
+    side: str,
+    quality_label: str = "blunder",
+) -> dict:
     return {
         game["url"]: {
-            "version": 3,
+            "version": 4,
             "depth": 12,
             "summary": {
                 "game_url": game["url"],
                 "side": side,
                 "moves_analyzed": 3,
-                "blunder_evidence": evidence,
+                "blunder_evidence": evidence if quality_label == "blunder" else [],
+                "mistake_evidence": evidence if quality_label == "mistake" else [],
             },
         }
     }
@@ -195,6 +202,29 @@ def test_candidate_copies_repertoire_classification_and_analysis_categories():
     assert candidate["repertoire_deck_id"] == "caro-kann-black"
     assert candidate["categories"] == ["material_loss"]
     assert candidate["puzzle_id"] == stable_puzzle_id("me", game["url"], 3)
+
+
+def test_mistake_evidence_becomes_a_severity_scoped_drill_candidate():
+    game = _game(user_color="white")
+    evidence = _evidence(
+        MAINLINE_PGN,
+        4,
+        "f1c4",
+        side="white",
+        quality_label="mistake",
+        cp_loss=250,
+    )
+
+    result = build_puzzle_queue(
+        [game],
+        _cache(game, [evidence], side="white", quality_label="mistake"),
+        "me",
+    )
+
+    assert result["candidates"][0]["quality_label"] == "mistake"
+    assert result["coverage"]["mistakes_seen"] == 1
+    assert result["coverage"]["eligible_mistake_candidates"] == 1
+    assert result["coverage"]["blunders_seen"] == 0
 
 
 def test_duplicate_imports_and_duplicate_evidence_do_not_duplicate_puzzles():

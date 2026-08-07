@@ -40,7 +40,7 @@ Engine analysis defaults to the full available game set. Use
 6. **Play signatures** — sortable; low-confidence rows (N<15) are dimmed; grouped by 8-ply FEN, not ECO label
 7. **Sessions** — chronological list with tilt flags
 8. **My Blunder Puzzles** — your engine-classified blunders as a persistent solve queue
-9. **Chess Opening Puzzle Trainer** — five static, color-aware Lichess tactics curricula
+9. **Chess Opening Puzzle Trainer** — six static, color-aware Lichess tactics curricula plus personal Blunder and Mistake decks
 
 ## My Blunder Puzzles
 
@@ -66,13 +66,19 @@ namespaced by the configured Chess.com username. Progress survives reloads and
 new dashboard builds on the same browser and origin, but it does not sync across
 devices and is lost if that site's browser storage is cleared.
 
+The same validated export also carries engine-classified `mistake` moves for
+the trainer's separate **My Mistakes** decks. Opening-specific Colle, London,
+Englund, Pirc, Modern, and Caro-Kann mistake drills remain distinct from the
+legacy standalone Blunder queue. Dashboard Mistake Analysis uses the same
+category → pattern → game interaction as Blunder Analysis.
+
 ## Chess Opening Puzzle Trainer
 
 Open `dashboard/trainer.html` through the local HTTP server. The historical
 `dashboard/caro-kann-puzzles.html` URL remains compatible. This separate
-trainer uses an official Lichess CC0 puzzle extract and offers five
-narrow decks from one dataset selector: Caro-Kann for Black, Colle for White,
-Englund for White, Pirc for Black, and Modern for Black. Every puzzle starts
+trainer uses an official Lichess CC0 puzzle extract and offers six
+narrow decks from one dataset selector: Caro-Kann for Black; Colle, London,
+and Englund for White; and Pirc and Modern for Black. Every puzzle starts
 after the opponent's stored setup move. Solver color and board orientation come
 from the selected deck, and stored opponent replies play automatically until
 the complete tactical continuation is finished.
@@ -82,7 +88,7 @@ blunder puzzles, and continues to read the original Caro-Kann namespace so
 existing solves are preserved.
 
 The large source download stays under ignored `data/`. One streaming extraction
-routes the source to all five canonical directories and writes
+routes the source to all six canonical directories and writes
 `public/data/opening-puzzle-catalog.json`. A normal refresh copies only that
 catalog, each manifest, its compact selection index, and referenced balanced
 browser chunks into the generated `dashboard/data/` tree used by GitHub Pages.
@@ -93,8 +99,9 @@ details are in
 [docs/OPENING_PUZZLE_DECKS.md](docs/OPENING_PUZZLE_DECKS.md). The original
 Caro-Kann-only entry point remains documented in
 [docs/CARO_KANN_PUZZLES.md](docs/CARO_KANN_PUZZLES.md). Public routes, local
-review storage, Endless-by-default training with optional 5/10/20-puzzle
-summaries, first-party events, export/import, and offline boundaries are
+review storage, fresh randomized 10-puzzle sessions, optional 5/20-puzzle or
+Endless training, explicit Due and Redo missed lanes, first-party events,
+export/import, and offline boundaries are
 documented in
 [docs/OPENING_TRAINER_PRODUCT.md](docs/OPENING_TRAINER_PRODUCT.md).
 
@@ -130,7 +137,7 @@ puzzle page controllers. Both suites run in the Pages workflow before deploy.
 - `chess_tracker/` — pipeline modules (api, pgn, metrics, annotations, render, play_signature)
 - `dashboard/` — HTML/JS/CSS frontend; `vendor/` has Tabulator and Chessground (offline-safe)
 - `chess_tracker/puzzle_queue.py` — validated candidate derivation and stable puzzle identity
-- `chess_tracker/opening_puzzle_decks.py` — authoritative five-deck registry
+- `chess_tracker/opening_puzzle_decks.py` — authoritative six-deck registry
 - `dashboard/puzzle-domain.js` — answer checking, queue partitioning, and progress persistence
 - `scripts/extract_opening_puzzles.py` — one-pass, multi-deck Lichess extractor
 - `scripts/extract_caro_kann_black.py` — backward-compatible Caro-Kann entry point

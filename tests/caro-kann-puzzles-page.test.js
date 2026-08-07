@@ -412,6 +412,7 @@ function seedPersonalSolved(storage, ids) {
 function seedTrainerState(storage, {
   sessionMode = "finite",
   sessionSize = 10,
+  trainingDefaultsVersion = 1,
   reviews = {},
   reviewsByDeck = null,
 } = {}) {
@@ -423,6 +424,7 @@ function seedTrainerState(storage, {
       lastDeckId: "caro-kann-black",
       sessionMode,
       sessionSize,
+      ...(trainingDefaultsVersion === null ? {} : { trainingDefaultsVersion }),
       onboardingDismissed: true,
       updatedAt: at,
     },
@@ -487,6 +489,13 @@ const DECKS = [{
   solverColor: "black",
   orientation: "black",
   manifestPath: "modern-black/manifest.json",
+}, {
+  id: "london-white",
+  label: "London System — White",
+  openingFamily: "London System",
+  solverColor: "white",
+  orientation: "white",
+  manifestPath: "london-white/manifest.json",
 }];
 
 const PERSONAL_BLUNDER_DECK = {
@@ -513,7 +522,24 @@ const PERSONAL_BLUNDER_COLLE_DECK = {
   orientation: "white",
 };
 
-const PERSONAL_BLUNDER_DECKS = [PERSONAL_BLUNDER_DECK, PERSONAL_BLUNDER_COLLE_DECK];
+const PERSONAL_MISTAKE_COLLE_DECK = {
+  id: "my-mistakes-colle",
+  label: "My Mistakes — Colle System",
+  openingFamily: "My Mistakes — Colle System",
+  sourceKind: "personal-blunders",
+  dataPath: "my-blunder-puzzles.json",
+  progressScope: "personal",
+  repertoireDeckId: "colle-white",
+  qualityLabel: "mistake",
+  solverColor: "white",
+  orientation: "white",
+};
+
+const PERSONAL_BLUNDER_DECKS = [
+  PERSONAL_BLUNDER_DECK,
+  PERSONAL_BLUNDER_COLLE_DECK,
+  PERSONAL_MISTAKE_COLLE_DECK,
+];
 
 function catalog(extraDecks = []) {
   return { schemaVersion: 1, defaultDeckId: "caro-kann-black", decks: DECKS.concat(extraDecks) };
@@ -527,6 +553,13 @@ function deckManifest(deckId, chunkCount = 1) {
     "englund-white": ["Englund_Gambit"],
     "pirc-black": ["Pirc_Defense"],
     "modern-black": ["Modern_Defense", "Queens_Pawn_Game_Modern_Defense"],
+    "london-white": [
+      "Queens_Pawn_Game_London_System",
+      "Queens_Pawn_Game_Accelerated_London_System",
+      "Indian_Defense_London_System",
+      "Indian_Defense_Accelerated_London_System",
+      "London_System",
+    ],
   }[deck.id];
   return {
     ...manifest(chunkCount),
@@ -881,7 +914,7 @@ test("indexed Focused sessions consume one shared no-repeat traversal across 5, 
   assert.equal(new Set(first.concat(second, third)).size, 35);
 });
 
-test("reload resumes indexed membership and Start fresh advances without overlap", async () => {
+test("each cold launch reserves a fresh indexed batch without overlap", async () => {
   const storage = new MemoryStorage();
   seedTrainerState(storage, { sessionMode: "finite", sessionSize: 5 });
   const chunks = Array.from({ length: 3 }, (_unused, chunkIndex) => Array.from(
@@ -900,19 +933,17 @@ test("reload resumes indexed membership and Start fresh advances without overlap
   const original = firstHarness.trainerState().selection.active.puzzleIds.slice();
   const originalToken = firstHarness.trainerState().selection.active.token;
 
-  const resumedHarness = await createHarness(chunks.flat(), options);
-  const resumed = resumedHarness.trainerState().selection.active;
-  assert.deepEqual(resumed.puzzleIds, original);
-  assert.equal(resumed.token, originalToken);
-  assert.equal(resumedHarness.elements["session-start-fresh"].hidden, false);
+  const secondHarness = await createHarness(chunks.flat(), options);
+  const second = secondHarness.trainerState().selection.active;
+  assert.notEqual(second.token, originalToken);
+  assert.equal(second.puzzleIds.length, 5);
+  assert.equal(new Set(original.concat(second.puzzleIds)).size, 10);
+  assert.equal(secondHarness.elements["session-start-fresh"].hidden, true);
 
-  resumedHarness.elements["session-start-fresh"].dispatch("click");
-  await resumedHarness.settle();
-  const fresh = resumedHarness.trainerState().selection.active;
-  assert.notEqual(fresh.token, originalToken);
-  assert.equal(fresh.puzzleIds.length, 5);
-  assert.equal(new Set(original.concat(fresh.puzzleIds)).size, 10);
-  assert.equal(resumedHarness.elements["session-start-fresh"].hidden, true);
+  const thirdHarness = await createHarness(chunks.flat(), options);
+  const third = thirdHarness.trainerState().selection.active;
+  assert.equal(third.puzzleIds.length, 5);
+  assert.equal(new Set(original.concat(second.puzzleIds, third.puzzleIds)).size, 15);
 });
 
 test("an expired indexed membership is discarded without rewinding traversal", async () => {
@@ -948,16 +979,9 @@ test("a partial indexed chunk failure preserves membership and blocks a compacte
     { length: 3 },
     (_entry, offset) => recordWithId(`partial-${chunkIndex}-${offset}`),
   ));
-  const dueIds = chunks.flat().slice(0, 5).map(record => record.id);
-  const dueAt = "2026-08-01T12:00:00.000Z";
   seedTrainerState(storage, {
     sessionMode: "finite",
     sessionSize: 5,
-    reviews: Object.fromEntries(dueIds.map(id => [id, {
-      encounters: 1,
-      dueAt,
-      updatedAt: dueAt,
-    }])),
   });
   const fixture = indexedDeckFixture("caro-kann-black", chunks, "d".repeat(64));
   const harness = await createHarness(chunks.flat(), {
@@ -969,7 +993,7 @@ test("a partial indexed chunk failure preserves membership and blocks a compacte
     chunkPayloadsByDeck: { "caro-kann-black": chunks },
   });
 
-  assert.deepEqual(harness.trainerState().selection.active.puzzleIds, dueIds);
+  assert.equal(harness.trainerState().selection.active.puzzleIds.length, 5);
   assert.match(harness.elements["puzzle-page-state"].innerHTML, /couldn’t be downloaded/i);
   assert.equal(harness.fetches.some(url => /chunk-0002\.json$/.test(url)), true);
   assert.equal(harness.elements["puzzle-workspace"].hidden, true);
@@ -1017,11 +1041,37 @@ test("ordinary indexed training excludes permanently solved Due puzzles until ex
   assert.equal(harness.elements["puzzle-review-state"].textContent, "Due");
 });
 
-test("catalog dropdown exposes all five opening decks", async () => {
+test("catalog dropdown exposes all six opening decks", async () => {
   const harness = await createHarness([continuationRecord()]);
   const options = harness.elements["opening-puzzle-deck"].innerHTML;
-  ["caro-kann-black", "colle-white", "englund-white", "pirc-black", "modern-black"]
+  ["caro-kann-black", "colle-white", "englund-white", "pirc-black", "modern-black", "london-white"]
     .forEach(deckId => assert.match(options, new RegExp(`value="${deckId}"`)));
+});
+
+test("London loads through the catalog with a White-oriented board", async () => {
+  const caro = continuationRecord();
+  const london = {
+    ...whiteDeckRecord("london-white-one"),
+    deckId: "london-white",
+    openingFamily: "London System",
+    variation: "London System: Main Line",
+    openingTags: ["Queens_Pawn_Game_London_System"],
+  };
+  const harness = await createHarness([caro], {
+    recordsByDeck: {
+      "caro-kann-black": [caro],
+      "london-white": [london],
+    },
+  });
+
+  assert.equal(await harness.context.CaroKannTrainer.selectDeck("london-white"), true);
+  assert.equal(harness.context.CaroKannTrainer.selectedDeckId, "london-white");
+  assert.equal(harness.board.config.fen, london.puzzleFen);
+  assert.equal(harness.board.config.orientation, "white");
+  assert.equal(harness.board.config.turnColor, "white");
+  assert.equal(harness.board.config.movable.color, "white");
+  assert.equal(harness.elements["trainer-header-deck"].textContent, "London System · White");
+  assert.equal(harness.fetches.includes("data/london-white/chunks/chunk-0001.json"), true);
 });
 
 test("My Blunders ALL loads its export, follows each puzzle color, and reuses personal progress", async () => {
@@ -1088,6 +1138,41 @@ test("My Blunders ALL loads its export, follows each puzzle color, and reuses pe
     harness.fetches.filter(url => url === "data/my-blunder-puzzles.json").length,
     1,
   );
+});
+
+test("personal Mistake decks exclude Blunders from the shared export", async () => {
+  const blunder = personalBlunderRecord("white", "personal-colle-blunder");
+  blunder.quality_label = "blunder";
+  const mistake = personalBlunderRecord("white", "personal-colle-mistake");
+  mistake.quality_label = "mistake";
+  mistake.fen_before = "8/8/8/8/8/3k4/2K5/8 w - - 1 2";
+  mistake.solution_steps[0].fen_before = mistake.fen_before;
+
+  const harness = await createHarness([continuationRecord()], {
+    trainerEnabled: true,
+    personalEnvelope: {
+      schemaVersion: 1,
+      generatedAt: "2026-08-05T04:00:00.000Z",
+      username: "me",
+      catalog: {
+        candidates: [blunder, mistake],
+        coverage: { eligible_candidates: 2 },
+        errors: [],
+      },
+    },
+  });
+
+  assert.match(
+    harness.elements["opening-puzzle-deck"].innerHTML,
+    /value="my-mistakes-colle">My Mistakes — Colle System/,
+  );
+  assert.equal(await harness.context.CaroKannTrainer.selectDeck("my-mistakes-colle"), true);
+  assert.deepEqual(
+    harness.trainerState().selection.active.puzzleIds,
+    [mistake.puzzle_id],
+  );
+  assert.equal(harness.board.config.fen, mistake.fen_before);
+  assert.equal(harness.board.config.orientation, "white");
 });
 
 test("My Blunders starts fresh across reloads and circulates recent batches before reuse", async () => {
@@ -1434,11 +1519,16 @@ test("opening an empty solved archive does not fetch more chunks", async () => {
     recordWithId("archive-current"),
     recordWithId("archive-later"),
   ], { chunkCount: 2 });
-  assert.equal(harness.fetches.length, 3, "Endless starts from the downloaded pool");
+  const fetchedAtStart = harness.fetches.length;
   harness.elements["puzzles-solved-tab"].dispatch("click");
   await harness.settle();
-  assert.equal(harness.fetches.length, 3);
+  assert.equal(harness.elements["puzzles-page"].dataset.activeTab, "solved");
+  assert.equal(harness.fetches.length, fetchedAtStart,
+    "opening an empty archive never downloads additional chunks");
   assert.match(harness.elements["puzzles-solved-empty"].innerHTML, /No solved puzzles/i);
+
+  harness.elements["puzzles-unsolved-tab"].dispatch("click");
+  assert.equal(harness.elements["puzzles-page"].dataset.activeTab, "unsolved");
 });
 
 test("solved archive loads only until all stored solved IDs are found", async () => {
@@ -1542,8 +1632,7 @@ test("advanced line coverage filters main lines and sidelines independently of s
   await harness.settle();
 
   assert.equal(harness.elements["caro-filter-mode"].value, "all");
-  assert.equal(harness.context.CaroKannTrainer.sessionSummary.mode, "endless");
-  assert.equal(harness.context.CaroKannTrainer.sessionSummary.total, null);
+  assert.equal(harness.context.CaroKannTrainer.sessionSummary.total, 1);
   assert.equal(harness.board.config.fen, mainLine.puzzleFen);
   assert.match(harness.elements["active-filter-chips"].innerHTML, /data-clear-filter="lineCoverage"/);
   assert.match(harness.elements["active-filter-chips"].innerHTML, /Main lines/);
@@ -1554,10 +1643,49 @@ test("advanced line coverage filters main lines and sidelines independently of s
   await harness.settle();
 
   assert.equal(harness.elements["caro-filter-mode"].value, "curriculum");
-  assert.equal(harness.context.CaroKannTrainer.sessionSummary.mode, "endless");
-  assert.equal(harness.context.CaroKannTrainer.sessionSummary.total, null);
+  assert.equal(harness.context.CaroKannTrainer.sessionSummary.total, 1);
   assert.equal(harness.board.config.fen, sideline.puzzleFen);
   assert.match(harness.elements["active-filter-chips"].innerHTML, /Sidelines/);
+});
+
+test("the selected filter pool persists independently of fresh session membership", async () => {
+  const storage = new MemoryStorage();
+  const mainLine = recordWithId("persist-pool-main");
+  const sideline = recordWithId("persist-pool-side");
+  sideline.variation = "Caro-Kann Defense: Hillbilly Attack";
+  sideline.openingTags = ["Caro-Kann_Defense_Hillbilly_Attack"];
+  sideline.puzzleFen = sideline.puzzleFen.replace(" 3 47", " 5 47");
+  sideline.solutionSteps[0].fenBefore = sideline.puzzleFen;
+  const fixture = indexedDeckFixture(
+    "caro-kann-black",
+    [[mainLine, sideline]],
+    "f".repeat(64),
+  );
+  const options = {
+    storage,
+    manifestsByDeck: { "caro-kann-black": fixture.manifest },
+    selectionIndexesByDeck: { "caro-kann-black": fixture.index },
+    chunkPayloadsByDeck: { "caro-kann-black": [[mainLine, sideline]] },
+    trainerEnabled: true,
+  };
+  const first = await createHarness([mainLine, sideline], options);
+
+  first.elements["caro-filter-variation"].value = sideline.variation;
+  first.elements["caro-filter-difficulty"].value = sideline.difficulty;
+  first.elements["caro-filter-lines"].value = "sidelines";
+  first.elements["customize-apply"].dispatch("click");
+  await first.settle();
+
+  const saved = first.trainerState().preferences.filtersByDeck["caro-kann-black"];
+  assert.equal(saved.variation, sideline.variation);
+  assert.equal(saved.difficulty, sideline.difficulty);
+  assert.equal(saved.lineCoverage, "sidelines");
+
+  const reloaded = await createHarness([mainLine, sideline], options);
+  assert.equal(reloaded.elements["caro-filter-variation"].value, sideline.variation);
+  assert.equal(reloaded.elements["caro-filter-difficulty"].value, sideline.difficulty);
+  assert.equal(reloaded.elements["caro-filter-lines"].value, "sidelines");
+  assert.equal(reloaded.board.config.fen, sideline.puzzleFen);
 });
 
 test("the visible Clear filters empty-state action resets every filter and restarts training", async () => {
@@ -1601,10 +1729,9 @@ test("the visible Clear filters empty-state action resets every filter and resta
   assert.equal(harness.elements["customize-search"].value, "");
   assert.equal(harness.elements["puzzle-page-state"].hidden, true);
   assert.equal(harness.elements["puzzle-workspace"].hidden, false);
-  assert.equal(harness.context.CaroKannTrainer.sessionSummary.total, null);
-  assert.equal(harness.context.CaroKannTrainer.sessionSummary.mode, "endless");
+  assert.equal(harness.context.CaroKannTrainer.sessionSummary.total, 2);
   assert.equal(harness.context.CaroKannTrainer.sessionSummary.completed, 0);
-  assert.equal(harness.elements["puzzle-queue-position"].textContent, "Puzzle 1");
+  assert.equal(harness.elements["puzzle-queue-position"].textContent, "Puzzle 1 of 2");
   assert.equal(harness.board.config.movable.color, "black");
 });
 
@@ -1711,8 +1838,8 @@ test("wrong, illegal, hinted, revealed, reset, and skipped actions preserve perm
   assert.equal(actionHarness.progress().status, "unsolved");
   assert.equal(actionHarness.progress().attempts, 0);
   assert.match(actionHarness.elements["puzzle-feedback"].innerHTML, /Solution revealed/);
-  assert.equal(actionHarness.elements["puzzle-queue-position"].textContent, "Puzzle 1");
-  assert.equal(actionHarness.elements["trainer-header-progress"].textContent, "1 trained");
+  assert.equal(actionHarness.elements["puzzle-queue-position"].textContent, "Puzzle 1 of 1");
+  assert.equal(actionHarness.elements["trainer-header-progress"].textContent, "1 / 1");
   assert.match(actionHarness.elements["puzzle-context-body"].innerHTML, /Qc3\+/);
   actionHarness.elements["puzzle-continue"].dispatch("click");
   await actionHarness.settle();
@@ -1738,7 +1865,7 @@ test("namespaced solved progress survives a controller reload", async () => {
   assert.match(reloaded.elements["puzzle-progress-summary"].textContent, /^1 solved/);
 });
 
-test("training defaults to Endless without a completion boundary", async () => {
+test("training defaults to a finite ten-puzzle Focused Mix", async () => {
   const records = Array.from({ length: 6 }, (_unused, index) =>
     recordWithId(`endless-default-${index + 1}`)
   );
@@ -1747,35 +1874,77 @@ test("training defaults to Endless without a completion boundary", async () => {
     trainerEnabled: true,
   });
 
-  assert.equal(harness.elements["training-length"].value, "endless");
-  assert.equal(harness.trainerState().preferences.sessionMode, "endless");
+  assert.equal(harness.elements["training-length"].value, "10");
+  assert.equal(harness.trainerState().preferences.sessionMode, "finite");
   assert.equal(harness.trainerState().preferences.sessionSize, 10);
-  assert.equal(harness.elements["trainer-header-progress"].textContent, "0 trained");
-  assert.equal(harness.elements["puzzle-queue-position"].textContent, "Puzzle 1");
-  assert.equal(harness.elements["puzzle-progress-track"].hidden, true);
-  assert.equal(harness.elements["session-restart"].hidden, true);
-  assert.deepEqual(
-    JSON.parse(JSON.stringify(harness.context.CaroKannTrainer.sessionSummary)),
-    { completed: 0, total: null, complete: false, mode: "endless" },
-  );
+  assert.equal(harness.elements["trainer-header-progress"].textContent, "1 / 6");
+  assert.equal(harness.elements["puzzle-queue-position"].textContent, "Puzzle 1 of 6");
+  assert.equal(harness.elements["puzzle-progress-track"].hidden, false);
+  assert.equal(harness.elements["session-restart"].hidden, false);
+  assert.equal(harness.context.CaroKannTrainer.sessionSummary.completed, 0);
+  assert.equal(harness.context.CaroKannTrainer.sessionSummary.total, 6);
+  assert.equal(harness.context.CaroKannTrainer.sessionSummary.complete, false);
 
   harness.elements["puzzle-skip"].dispatch("click");
   await harness.settle();
   assert.equal(harness.context.CaroKannTrainer.sessionSummary.completed, 1);
   assert.equal(harness.context.CaroKannTrainer.sessionSummary.complete, false);
-  assert.equal(harness.elements["trainer-header-progress"].textContent, "1 trained");
-  assert.equal(harness.elements["puzzle-queue-position"].textContent, "Puzzle 2");
+  assert.equal(harness.elements["trainer-header-progress"].textContent, "2 / 6");
+  assert.equal(harness.elements["puzzle-queue-position"].textContent, "Puzzle 2 of 6");
   assert.equal(harness.elements["session-complete"].hidden, true);
   assert.equal(harness.elements["puzzle-workspace"].hidden, false);
 });
 
+test("the page migrates legacy auto-Endless but honors marked explicit Endless", async () => {
+  const records = Array.from({ length: 6 }, (_unused, index) =>
+    recordWithId(`defaults-migration-${index + 1}`)
+  );
+  const legacyStorage = new MemoryStorage();
+  seedTrainerState(legacyStorage, {
+    sessionMode: "endless",
+    sessionSize: 20,
+    trainingDefaultsVersion: null,
+  });
+  const migrated = await createHarness(records, {
+    chunkPayloads: [records],
+    storage: legacyStorage,
+    trainerEnabled: true,
+  });
+
+  assert.equal(migrated.elements["training-length"].value, "20");
+  assert.equal(migrated.trainerState().preferences.sessionMode, "finite");
+  assert.equal(migrated.trainerState().preferences.sessionSize, 20);
+  assert.equal(migrated.trainerState().preferences.trainingDefaultsVersion, 1);
+  assert.equal(migrated.context.CaroKannTrainer.sessionSummary.total, 6);
+
+  const explicitStorage = new MemoryStorage();
+  seedTrainerState(explicitStorage, {
+    sessionMode: "endless",
+    sessionSize: 20,
+    trainingDefaultsVersion: 1,
+  });
+  const explicit = await createHarness(records, {
+    chunkPayloads: [records],
+    storage: explicitStorage,
+    trainerEnabled: true,
+  });
+
+  assert.equal(explicit.elements["training-length"].value, "endless");
+  assert.equal(explicit.trainerState().preferences.sessionMode, "endless");
+  assert.equal(explicit.trainerState().preferences.trainingDefaultsVersion, 1);
+  assert.equal(explicit.context.CaroKannTrainer.sessionSummary.total, null);
+});
+
 test("Endless rolls past its internal batch without showing a summary or resetting its counter", async () => {
+  const storage = new MemoryStorage();
+  seedTrainerState(storage, { sessionMode: "endless", sessionSize: 10 });
   const records = Array.from({ length: 21 }, (_unused, index) =>
     recordWithId(`endless-rollover-${index + 1}`)
   );
   const harness = await createHarness(records, {
     chunkCount: 2,
     chunkPayloads: [records.slice(0, 20), records.slice(20)],
+    storage,
     trainerEnabled: true,
   });
 
@@ -1901,6 +2070,8 @@ test("five-puzzle sessions summarize hint, reveal, retry, skip, and clean outcom
   assert.equal(harness.elements["session-complete"].hidden, false);
   assert.equal(harness.elements["puzzle-workspace"].hidden, true);
   assert.equal(harness.elements["trainer-header-progress"].textContent, "5 / 5");
+  assert.equal(harness.elements["review-mistakes-button"].textContent, "Redo missed: 4");
+  assert.equal(harness.elements["review-mistakes-button"].disabled, false);
   ["Puzzles completed", "First-try accuracy", "Unassisted solves", "Hints used", "Solutions revealed"]
     .forEach(label => assert.match(harness.elements["session-results"].innerHTML, new RegExp(label)));
   assert.equal(harness.elements["session-review-mistakes"].hidden, false);
@@ -1925,7 +2096,7 @@ test("five-puzzle sessions summarize hint, reveal, retry, skip, and clean outcom
   assert.equal(Object.values(permanent).filter(record => record.solutionRevealedAt).length, 1);
 });
 
-test("adaptive sessions include Due reviews but leave not-yet-due Learning items spaced", async () => {
+test("fresh sessions exclude encountered reviews and keep Due work explicit", async () => {
   const storage = new MemoryStorage();
   const now = Date.now();
   const learning = recordWithId("adaptive-learning-later");
@@ -1973,18 +2144,18 @@ test("adaptive sessions include Due reviews but leave not-yet-due Learning items
     trainerEnabled: true,
   });
 
-  assert.equal(harness.context.CaroKannTrainer.sessionSummary.total, 5);
+  assert.equal(harness.context.CaroKannTrainer.sessionSummary.total, 4);
+  assert.equal(harness.elements["puzzle-review-state"].textContent, "New");
+  assert.equal(harness.elements["puzzle-queue-position"].textContent, "Puzzle 1 of 4");
+  assert.equal(harness.elements["reviews-due-button"].textContent, "Reviews due: 1");
+  assert.equal(harness.elements["review-mistakes-button"].textContent, "Redo missed: 1");
+
+  harness.elements["reviews-due-button"].dispatch("click");
+  await harness.settle();
+  assert.equal(harness.context.CaroKannTrainer.sessionSummary.total, 1);
   assert.equal(harness.elements["puzzle-review-state"].textContent, "Due");
-  assert.equal(harness.elements["puzzle-queue-position"].textContent, "Puzzle 1 of 5");
-
-  for (let index = 0; index < 5; index += 1) {
-    harness.elements["puzzle-skip"].dispatch("click");
-    await harness.settle();
-  }
-
-  const mistakeIds = Array.from(harness.context.CaroKannTrainer.sessionSummary.mistakeIds).sort();
-  assert.deepEqual(mistakeIds, [due.id, ...newCandidates.map(candidate => candidate.id)].sort());
-  assert.equal(mistakeIds.includes(learning.id), false);
+  harness.elements["puzzle-skip"].dispatch("click");
+  await harness.settle();
 
   const reviews = harness.trainerState().reviews["caro-kann-black"];
   assert.equal(reviews[learning.id].encounters, 1);
@@ -1992,8 +2163,7 @@ test("adaptive sessions include Due reviews but leave not-yet-due Learning items
   assert.equal(reviews[due.id].encounters, 2);
   assert.equal(reviews[due.id].lastOutcome, "skipped");
   newCandidates.forEach(candidate => {
-    assert.equal(reviews[candidate.id].encounters, 1);
-    assert.equal(reviews[candidate.id].lastOutcome, "skipped");
+    assert.equal(reviews[candidate.id], undefined);
   });
 });
 
@@ -2051,6 +2221,65 @@ test("short mistake reviews preserve the normal session-size preference", async 
   assert.equal(harness.trainerState().preferences.sessionSize, 10);
 });
 
+test("a clean unassisted redo clears the durable missed queue but keeps mistake history", async () => {
+  const storage = new MemoryStorage();
+  const missed = recordWithId("redo-resolves-miss");
+  const normal = Array.from({ length: 10 }, (_unused, index) =>
+    recordWithId(`redo-normal-${index + 1}`)
+  );
+  const mistakeAt = new Date(Date.now() - 60 * 1000).toISOString();
+  seedTrainerState(storage, {
+    reviews: {
+      [missed.id]: {
+        deckId: "caro-kann-black",
+        puzzleId: missed.id,
+        encounters: 1,
+        lapses: 1,
+        skips: 1,
+        correctStreak: 0,
+        dueAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        lastSeenAt: mistakeAt,
+        lastOutcome: "skipped",
+        mistakeAt,
+        createdAt: mistakeAt,
+        updatedAt: mistakeAt,
+      },
+    },
+  });
+  const candidates = [missed, ...normal];
+  const fixture = indexedDeckFixture(
+    "caro-kann-black",
+    [candidates],
+    "9".repeat(64),
+  );
+  const harness = await createHarness(candidates, {
+    storage,
+    manifestsByDeck: { "caro-kann-black": fixture.manifest },
+    selectionIndexesByDeck: { "caro-kann-black": fixture.index },
+    chunkPayloadsByDeck: { "caro-kann-black": [candidates] },
+    trainerEnabled: true,
+  });
+
+  assert.equal(harness.elements["review-mistakes-button"].textContent, "Redo missed: 1");
+  const cursorBeforeReview = harness.trainerState().selection.cohorts[0].cursor;
+  assert.equal(await harness.context.CaroKannTrainer.reviewMistakes(), true);
+  assert.equal(harness.board.config.fen, missed.puzzleFen);
+  assert.equal(harness.trainerState().selection.cohorts[0].cursor, cursorBeforeReview,
+    "reviewing a miss does not advance normal New-puzzle traversal");
+  assert.equal(harness.trainerState().preferences.sessionSize, 10);
+
+  harness.board.config.movable.events.after("d2", "c3");
+  harness.flushTimer();
+  harness.board.config.movable.events.after("c3", "d2");
+
+  const review = harness.trainerState().reviews["caro-kann-black"][missed.id];
+  assert.equal(review.correctStreak, 1);
+  assert.equal(review.mistakeAt, mistakeAt);
+  assert.equal(harness.elements["review-mistakes-button"].textContent, "Redo missed: 0");
+  assert.equal(harness.elements["review-mistakes-button"].disabled, true);
+  assert.equal(await harness.context.CaroKannTrainer.reviewMistakes(), false);
+});
+
 test("missing saved reviews are pruned after a full scan without replacing the active session", async () => {
   const storage = new MemoryStorage();
   const now = Date.now();
@@ -2090,6 +2319,7 @@ test("missing saved reviews are pruned after a full scan without replacing the a
   assert.equal(harness.context.CaroKannTrainer.sessionSummary.completed, 0);
   assert.equal(harness.elements["reviews-due-button"].textContent, "Reviews due: 1");
   assert.equal(harness.elements["review-mistakes-button"].hidden, false);
+  assert.equal(harness.elements["review-mistakes-button"].textContent, "Redo missed: 1");
 
   assert.equal(await harness.context.CaroKannTrainer.reviewMistakes(), false);
   assert.equal(harness.fetches.length, 4, "the missing review triggers a complete chunk scan");
@@ -2097,7 +2327,9 @@ test("missing saved reviews are pruned after a full scan without replacing the a
   assert.match(harness.elements["puzzle-storage-warning"].innerHTML, /no longer available/i);
   assert.equal(harness.elements["reviews-due-button"].textContent, "Reviews due: 0");
   assert.equal(harness.elements["reviews-due-button"].disabled, true);
-  assert.equal(harness.elements["review-mistakes-button"].hidden, true);
+  assert.equal(harness.elements["review-mistakes-button"].hidden, false);
+  assert.equal(harness.elements["review-mistakes-button"].disabled, true);
+  assert.equal(harness.elements["review-mistakes-button"].textContent, "Redo missed: 0");
   assert.equal(harness.context.CaroKannTrainer.sessionSummary.total, 10);
   assert.equal(harness.context.CaroKannTrainer.sessionSummary.completed, 0);
   assert.equal(harness.elements["trainer-header-progress"].textContent, "1 / 10");
@@ -2300,6 +2532,8 @@ test("pagehide finalizes engaged attempts except when the page enters the back-f
     assert.equal(closingReviews[0].totalIncorrect, scenario.incorrect);
     assert.equal(closingReviews[0].hints, scenario.hints);
     assert.equal(closingReviews[0].skips, 1);
+    assert.ok(closingReviews[0].mistakeAt);
+    assert.equal(closingReviews[0].correctStreak, 0);
 
     const cachedRecords = Array.from({ length: 5 }, (_unused, index) =>
       recordWithId(`pagehide-${scenario.name}-cached-${index + 1}`)
@@ -2319,6 +2553,7 @@ test("pagehide finalizes engaged attempts except when the page enters the back-f
     assert.equal(Object.keys(
       cached.trainerState().reviews["caro-kann-black"] || {},
     ).length, 0);
+    assert.equal(cached.elements["review-mistakes-button"].textContent, "Redo missed: 0");
   }
 });
 

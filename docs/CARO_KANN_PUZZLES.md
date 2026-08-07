@@ -2,7 +2,7 @@
 
 > This document preserves the Caro-Kann-specific extraction and validation
 > details, including the backward-compatible single-deck command. The trainer
-> now serves five opening decks from one catalog; see
+> now serves six opening decks from one catalog; see
 > [Opening puzzle decks](OPENING_PUZZLE_DECKS.md) for the generalized registry,
 > one-pass build, dropdown, and deployment contract.
 
@@ -273,11 +273,11 @@ complete JSONL export.
 ## Training state
 
 The trainer reuses the existing Chessground board factory, puzzle interactions,
-daily queue behavior, and mobile layout. Black is always the user-controlled
-side. After each correct Black move, the stored White reply is animated
-automatically; the puzzle is solved only after the complete stored continuation
-has finished. Wrong or illegal moves, skip, hint, and reveal do not mark a
-puzzle solved.
+persisted randomized-bag behavior, and mobile layout. Black is always the
+user-controlled side. After each correct Black move, the stored White reply is
+animated automatically; the puzzle is solved only after the complete stored
+continuation has finished. Wrong or illegal moves, skip, hint, and reveal do
+not mark a puzzle solved.
 
 Solved IDs are stored in browser `localStorage` under a Caro-Kann-specific
 namespace, separate from the username-scoped personal blunder-puzzle state.

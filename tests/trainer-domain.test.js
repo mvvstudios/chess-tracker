@@ -188,14 +188,16 @@ test("storage keys normalize usernames and stay separate from puzzle progress", 
   assert.doesNotMatch(Trainer.storageKey("alice"), /puzzle-progress/);
 });
 
-test("preferences default to endless and persist only supported session settings", () => {
+test("preferences default to a finite ten-puzzle mix and persist filter pools", () => {
   const storage = new MemoryStorage();
   const time = fixedClock();
   const store = Trainer.createTrainerStore("Alice", { storage, clock: time.clock });
   assert.deepEqual(store.getPreferences(), {
     lastDeckId: null,
-    sessionMode: "endless",
+    sessionMode: "finite",
     sessionSize: 10,
+    trainingDefaultsVersion: Trainer.TRAINING_DEFAULTS_VERSION,
+    filtersByDeck: {},
     onboardingDismissed: false,
     updatedAt: null,
   });
@@ -205,17 +207,38 @@ test("preferences default to endless and persist only supported session settings
   store.setSessionSize(20);
   store.setSessionMode("sprint");
   store.setSessionSize(7);
+  store.setFilterPool("PIRC-BLACK", {
+    variation: "Pirc Defense: Classical Variation",
+    difficulty: "ADVANCED",
+    theme: "forks",
+    openingOnly: true,
+  });
   store.dismissOnboarding();
   assert.deepEqual(store.getPreferences(), {
     lastDeckId: "pirc-black",
     sessionMode: "finite",
     sessionSize: 20,
+    trainingDefaultsVersion: Trainer.TRAINING_DEFAULTS_VERSION,
+    filtersByDeck: {
+      "pirc-black": {
+        mode: "all",
+        variation: "Pirc Defense: Classical Variation",
+        difficulty: "advanced",
+        provenance: "all",
+        lineCoverage: "all",
+        theme: "forks",
+        openingOnly: true,
+        curriculumGroup: "",
+      },
+    },
     onboardingDismissed: true,
     updatedAt: "2026-08-03T12:00:00.000Z",
   });
 
   const reloaded = Trainer.createTrainerStore(" alice ", { storage, clock: time.clock });
   assert.deepEqual(reloaded.getPreferences(), store.getPreferences());
+  assert.deepEqual(reloaded.getFilterPool("pirc-black"),
+    store.getPreferences().filtersByDeck["pirc-black"]);
   assert.equal(reloaded.isPersistent(), true);
 });
 
@@ -250,7 +273,7 @@ test("v1 envelopes migrate into v2 without deleting or double-counting legacy da
   const time = fixedClock();
   const store = Trainer.createTrainerStore("ALICE", { storage, clock: time.clock });
   assert.equal(store.getPreferences().lastDeckId, "caro-kann-black");
-  assert.equal(store.getPreferences().sessionMode, "endless");
+  assert.equal(store.getPreferences().sessionMode, "finite");
   assert.equal(store.getPreferences().sessionSize, 5);
   assert.equal(store.getPreferences().onboardingDismissed, true);
   assert.equal(store.getReview("caro-kann-black", "legacy").encounters, 4);
@@ -273,12 +296,12 @@ test("a v1 envelope found at the current key is rewritten in current format", ()
   }));
   const time = fixedClock();
   const store = Trainer.createTrainerStore("alice", { storage, clock: time.clock });
-  assert.equal(store.getPreferences().sessionMode, "endless");
+  assert.equal(store.getPreferences().sessionMode, "finite");
   assert.equal(store.getPreferences().sessionSize, 20);
   assert.equal(JSON.parse(storage.getItem(key)).version, Trainer.CURRENT_VERSION);
 });
 
-test("v2 preferences without a mode become endless without losing the finite size", () => {
+test("v2 preferences without a mode become finite without losing the saved size", () => {
   const storage = new MemoryStorage();
   const key = Trainer.storageKey("alice");
   storage.setItem(key, JSON.stringify({
@@ -297,11 +320,73 @@ test("v2 preferences without a mode become endless without losing the finite siz
   const store = Trainer.createTrainerStore("alice", { storage, clock: fixedClock().clock });
   assert.deepEqual(store.getPreferences(), {
     lastDeckId: "modern-black",
-    sessionMode: "endless",
+    sessionMode: "finite",
     sessionSize: 5,
+    trainingDefaultsVersion: Trainer.TRAINING_DEFAULTS_VERSION,
+    filtersByDeck: {},
     onboardingDismissed: true,
     updatedAt: "2026-08-02T12:00:00.000Z",
   });
+});
+
+test("unmarked v2 auto-Endless preferences migrate once to finite", () => {
+  const storage = new MemoryStorage();
+  const key = Trainer.storageKey("alice");
+  storage.setItem(key, JSON.stringify({
+    version: Trainer.CURRENT_VERSION,
+    username: "alice",
+    preferences: {
+      lastDeckId: "caro-kann-black",
+      sessionMode: "endless",
+      sessionSize: 20,
+      updatedAt: "2026-08-02T12:00:00Z",
+    },
+    reviews: {},
+    updatedAt: "2026-08-02T12:00:00Z",
+  }));
+
+  const store = Trainer.createTrainerStore("alice", { storage, clock: fixedClock().clock });
+  assert.equal(store.getPreferences().sessionMode, "finite");
+  assert.equal(store.getPreferences().sessionSize, 20);
+  assert.equal(
+    store.getPreferences().trainingDefaultsVersion,
+    Trainer.TRAINING_DEFAULTS_VERSION,
+  );
+  const migrated = JSON.parse(storage.getItem(key));
+  assert.equal(migrated.preferences.sessionMode, "finite");
+  assert.equal(
+    migrated.preferences.trainingDefaultsVersion,
+    Trainer.TRAINING_DEFAULTS_VERSION,
+  );
+
+  const reloaded = Trainer.createTrainerStore("alice", { storage, clock: fixedClock().clock });
+  assert.equal(reloaded.getPreferences().sessionMode, "finite");
+  assert.equal(reloaded.getPreferences().sessionSize, 20);
+});
+
+test("a current defaults marker preserves an explicit Endless preference", () => {
+  const storage = new MemoryStorage();
+  const key = Trainer.storageKey("alice");
+  storage.setItem(key, JSON.stringify({
+    version: Trainer.CURRENT_VERSION,
+    username: "alice",
+    preferences: {
+      sessionMode: "endless",
+      sessionSize: 5,
+      trainingDefaultsVersion: Trainer.TRAINING_DEFAULTS_VERSION,
+      updatedAt: "2026-08-02T12:00:00Z",
+    },
+    reviews: {},
+    updatedAt: "2026-08-02T12:00:00Z",
+  }));
+
+  const store = Trainer.createTrainerStore("alice", { storage, clock: fixedClock().clock });
+  assert.equal(store.getPreferences().sessionMode, "endless");
+  assert.equal(store.getPreferences().sessionSize, 5);
+  assert.equal(
+    store.getPreferences().trainingDefaultsVersion,
+    Trainer.TRAINING_DEFAULTS_VERSION,
+  );
 });
 
 test("changing session mode does not mutate adaptive review records", () => {
@@ -923,6 +1008,19 @@ test("incorrect, hinted, skipped, and revealed outcomes all return soon", () => 
   assert.equal(store.getReview("caro-kann-black", "hinted").hints, 1);
   assert.equal(store.getReview("caro-kann-black", "skipped").skips, 1);
   assert.equal(store.getReview("caro-kann-black", "revealed").reveals, 1);
+  assert.deepEqual(
+    new Set(store.unresolvedMistakeIds("caro-kann-black")),
+    new Set(Object.keys(outcomes)),
+  );
+  assert.equal(store.unresolvedMistakeCount("caro-kann-black"), 4);
+
+  time.set("2026-08-03T12:01:00Z");
+  store.recordOutcome("caro-kann-black", candidate("incorrect"), { solved: true });
+  assert.equal(store.getReview("caro-kann-black", "incorrect").correctStreak, 1);
+  assert.equal(store.unresolvedMistakeIds("caro-kann-black").includes("incorrect"), false);
+  assert.equal(store.mistakeIds("caro-kann-black").includes("incorrect"), true,
+    "resolving a miss retains its historical mistake timestamp");
+  assert.equal(store.unresolvedMistakeCount("caro-kann-black"), 3);
 });
 
 test("adaptive review snapshots retain application difficulty", () => {

@@ -160,6 +160,8 @@ def test_refresh_no_analysis_flag_sets_move_quality_none(tmp_path, monkeypatch):
     assert payload["move_quality"] is None
     assert payload["move_quality_by_format"] is None
     assert payload["move_quality_by_time_control"] is None
+    assert payload["blunder_analysis"] is None
+    assert payload["mistake_analysis"] is None
 
 
 @pytest.mark.skipif(find_engine_path() is None, reason="Stockfish not installed")
@@ -933,7 +935,7 @@ def test_publish_my_blunder_trainer_data_preserves_opening_catalog(tmp_path):
     assert result == {
         "path": data_dir / "my-blunder-puzzles.json",
         "candidates": 1,
-        "decks": 6,
+        "decks": 14,
     }
     envelope = json.loads((data_dir / "my-blunder-puzzles.json").read_text())
     assert envelope == {
@@ -955,6 +957,14 @@ def test_publish_my_blunder_trainer_data_preserves_opening_catalog(tmp_path):
         "my-blunders-englund",
         "my-blunders-modern",
         "my-blunders-caro-kann",
+        "my-blunders-london",
+        "my-mistakes-all",
+        "my-mistakes-colle",
+        "my-mistakes-pirc",
+        "my-mistakes-englund",
+        "my-mistakes-modern",
+        "my-mistakes-caro-kann",
+        "my-mistakes-london",
     ]
 
 
@@ -972,7 +982,11 @@ def test_publish_my_blunder_trainer_data_can_create_personal_only_catalog(tmp_pa
         (dashboard / "data" / "opening-puzzle-catalog.json").read_text()
     )
     assert catalog["defaultDeckId"] == "my-blunders-all"
-    assert len(catalog["decks"]) == 6
+    assert len(catalog["decks"]) == 14
+    assert {deck["qualityLabel"] for deck in catalog["decks"]} == {
+        "blunder",
+        "mistake",
+    }
 
 
 # --- puzzle-line backfill wiring ---
@@ -1031,6 +1045,12 @@ def test_refresh_backfills_after_analysis_saves_then_builds_catalog(
     events = []
     engine_resolutions = _stub_refresh_for_backfill(monkeypatch, events)
 
+    def compute_mistakes(summaries, records, *, eligible_games):
+        events.append(("mistakes", len(summaries), len(records), eligible_games))
+        return {"quality_label": "mistake", "items": []}
+
+    monkeypatch.setattr("refresh.compute_mistake_analysis", compute_mistakes)
+
     def backfill(games, cache, *, engine_path, depth, max_positions):
         events.append(("backfill", engine_path, depth, max_positions))
         cache["backfill-marker"] = {"summary": {"moves_analyzed": 0}}
@@ -1065,7 +1085,13 @@ def test_refresh_backfills_after_analysis_saves_then_builds_catalog(
     assert engine_resolutions == [True]
     assert events[0] == ("ordinary", "/test/stockfish", 7)
     assert ("backfill", "/test/stockfish", 7, 0) in events
+    assert ("mistakes", 0, 1, 1) in events
     assert [event[0] for event in events][-3:] == ["backfill", "save", "build"]
+    payload = json.loads((tmp_path / "data" / "computed.json").read_text())
+    assert payload["mistake_analysis"] == {
+        "quality_label": "mistake",
+        "items": [],
+    }
     assert (
         "Puzzle-line backfill: 2 updated, 3 ready, 4 pending, 1 failed."
         in capsys.readouterr().out

@@ -40,6 +40,31 @@
         </aside>
       </div>
     </section>
+    <section id="mistake-analysis-block">
+      <h2>Mistake Analysis <small>Stockfish-derived errors with ≥20 and &lt;30 percentage points of win chance lost</small></h2>
+      <div id="mistake-coverage-cards" class="behavior-grid"></div>
+      <p id="mistake-analysis-empty" class="mq-empty" style="display:none"></p>
+    </section>
+    <section id="mistake-review-block">
+      <h2>Mistake table <small>clear-headed · category → repeated pattern → exact mistake/game</small></h2>
+      <div class="sig-split">
+        <div class="table-scroll"><div id="mistake-review-table"></div></div>
+        <aside class="board-panel">
+          <div class="board-large" id="mistake-board"></div>
+          <div class="board-meta" id="mistake-board-meta"></div>
+        </aside>
+      </div>
+    </section>
+    <section id="scramble-mistake-review-block">
+      <h2>Scramble mistakes <small>played with ≤10s on the clock — intuition failures, not calculation failures</small></h2>
+      <div class="sig-split">
+        <div class="table-scroll"><div id="scramble-mistake-review-table"></div></div>
+        <aside class="board-panel">
+          <div class="board-large" id="scramble-mistake-board"></div>
+          <div class="board-meta" id="scramble-mistake-board-meta"></div>
+        </aside>
+      </div>
+    </section>
   </main>
   <script src="vendor/tabulator.min.js"></script>
   <script src="vendor/chessground.min.js"></script>

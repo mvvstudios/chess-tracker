@@ -4,13 +4,16 @@ import pytest
 
 from chess_tracker.blunder_puzzle_export import (
     MY_BLUNDER_DECK_IDS,
+    MY_MISTAKE_DECK_IDS,
+    PERSONAL_ERROR_DECK_IDS,
     augment_opening_puzzle_catalog,
     blunder_deck_catalog_entries,
+    personal_error_deck_catalog_entries,
     write_my_blunder_puzzle_export,
 )
 
 
-EXPECTED_PERSONAL_DECKS = [
+EXPECTED_BLUNDER_DECKS = [
     {
         "id": "my-blunders-all",
         "label": "My Blunders — ALL",
@@ -19,6 +22,7 @@ EXPECTED_PERSONAL_DECKS = [
         "dataPath": "my-blunder-puzzles.json",
         "progressScope": "personal",
         "repertoireDeckId": None,
+        "qualityLabel": "blunder",
         "solverColor": "mixed",
         "orientation": "mixed",
     },
@@ -30,6 +34,7 @@ EXPECTED_PERSONAL_DECKS = [
         "dataPath": "my-blunder-puzzles.json",
         "progressScope": "personal",
         "repertoireDeckId": "colle-white",
+        "qualityLabel": "blunder",
         "solverColor": "white",
         "orientation": "white",
     },
@@ -41,6 +46,7 @@ EXPECTED_PERSONAL_DECKS = [
         "dataPath": "my-blunder-puzzles.json",
         "progressScope": "personal",
         "repertoireDeckId": "pirc-black",
+        "qualityLabel": "blunder",
         "solverColor": "black",
         "orientation": "black",
     },
@@ -52,6 +58,7 @@ EXPECTED_PERSONAL_DECKS = [
         "dataPath": "my-blunder-puzzles.json",
         "progressScope": "personal",
         "repertoireDeckId": "englund-white",
+        "qualityLabel": "blunder",
         "solverColor": "white",
         "orientation": "white",
     },
@@ -63,6 +70,7 @@ EXPECTED_PERSONAL_DECKS = [
         "dataPath": "my-blunder-puzzles.json",
         "progressScope": "personal",
         "repertoireDeckId": "modern-black",
+        "qualityLabel": "blunder",
         "solverColor": "black",
         "orientation": "black",
     },
@@ -74,10 +82,36 @@ EXPECTED_PERSONAL_DECKS = [
         "dataPath": "my-blunder-puzzles.json",
         "progressScope": "personal",
         "repertoireDeckId": "caro-kann-black",
+        "qualityLabel": "blunder",
         "solverColor": "black",
         "orientation": "black",
     },
+    {
+        "id": "my-blunders-london",
+        "label": "My Blunders — London System",
+        "openingFamily": "My Blunders — London System",
+        "sourceKind": "personal-blunders",
+        "dataPath": "my-blunder-puzzles.json",
+        "progressScope": "personal",
+        "repertoireDeckId": "london-white",
+        "qualityLabel": "blunder",
+        "solverColor": "white",
+        "orientation": "white",
+    },
 ]
+
+EXPECTED_MISTAKE_DECKS = [
+    {
+        **deck,
+        "id": deck["id"].replace("my-blunders", "my-mistakes"),
+        "label": deck["label"].replace("My Blunders", "My Mistakes"),
+        "openingFamily": deck["openingFamily"].replace("My Blunders", "My Mistakes"),
+        "qualityLabel": "mistake",
+    }
+    for deck in EXPECTED_BLUNDER_DECKS
+]
+
+EXPECTED_PERSONAL_DECKS = [*EXPECTED_BLUNDER_DECKS, *EXPECTED_MISTAKE_DECKS]
 
 
 def _opening_catalog():
@@ -103,14 +137,24 @@ def _opening_catalog():
 def test_personal_deck_descriptors_are_ordered_exact_and_deep_safe():
     first = blunder_deck_catalog_entries()
     second = blunder_deck_catalog_entries()
+    all_first = personal_error_deck_catalog_entries()
+    all_second = personal_error_deck_catalog_entries()
 
-    assert first == EXPECTED_PERSONAL_DECKS
-    assert MY_BLUNDER_DECK_IDS == tuple(deck["id"] for deck in EXPECTED_PERSONAL_DECKS)
+    assert first == EXPECTED_BLUNDER_DECKS
+    assert MY_BLUNDER_DECK_IDS == tuple(deck["id"] for deck in EXPECTED_BLUNDER_DECKS)
+    assert MY_MISTAKE_DECK_IDS == tuple(deck["id"] for deck in EXPECTED_MISTAKE_DECKS)
+    assert PERSONAL_ERROR_DECK_IDS == tuple(deck["id"] for deck in EXPECTED_PERSONAL_DECKS)
+    assert all_first == EXPECTED_PERSONAL_DECKS
 
     first[0]["label"] = "changed"
     first.append({"id": "extra"})
-    assert second == EXPECTED_PERSONAL_DECKS
-    assert blunder_deck_catalog_entries() == EXPECTED_PERSONAL_DECKS
+    assert second == EXPECTED_BLUNDER_DECKS
+    assert blunder_deck_catalog_entries() == EXPECTED_BLUNDER_DECKS
+
+    all_first[-1]["qualityLabel"] = "changed"
+    all_first.pop()
+    assert all_second == EXPECTED_PERSONAL_DECKS
+    assert personal_error_deck_catalog_entries() == EXPECTED_PERSONAL_DECKS
 
 
 def test_writer_creates_an_atomic_standalone_export(tmp_path):
@@ -219,6 +263,11 @@ def test_augment_validates_default_and_personal_descriptor_contract():
     invalid = blunder_deck_catalog_entries()
     invalid[0]["orientation"] = "white"
     with pytest.raises(ValueError, match="orientation must equal solverColor"):
+        augment_opening_puzzle_catalog(_opening_catalog(), invalid)
+
+    invalid = personal_error_deck_catalog_entries()
+    invalid[-1]["qualityLabel"] = "inaccuracy"
+    with pytest.raises(ValueError, match="invalid qualityLabel"):
         augment_opening_puzzle_catalog(_opening_catalog(), invalid)
 
     catalog = _opening_catalog()

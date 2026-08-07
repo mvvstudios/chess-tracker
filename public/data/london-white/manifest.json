@@ -1,0 +1,384 @@
+{
+  "balancedCounts": {
+    "difficulty": {
+      "advanced": 629,
+      "beginner": 1285,
+      "developing": 1003,
+      "expert": 312,
+      "intermediate": 971
+    },
+    "primaryTacticalTheme": {
+      "advancedPawn": 49,
+      "advantage": 590,
+      "attackingF2F7": 1,
+      "attraction": 54,
+      "capturingDefender": 32,
+      "clearance": 41,
+      "crushing": 366,
+      "defensiveMove": 162,
+      "deflection": 94,
+      "discoveredAttack": 261,
+      "doubleCheck": 19,
+      "endgame": 1,
+      "fork": 383,
+      "interference": 41,
+      "mateIn1": 698,
+      "mateIn2": 337,
+      "mateIn3": 144,
+      "mateIn4": 58,
+      "mateIn5": 19,
+      "middlegame": 72,
+      "pin": 226,
+      "quietMove": 81,
+      "sacrifice": 211,
+      "skewer": 86,
+      "trappedPiece": 148,
+      "unclassified": 12,
+      "xRayAttack": 14
+    },
+    "provenance": {
+      "master": 526,
+      "masterVsMaster": 53,
+      "standard": 3616,
+      "superGM": 5
+    },
+    "theme": {
+      "advancedPawn": 91,
+      "advantage": 1709,
+      "anastasiaMate": 9,
+      "arabianMate": 2,
+      "attackingF2F7": 59,
+      "attraction": 306,
+      "backRankMate": 26,
+      "bodenMate": 5,
+      "capturingDefender": 61,
+      "castling": 19,
+      "clearance": 108,
+      "collinearMove": 2,
+      "cornerMate": 6,
+      "crushing": 1150,
+      "defensiveMove": 184,
+      "deflection": 183,
+      "discoveredAttack": 356,
+      "discoveredCheck": 112,
+      "doubleBishopMate": 3,
+      "doubleCheck": 39,
+      "dovetailMate": 2,
+      "enPassant": 12,
+      "endgame": 41,
+      "epauletteMate": 9,
+      "exposedKing": 98,
+      "fork": 409,
+      "hangingPiece": 115,
+      "hookMate": 2,
+      "interference": 48,
+      "intermezzo": 82,
+      "kingsideAttack": 1039,
+      "long": 1018,
+      "master": 584,
+      "masterVsMaster": 55,
+      "mate": 1256,
+      "mateIn1": 698,
+      "mateIn2": 337,
+      "mateIn3": 144,
+      "mateIn4": 58,
+      "mateIn5": 19,
+      "middlegame": 3561,
+      "morphysMate": 3,
+      "oneMove": 700,
+      "opening": 598,
+      "operaMate": 9,
+      "pillsburysMate": 6,
+      "pin": 272,
+      "promotion": 6,
+      "queensideAttack": 41,
+      "quietMove": 114,
+      "sacrifice": 469,
+      "short": 2084,
+      "skewer": 100,
+      "smotheredMate": 29,
+      "superGM": 5,
+      "swallowstailMate": 5,
+      "trappedPiece": 177,
+      "triangleMate": 4,
+      "veryLong": 313,
+      "xRayAttack": 15
+    },
+    "variation": {
+      "London System": 3329,
+      "London System: Other variations": 806,
+      "London System: Poisoned Pawn Variation": 31,
+      "London System: with Bd3 Other variations": 26,
+      "London System: with Be2 Other variations": 8
+    }
+  },
+  "chunks": [
+    {
+      "count": 1000,
+      "path": "chunks/chunk-0001.json"
+    },
+    {
+      "count": 1000,
+      "path": "chunks/chunk-0002.json"
+    },
+    {
+      "count": 1000,
+      "path": "chunks/chunk-0003.json"
+    },
+    {
+      "count": 1000,
+      "path": "chunks/chunk-0004.json"
+    },
+    {
+      "count": 200,
+      "path": "chunks/chunk-0005.json"
+    }
+  ],
+  "counts": {
+    "allExported": 15560,
+    "balancedExported": 4200,
+    "invalidRows": 6085400,
+    "openingMatchedRows": 26538,
+    "perspectiveMatchedRows": 15560,
+    "rowsScanned": 6100960,
+    "validRows": 15560,
+    "whiteToSolveRows": 15560
+  },
+  "dataset": "London System puzzles for White",
+  "datasetName": "London System puzzles for White",
+  "datasetVersion": "78e6aa9e6228dae0597e63a858688a6a9a99defc338b52738be849a7d32e0b41",
+  "deckId": "london-white",
+  "difficultyBuckets": {
+    "advanced": {
+      "max": 2399,
+      "min": 2000
+    },
+    "beginner": {
+      "max": 1199,
+      "min": null
+    },
+    "developing": {
+      "max": 1599,
+      "min": 1200
+    },
+    "expert": {
+      "max": null,
+      "min": 2400
+    },
+    "intermediate": {
+      "max": 1999,
+      "min": 1600
+    }
+  },
+  "difficultyCounts": {
+    "advanced": 1421,
+    "beginner": 7245,
+    "developing": 3640,
+    "expert": 496,
+    "intermediate": 2758
+  },
+  "displayName": "London System — White",
+  "generatedAt": "2026-08-07T18:05:08.564647Z",
+  "generatedAtUtc": "2026-08-07T18:05:08.564647Z",
+  "inputByteSize": 304384407,
+  "inputFile": "lichess_db_puzzle.csv.zst",
+  "inputFilename": "lichess_db_puzzle.csv.zst",
+  "inputKind": "file",
+  "inputSha256": "a0ea9129c6b6434dfb34a9ac4ec660c9cfff22b2de465e01854f018fc847f073",
+  "inputSha256Scope": "complete-file-bytes",
+  "license": "CC0",
+  "matchedRootCounts": {
+    "Indian_Defense_Accelerated_London_System": 339,
+    "Indian_Defense_London_System": 1137,
+    "London_System": 875,
+    "Queens_Pawn_Game_Accelerated_London_System": 9460,
+    "Queens_Pawn_Game_London_System": 3749
+  },
+  "openingFamily": "London System",
+  "openingPrefix": "Queens_Pawn_Game_London_System",
+  "openingTagRoots": [
+    "Queens_Pawn_Game_London_System",
+    "Queens_Pawn_Game_Accelerated_London_System",
+    "Indian_Defense_London_System",
+    "Indian_Defense_Accelerated_London_System",
+    "London_System"
+  ],
+  "orientation": "white",
+  "provenanceCounts": {
+    "master": 611,
+    "masterVsMaster": 53,
+    "standard": 14891,
+    "superGM": 5
+  },
+  "qualityFilter": {
+    "maxRatingDeviation": 150,
+    "minPlays": 20,
+    "minPopularity": 0
+  },
+  "qualityFilters": {
+    "maxRatingDeviation": 150,
+    "minPlays": 20,
+    "minPopularity": 0,
+    "qualityEligible": 15252
+  },
+  "sampling": {
+    "algorithm": "sha256-cell-round-robin-v1",
+    "balancedLimit": 10000,
+    "dimensions": [
+      "primaryVariation",
+      "difficulty",
+      "provenance",
+      "primaryTacticalTheme"
+    ],
+    "maxPerVariation": 1000,
+    "seed": 20260803
+  },
+  "scanComplete": true,
+  "scanLimit": null,
+  "schemaVersion": 2,
+  "selectionIndex": "selection-index.json",
+  "solverColor": "white",
+  "source": {
+    "exportUrl": "https://database.lichess.org/lichess_db_puzzle.csv.zst",
+    "name": "Lichess Open Database: Puzzles",
+    "url": "https://database.lichess.org/#puzzles"
+  },
+  "themeCounts": {
+    "advancedPawn": 156,
+    "advantage": 5384,
+    "anastasiaMate": 14,
+    "arabianMate": 2,
+    "attackingF2F7": 272,
+    "attraction": 632,
+    "backRankMate": 98,
+    "balestraMate": 3,
+    "bodenMate": 48,
+    "capturingDefender": 131,
+    "castling": 35,
+    "clearance": 194,
+    "collinearMove": 4,
+    "cornerMate": 35,
+    "crushing": 3317,
+    "defensiveMove": 345,
+    "deflection": 343,
+    "discoveredAttack": 1024,
+    "discoveredCheck": 274,
+    "doubleBishopMate": 59,
+    "doubleCheck": 102,
+    "dovetailMate": 6,
+    "enPassant": 28,
+    "endgame": 188,
+    "epauletteMate": 85,
+    "exposedKing": 240,
+    "fork": 1910,
+    "hangingPiece": 493,
+    "hookMate": 9,
+    "interference": 70,
+    "intermezzo": 258,
+    "kingsideAttack": 3809,
+    "long": 2883,
+    "master": 669,
+    "masterVsMaster": 55,
+    "mate": 6751,
+    "mateIn1": 4978,
+    "mateIn2": 1389,
+    "mateIn3": 288,
+    "mateIn4": 77,
+    "mateIn5": 19,
+    "middlegame": 12817,
+    "morphysMate": 12,
+    "oneMove": 4996,
+    "opening": 2555,
+    "operaMate": 37,
+    "pillsburysMate": 37,
+    "pin": 754,
+    "promotion": 12,
+    "queenEndgame": 1,
+    "queensideAttack": 370,
+    "quietMove": 192,
+    "sacrifice": 1060,
+    "short": 6968,
+    "skewer": 195,
+    "smotheredMate": 68,
+    "superGM": 5,
+    "swallowstailMate": 27,
+    "trappedPiece": 399,
+    "triangleMate": 9,
+    "veryLong": 605,
+    "xRayAttack": 17
+  },
+  "truncated": false,
+  "variationCounts": {
+    "London System": 14685,
+    "London System: Other variations": 809,
+    "London System: Poisoned Pawn Variation": 31,
+    "London System: with Bd3 Other variations": 26,
+    "London System: with Be2 Other variations": 9
+  },
+  "variations": [
+    {
+      "balancedCount": 3329,
+      "count": 339,
+      "matchedTagRoot": "Indian_Defense_Accelerated_London_System",
+      "name": "London System",
+      "slug": "indian-defense-accelerated-london-system",
+      "tag": "Indian_Defense_Accelerated_London_System"
+    },
+    {
+      "balancedCount": 3329,
+      "count": 1137,
+      "matchedTagRoot": "Indian_Defense_London_System",
+      "name": "London System",
+      "slug": "indian-defense-london-system",
+      "tag": "Indian_Defense_London_System"
+    },
+    {
+      "balancedCount": 3329,
+      "count": 9460,
+      "matchedTagRoot": "Queens_Pawn_Game_Accelerated_London_System",
+      "name": "London System",
+      "slug": "queens-pawn-game-accelerated-london-system",
+      "tag": "Queens_Pawn_Game_Accelerated_London_System"
+    },
+    {
+      "balancedCount": 3329,
+      "count": 3749,
+      "matchedTagRoot": "Queens_Pawn_Game_London_System",
+      "name": "London System",
+      "slug": "queens-pawn-game-london-system",
+      "tag": "Queens_Pawn_Game_London_System"
+    },
+    {
+      "balancedCount": 806,
+      "count": 809,
+      "matchedTagRoot": "London_System",
+      "name": "London System: Other variations",
+      "slug": "london-system-other-variations",
+      "tag": "London_System_Other_variations"
+    },
+    {
+      "balancedCount": 31,
+      "count": 31,
+      "matchedTagRoot": "London_System",
+      "name": "London System: Poisoned Pawn Variation",
+      "slug": "london-system-poisoned-pawn-variation",
+      "tag": "London_System_Poisoned_Pawn_Variation"
+    },
+    {
+      "balancedCount": 26,
+      "count": 26,
+      "matchedTagRoot": "London_System",
+      "name": "London System: with Bd3 Other variations",
+      "slug": "london-system-with-bd3-other-variations",
+      "tag": "London_System_with_Bd3_Other_variations"
+    },
+    {
+      "balancedCount": 8,
+      "count": 9,
+      "matchedTagRoot": "London_System",
+      "name": "London System: with Be2 Other variations",
+      "slug": "london-system-with-be2-other-variations",
+      "tag": "London_System_with_Be2_Other_variations"
+    }
+  ]
+}

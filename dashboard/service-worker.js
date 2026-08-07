@@ -1,7 +1,7 @@
 "use strict";
 
 const CACHE_PREFIX = "chess-opening-trainer-";
-const SHELL_CACHE_VERSION = "v5";
+const SHELL_CACHE_VERSION = "v6";
 const DATA_CACHE_VERSION = "v3";
 const SHELL_CACHE = `${CACHE_PREFIX}shell-${SHELL_CACHE_VERSION}`;
 const DATA_CACHE = `${CACHE_PREFIX}data-${DATA_CACHE_VERSION}`;

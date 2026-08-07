@@ -87,6 +87,8 @@
     const id = text(raw.id || raw.deckId || raw.deck_id).toLowerCase();
     const sourceKind = text(raw.sourceKind || raw.source_kind).toLowerCase();
     const personalBlunders = sourceKind === "personal-blunders";
+    const qualityLabel = text(raw.qualityLabel || raw.quality_label || "blunder")
+      .toLowerCase();
     const solverColor = perspective(raw.solverColor || raw.solver_color || raw.sideToMove);
     const orientation = perspective(raw.orientation);
     const manifestPath = safeRelativePath(raw.manifestPath || raw.manifest_path);
@@ -100,7 +102,8 @@
         || orientation !== solverColor) return null;
     if (personalBlunders) {
       if (dataPath !== "my-blunder-puzzles.json"
-          || text(raw.progressScope || raw.progress_scope).toLowerCase() !== "personal") {
+          || text(raw.progressScope || raw.progress_scope).toLowerCase() !== "personal"
+          || !["blunder", "mistake"].includes(qualityLabel)) {
         return null;
       }
     } else if (!manifestPath || manifestPath !== `${id}/manifest.json`
@@ -121,6 +124,7 @@
       manifestPath,
       dataPath,
       sourceKind,
+      qualityLabel: personalBlunders ? qualityLabel : "",
       progressScope: personalBlunders ? "personal" : "deck",
       repertoireDeckId: text(raw.repertoireDeckId || raw.repertoire_deck_id).toLowerCase(),
     };
@@ -396,10 +400,14 @@
     const firstRawStep = object(rawSteps[0]);
     const firstFen = text(firstRawStep.fen_before || firstRawStep.fenBefore);
     const category = text(record.repertoire_deck_id || record.repertoireDeckId).toLowerCase();
+    const qualityLabel = text(record.quality_label || record.qualityLabel || "blunder")
+      .toLowerCase();
     if (!id || id !== String(record.puzzle_id || record.puzzleId || record.id || "").trim()
         || !solverColor || orientation !== solverColor || sideToMove !== solverColor
         || !puzzleFen || sideFromFen(puzzleFen) !== solverColor[0]
         || !rawSteps.length || firstFen !== puzzleFen
+        || !["blunder", "mistake"].includes(qualityLabel)
+        || qualityLabel !== deck.qualityLabel
         || (deck.solverColor !== "mixed" && deck.solverColor !== solverColor)
         || (deck.repertoireDeckId && deck.repertoireDeckId !== category)) {
       return null;
@@ -407,7 +415,7 @@
 
     const steps = rawSteps.map(rawStep => Object.assign({}, object(rawStep)));
     const first = object(steps[0]);
-    const opening = text(record.opening) || "My Blunders";
+    const opening = text(record.opening) || deck.openingFamily;
     const themes = array(record.categories).map(text).filter(Boolean);
     return Object.assign({}, record, {
       id,
@@ -415,6 +423,8 @@
       deckId: deck.id,
       deck_id: deck.id,
       sourceKind: "personal-blunders",
+      qualityLabel,
+      quality_label: qualityLabel,
       source: "chess.com",
       sourceUrl: text(record.game_url || record.gameUrl),
       openingFamily: deck.openingFamily,
@@ -442,7 +452,8 @@
       legal_dests: first.legalDests || first.legal_dests,
       promotion_options: first.promotionOptions || first.promotion_options || {},
       themes,
-      primaryTacticalTheme: themes[0] || "personalBlunder",
+      primaryTacticalTheme: themes[0]
+        || (qualityLabel === "mistake" ? "personalMistake" : "personalBlunder"),
       provenance: "standard",
       difficulty: "",
       rating: null,
